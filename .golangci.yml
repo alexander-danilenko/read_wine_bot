@@ -1,0 +1,70 @@
+# golangci-lint v2 — https://golangci-lint.run/docs/configuration/
+# Every linter is on except the short list below; each disabled linter says why.
+#   golangci-lint run ./...                  # lint the whole module
+#   golangci-lint run --fix ./cmd/bot/       # autofix and format one package (never a single file)
+#   golangci-lint config verify              # validate this file
+version: "2"
+
+linters:
+  default: all
+  disable:
+    - depguard # needs a hand-kept import allow-list; CLAUDE.md's approved-module rule covers it
+    - gomodguard # same allow-list approach as depguard
+    - gomodguard_v2 # same allow-list approach as depguard
+    - exhaustruct # deprecated duplicate of exhaustruct_v5
+    - exhaustruct_v5 # zero-value structs are idiomatic Go; forcing every field is noise
+    - wsl # deprecated duplicate of wsl_v5
+    - wsl_v5 # blank-line style only, no bug-finding value
+    - nlreturn # same blank-line family as wsl
+    - noinlineerr # bans `if err := f(); err != nil`, an idiomatic Go form
+    - varnamelen # rejects the conventional short names ctx, db, r, w, tx
+    - lll # golines (below) already wraps long lines
+    - gosmopolitan # flags non-Latin string literals; bot replies may be Cyrillic
+    - testpackage # forces black-box tests only, blocking tests of unexported helpers
+    - paralleltest # forces t.Parallel everywhere; awkward with a shared SQLite file
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # memory micro-optimisation that reorders struct fields unreadably
+    tagliatelle:
+      case:
+        rules:
+          json: snake # Telegram Bot API JSON is snake_case
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    generated: strict
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - dupl
+          - gocognit
+          - err113
+          - wrapcheck
+          - mnd
+          - goconst
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+    goimports:
+      local-prefixes:
+        - github.com/alexander-danilenko/read_wine_giveaway_bot
+    golines:
+      max-len: 120
