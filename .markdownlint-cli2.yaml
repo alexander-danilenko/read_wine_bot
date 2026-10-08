@@ -1,0 +1,38 @@
+# markdownlint-cli2 — https://github.com/DavidAnson/markdownlint-cli2
+# Lints Markdown across the repo; pass --fix to auto-format:
+#   markdownlint-cli2 "**/*.md"          # whole repo, check only
+#   markdownlint-cli2 --fix "**/*.md"    # whole repo, auto-format + report what it can't fix
+#   markdownlint-cli2 --fix path/to.md   # one file
+#
+# Deliberately no `globs:` key. markdownlint-cli2 *merges* config globs with the ones on the command
+# line rather than letting the argument win, so `globs: ["**/*.md"]` turns a single-file invocation
+# into a repo-wide rewrite — one edit reformats every Markdown file in the tree. The per-file
+# `.claude/hooks/markdownlint-fix.sh` hook runs exactly that invocation, so the key has to stay out.
+# The cost is naming the glob on a full-repo run, which the lines above do.
+
+# Skip everything .gitignore excludes (local notes, scratch space, worktrees), so no separate
+# ignore list has to mirror it. This applies to single-file runs too.
+gitignore: true
+
+# Rule settings — https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+config:
+  default: true
+  # House style is one line per paragraph (no hard-wrapping), so the
+  # maximum-line-length rule is off. (The linter can permit long lines but cannot
+  # enforce single-line paragraphs — that part stays a documented convention.)
+  MD013: false
+  # Table cell padding is cosmetic and --fix cannot normalize delimiter rows, so
+  # this rule only produces unfixable noise. GitHub renders tables fine regardless.
+  MD060: false
+  # Dash bullets, everywhere. The default `consistent` only checks a file against itself, which lets
+  # `*` and `-` files coexist across the repo. Pinning to `dash` makes every file agree.
+  MD004:
+    style: dash
+  # A file does not have to open with a top-level heading. Turn this on if every Markdown file in
+  # the repo should start with an H1.
+  MD041: false
+  # Plan documents carry a `title:` in their YAML frontmatter *and* a matching H1
+  # — the frontmatter is for tooling, the H1 for readers. Clearing the pattern
+  # stops the linter counting the frontmatter field as a second top-level heading.
+  MD025:
+    front_matter_title: ""
