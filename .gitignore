@@ -1,0 +1,21 @@
+# Build output
+/bot
+
+# Local SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Local secrets
+.env
+.env.*
+
+# Editor and tool state
+.idea/
+.remember/
+.claude/settings.local.json
+.claude/worktrees/
+
+# Compound Engineering local files
+.compound-engineering/*.local.yaml
+.context/compound-engineering/
