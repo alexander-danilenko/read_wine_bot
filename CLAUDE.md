@@ -1,0 +1,86 @@
+# read_wine_giveaway_bot
+
+Telegram bot that runs quick giveaways for the @read_wine channel. Go 1.27, single binary.
+
+The owner reads code well but is not a Go developer. When a change relies on a non-obvious Go idiom, name it in one line in your summary.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `go run ./cmd/bot` | Run the bot |
+| `go build ./...` | Compile everything |
+| `go test ./...` | Run all tests |
+| `golangci-lint run ./...` | Full lint; must report 0 issues |
+| `golangci-lint run --fix ./internal/<pkg>/` | Autofix and format one package |
+| `go mod tidy` | Sync `go.mod` and `go.sum` after changing imports |
+| `markdownlint-cli2 --fix "**/*.md"` | Format all Markdown |
+
+Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
+
+## Layout
+
+Follows go.dev's "Organizing a Go module". No `pkg/`, no empty placeholder directories.
+
+```text
+cmd/bot/          # main package: wiring only (config, logger, DB, bot, shutdown), no business logic
+internal/<name>/  # every other package, one responsibility each
+docs/plans/       # Compound Engineering plans
+docs/solutions/   # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
+CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
+```
+
+## Dependencies: standard library first
+
+- Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
+- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
+- To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
+- Never use `gorm.io/driver/sqlite` or `github.com/mattn/go-sqlite3`: both need CGO.
+- Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators.
+
+## Code style
+
+The linter is the style guide: `.golangci.yml` enables every linter except a short list, each disabled with a reason.
+
+- Fix findings. Never weaken `.golangci.yml` to get a pass.
+- `//nolint` only for a confirmed false positive, naming the linter and the reason: `//nolint:gosec // G404: not security-sensitive`.
+- Log with `log/slog` and key-value attributes. No `fmt.Print*` or `log.Print*`.
+- Wrap errors with context: `fmt.Errorf("open db: %w", err)`. Declare sentinel errors as package variables and compare with `errors.Is`. No `panic` outside `main`.
+- `context.Context` is the first parameter of every function that does I/O. Never store it in a struct.
+- No package-level mutable state and no `init()`.
+- Package names are short, lowercase and singular, and name what the package provides. Never `util`, `common`, `helpers` or `models`.
+
+## SOLID, the Go way
+
+- **Single responsibility:** one package, one reason to change. Telegram handlers translate updates into calls to domain code; they hold no giveaway rules and no queries.
+- **Open/closed:** extend with new types and composition, not with boolean flags on existing functions.
+- **Liskov substitution:** every implementation of an interface honours the same contract for errors, nil values and context cancellation.
+- **Interface segregation:** interfaces have 1-3 methods and are declared in the package that uses them, not the one that implements them.
+- **Dependency inversion:** constructors take dependencies as parameters (`NewService(store Store, log *slog.Logger)`). Accept interfaces, return concrete types. Wiring happens only in `cmd/bot`.
+- Do not create an interface for a single implementation unless a test needs a fake.
+
+## Database
+
+- GORM with `AutoMigrate` from Go structs; the same code runs on SQLite and Postgres. Keep it portable: no Postgres-only types (arrays, `jsonb`, enums).
+- `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
+- SQLite leaves foreign keys off by default. Its DSN must carry `_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)`.
+- Store Telegram user and chat IDs as `int64`.
+
+## Gotchas
+
+- A placeholder file blank-imports libraries no code uses yet, so `go mod tidy` keeps them in `go.mod`. Delete each import as soon as real code imports that library.
+- `github.com/glebarez/sqlite`'s last tag bundles SQLite 3.41. Keep `modernc.org/sqlite` and `github.com/glebarez/go-sqlite` explicitly upgraded in `go.mod`.
+- Hooks: after every `.go` edit a hook formats and autofixes that package and shows remaining findings. Before your turn ends, the full lint must pass. Fix the finding; do not work around the hook.
+- Markdown: one line per paragraph (no hard wrapping) and `-` bullets. A hook runs `markdownlint-cli2 --fix` on every edited `.md` file.
+
+## Commits
+
+Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/): `<type>(<optional scope>): <imperative summary>`.
+
+- Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`.
+- Scope is the package or area touched, e.g. `feat(giveaway): pick winners at random`.
+- Mark a breaking change with `!` after the type or a `BREAKING CHANGE:` footer.
+
+## Compound Engineering
+
+After a solved, verified problem, offer once to invoke the `ce-compound` skill at the completion checkpoint only when the work produced durable project reasoning that is not readily recoverable from the final code, tests, types, comments, or existing documentation, and losing it would plausibly cause recurrence, material risk, or substantial rediscovery. Apply this counterfactual: if the learning document disappeared, would a future engineer reading the final implementation still be likely to repeat the mistake or redo substantial investigation? If not, do not offer. Completion, effort, and diff size alone are not enough. Offer at the checkpoint so a qualifying learning can ship in the PR that produced it, and only where the repository treats captured learnings as tracked, committed knowledge.
