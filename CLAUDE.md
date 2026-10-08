@@ -16,6 +16,8 @@ The owner reads code well but is not a Go developer. When a change relies on a n
 | `go mod tidy` | Sync `go.mod` and `go.sum` after changing imports |
 | `markdownlint-cli2 --fix "**/*.md"` | Format all Markdown |
 
+Tools: `brew install go golangci-lint markdownlint-cli2 jq`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
+
 Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
 
 ## Layout
@@ -70,8 +72,9 @@ The linter is the style guide: `.golangci.yml` enables every linter except a sho
 
 - A placeholder file blank-imports libraries no code uses yet, so `go mod tidy` keeps them in `go.mod`. Delete each import as soon as real code imports that library.
 - `github.com/glebarez/sqlite`'s last tag bundles SQLite 3.41. Keep `modernc.org/sqlite` and `github.com/glebarez/go-sqlite` explicitly upgraded in `go.mod`.
-- Hooks: after every `.go` edit a hook formats and autofixes that package and shows remaining findings. Before your turn ends, the full lint must pass. Fix the finding; do not work around the hook.
-- Markdown: one line per paragraph (no hard wrapping) and `-` bullets. A hook runs `markdownlint-cli2 --fix` on every edited `.md` file.
+- Hooks (`.claude/hooks/`, loaded when a session starts): after every `.go` edit, `go-lint-fix.sh` formats and autofixes that package and shows remaining findings. Before your turn ends, `go-lint-gate.sh` runs the full lint and blocks the stop until it passes, at most three times in a row before it hands the findings to the owner. Fix the finding; do not work around the hook.
+- Write an import and its first use in the same edit. An unused import stops the package compiling, and the per-edit hook cannot autofix a package that does not compile.
+- Markdown: one line per paragraph (no hard wrapping) and `-` bullets. `markdownlint-fix.sh` runs `markdownlint-cli2 --fix` on every edited `.md` file.
 
 ## Commits
 
