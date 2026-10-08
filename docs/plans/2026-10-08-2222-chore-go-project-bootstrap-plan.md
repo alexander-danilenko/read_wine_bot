@@ -144,12 +144,12 @@ Product Contract preservation: changed: R15 — clarified that template paths an
   - Conflict call-out: per-edit fixing is a no-op while the package does not compile, and rewriting files Claude just edited makes its earlier reads stale. Both are workable: the Stop gate (KTD6) catches anything the per-edit pass could not fix, and the re-read list closes the stale-read gap.
 - KTD6. **The Stop gate lints the whole module and blocks at most three times per turn.** It works from the repository root of the stop event's `cwd`, so it follows the session into a worktree. Covers R9, AE2.
   1. A missing tool counts as failing output: per R11, Claude gets the tool name and its `brew install` command, under the same block cap as findings.
-  2. `golangci-lint run ./...` exit 0, or exit 5 or 7 (no Go code or no module yet, which the bootstrap session itself passes through), counts as clean. Exit 1 means findings or compile errors and exit 3 means a bad config; those and any other code count as failing.
+  2. A repository without `go.mod` (the bootstrap session before the module exists) allows the stop without linting. Otherwise `golangci-lint run --allow-serial-runners ./...` runs, waiting for golangci-lint's global lock rather than failing on it; exit 0, or exit 5 (no Go files yet), counts as clean. Exit 1 means findings or compile errors, exit 3 a bad config and exit 7 a logged error such as a module load failure; those and any other code count as failing.
   3. Failing output blocks the stop with exit 2 and the findings. A per-session counter in the temp directory caps consecutive blocks at three; once spent, the stop is allowed and the findings go to the owner in a `systemMessage`.
   4. The counter resets whenever the gate allows a stop, after a clean run or a spent budget, so the cap bounds one turn's retries and the next turn is gated again.
   - The counter replaces a `stop_hook_active` check: that flag is shared with other plugins' Stop hooks (security-guidance has one), and the harness's own cap of 8 resets whenever Claude calls a tool, so neither bounds a fix-and-retry loop.
   - Subagent stops are not gated; the main-session gate checks the final state.
-- KTD7. **The Markdown hook runs `markdownlint-cli2 --fix` on the edited file from the project root,** so `.markdownlint-cli2.yaml` and its ignores apply, including `gitignore: true` (U1), which skips gitignored scratch such as `.context/` and `.claude/worktrees/`. It exits 2 with any remaining findings, or with a re-read note when it changed the file. Covers R10, AE3.
+- KTD7. **The Markdown hook runs `markdownlint-cli2 --fix` on the edited file from the root of the repository holding it,** so that repository's `.markdownlint-cli2.yaml` and ignores apply, including `gitignore: true` (U1), which skips gitignored scratch such as `.context/`. A file in a worktree under `.claude/worktrees/` is linted from that worktree's root, because `CLAUDE_PROJECT_DIR` stays on the main checkout, where the worktree directory is gitignored. It exits 2 with any remaining findings, or with a re-read note when it changed the file. Covers R10, AE3.
 - KTD8. **Each hook checks its tools with `command -v` before doing anything:** `jq` everywhere, `go` and `golangci-lint` for Go, `markdownlint-cli2` for Markdown. (`markdownlint-cli2 --version` runs a lint, so it cannot serve as a presence check.) In the per-edit hooks a missing tool exits 2 with the tool name and its `brew install` command; the Stop gate handles it per KTD6. Covers R11, AE4.
 - KTD9. **The Compound Engineering config files are byte copies of the plugin's `references/config-template.yaml`,** which is what `ce-setup` writes, and `ce-setup`'s `check-health` script is the acceptance check. Covers R13, R14.
 - KTD10. **Each module resolves to its latest release at implementation time,** plus explicit upgrades of `github.com/glebarez/go-sqlite` and `modernc.org/sqlite`, because the `github.com/glebarez/sqlite` v1.11.0 tag otherwise pins SQLite 3.41. Covers R2.
@@ -178,10 +178,12 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  S[Claude tries to end the turn] --> TL{Tools on PATH?}
+  S[Claude tries to end the turn] --> GM{go.mod exists?}
+  GM -->|no| A0[reset counter, allow stop]
+  GM -->|yes| TL{Tools on PATH?}
   TL -->|no| B
   TL -->|yes| L[golangci-lint run ./...]
-  L --> C{Clean? exit 0, 5 or 7}
+  L --> C{Clean? exit 0 or 5}
   C -->|yes| RS[reset counter, allow stop]
   C -->|no| B{Fewer than 3 consecutive blocks?}
   B -->|yes| BL[exit 2: block with findings, count it]

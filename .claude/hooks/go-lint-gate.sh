@@ -20,13 +20,22 @@ if command -v jq >/dev/null 2>&1; then
 fi
 counter="${TMPDIR:-/tmp}/claude-go-lint-gate-${session//[^A-Za-z0-9._-]/_}"
 
+# No Go module yet (e.g. while bootstrapping): nothing to lint.
+if [[ ! -f "$repo_root/go.mod" ]]; then
+	rm -f "$counter"
+	exit 0
+fi
+
 status=0
 if ! output="$(require_tools jq go golangci-lint)"; then
 	status=1
 else
-	output="$(cd "$repo_root" && golangci-lint run ./... 2>&1)" || status=$?
-	# Exit 5 and 7 mean there is no Go code or no module yet, which is not a finding.
-	[[ $status -eq 5 || $status -eq 7 ]] && status=0
+	# --allow-serial-runners waits for golangci-lint's global lock (held by another session, a
+	# subagent's per-edit run or the IDE) instead of failing, which would burn a block.
+	output="$(cd "$repo_root" && golangci-lint run --allow-serial-runners ./... 2>&1)" || status=$?
+	# Exit 5 means the module has no Go files yet, which is not a finding. Exit 7 is not
+	# excluded: it means golangci-lint logged an error, such as failing to load the module.
+	[[ $status -eq 5 ]] && status=0
 fi
 
 if [[ $status -eq 0 ]]; then

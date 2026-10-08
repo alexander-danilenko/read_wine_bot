@@ -29,8 +29,9 @@ status=0
 output="$(cd "$module_root" && golangci-lint run --fix --allow-serial-runners "$pkg" 2>&1)" || status=$?
 rewritten="$(changed_files "$before" "$(checksums "$pkg_dir"/*.go)")"
 
-# Exit 5 and 7 mean there is no Go code to analyze yet, which is not a finding.
-[[ $status -eq 5 || $status -eq 7 ]] && status=0
+# Exit 5 means there is no Go code to analyze yet, which is not a finding. Exit 7 (an error
+# was logged, such as a module load failure) is reported like any other failure.
+[[ $status -eq 5 ]] && status=0
 [[ $status -eq 0 && -z "$rewritten" ]] && exit 0
 
 {
