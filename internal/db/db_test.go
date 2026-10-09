@@ -46,7 +46,7 @@ func TestOpen(t *testing.T) {
 		t.Errorf("foreign_keys = %d, want 1", foreignKeys)
 	}
 
-	for _, table := range []any{&user.User{}, &giveaway.Giveaway{}, &giveaway.Participant{}, &giveaway.Draft{}} {
+	for _, table := range []any{&user.User{}, &giveaway.Giveaway{}, &giveaway.Participant{}} {
 		if !conn.Migrator().HasTable(table) {
 			t.Errorf("table for %T missing after Open", table)
 		}
@@ -66,7 +66,6 @@ func TestOpenForeignKeys(t *testing.T) {
 		"users":                 nil,
 		"giveaways":             {"REFERENCES `users`"},
 		"giveaway_participants": {"FOREIGN KEY (`user_id`) REFERENCES `users`", "REFERENCES `giveaways`"},
-		"giveaway_drafts":       {"FOREIGN KEY (`user_id`) REFERENCES `users`"},
 	} {
 		var ddl string
 		if err := conn.Raw("SELECT sql FROM sqlite_master WHERE name = ?", table).Scan(&ddl).Error; err != nil {
@@ -184,8 +183,8 @@ func TestOpenExistingGiveaways(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if g.Winners != 1 || g.ButtonText != "" || g.EndsAt != nil || g.FinishedAt != nil {
-		t.Errorf("existing giveaway = %+v; want 1 winner, empty button text, no end or finish time", g)
+	if !g.Published || g.Winners != 1 || g.ButtonText != "" || g.EndsAt != nil || g.FinishedAt != nil {
+		t.Errorf("existing giveaway = %+v; want published, 1 winner, empty button text, no end or finish time", g)
 	}
 
 	var p giveaway.Participant

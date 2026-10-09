@@ -110,7 +110,7 @@ func (h setupHandler) step(ctx context.Context, b *bot.Bot, msg *models.Message,
 	switch {
 	case step == StepPost && origin != nil:
 		tg := telegramAPI{b: b}
-		r := h.svc.Forward(ctx, tg, msg.From.ID, origin.Chat.ID, int64(origin.MessageID), origin.Chat.Title)
+		r := h.svc.Forward(ctx, tg, msg.From.ID, origin.Chat.ID, int64(origin.MessageID), lang)
 		h.reply(ctx, b, msg.From.ID, lang, r)
 	case step == StepPost || step == StepConfirm || origin != nil:
 		h.prompt(ctx, b, msg.From.ID, lang, step)
@@ -139,7 +139,7 @@ func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *s
 		case query.Data == cancelData:
 			r = svc.Cancel(ctx, userID)
 		case query.Data == confirmData:
-			r = svc.Confirm(ctx, telegramAPI{b: b}, userID, lang)
+			r = svc.Confirm(ctx, telegramAPI{b: b}, userID)
 		case strings.HasPrefix(query.Data, defaultData):
 			step := strings.TrimPrefix(query.Data, defaultData)
 			r = svc.Apply(ctx, userID, step, svc.Default(step, lang))

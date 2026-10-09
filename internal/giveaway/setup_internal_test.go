@@ -37,7 +37,13 @@ func TestParseDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, errKey := parseDate(tt.input, kyiv, now)
+			date, errKey := parseDate(tt.input, kyiv, now)
+
+			got := ""
+			if !date.IsZero() {
+				got = date.Format(dateLayout)
+			}
+
 			if got != tt.want || errKey != tt.wantErr {
 				t.Errorf("parseDate(%q) = %q, %q; want %q, %q", tt.input, got, errKey, tt.want, tt.wantErr)
 			}

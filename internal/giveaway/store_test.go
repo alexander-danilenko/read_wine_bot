@@ -46,48 +46,159 @@ func newStore(t *testing.T) (*giveaway.Store, *gorm.DB) {
 	return giveaway.NewStore(conn), conn
 }
 
-func TestCreateAndFind(t *testing.T) {
+// publish saves g as the admin's draft and publishes it, the way Confirm does.
+func publish(t *testing.T, store *giveaway.Store, g *giveaway.Giveaway) giveaway.Giveaway {
+	t.Helper()
+
+	ctx := t.Context()
+	if err := store.SaveDraft(ctx, g); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := store.Draft(ctx, g.CreatedBy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Publish(ctx, d.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	d.Published = true
+
+	return d
+}
+
+func TestFindSeesOnlyPublished(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
-	created := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"}
-	if err := store.Create(ctx, created); err != nil {
+	if err := store.SaveDraft(
+		ctx,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: fanID},
+	); err != nil {
 		t.Fatal(err)
 	}
+
+	if _, err := store.Find(ctx, channelID, 41); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Find a draft: err = %v, want ErrNotFound", err)
+	}
+
+	published := publish(
+		t,
+		store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"},
+	)
 
 	got, err := store.Find(ctx, channelID, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if got.ID != created.ID || got.CreatedBy != adminID || got.Language != "uk" {
-		t.Errorf("Find = %+v, want ID %d, author %d, language uk", got, created.ID, adminID)
-	}
-
-	if _, err := store.Find(ctx, channelID, 43); !errors.Is(err, giveaway.ErrNotFound) {
-		t.Errorf("Find unknown post: err = %v, want ErrNotFound", err)
+	if got.ID != published.ID || !got.Published || got.Language != "uk" {
+		t.Errorf("Find = %+v, want the published giveaway %d", got, published.ID)
 	}
 }
 
-func TestCreateDuplicate(t *testing.T) {
+func TestPublish(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
-	if err := store.Create(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID}); err != nil {
+	g := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+
+	if err := store.Publish(ctx, g.ID); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("second Publish: err = %v, want ErrNotFound", err)
+	}
+
+	if _, err := store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Draft after Publish: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSaveDraft(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+	ends := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
+
+	if err := store.SaveDraft(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID}); err != nil {
 		t.Fatal(err)
 	}
 
-	err := store.Create(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	// Another admin forwarding the same post takes the unpublished row over.
+	d := &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk",
+		EndsAt: &ends, Winners: 3, ButtonText: "Беру участь",
+	}
+	if err := store.SaveDraft(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.Draft(ctx, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.EndsAt == nil || !got.EndsAt.Equal(ends) || got.Winners != 3 || got.ButtonText != "Беру участь" ||
+		got.Published {
+		t.Errorf("draft = %+v; want ends %v, 3 winners, the button text, unpublished", got, ends)
+	}
+
+	if _, err := store.Draft(ctx, fanID); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Draft of the first admin: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSaveDraftOnPublishedPost(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
+
+	err := store.SaveDraft(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
 	if !errors.Is(err, giveaway.ErrExists) {
-		t.Errorf("second Create for the same post: err = %v, want ErrExists", err)
+		t.Errorf("SaveDraft on a published post: err = %v, want ErrExists", err)
+	}
+
+	if g, err := store.Find(ctx, channelID, 42); err != nil || g.CreatedBy != adminID || g.ButtonText != "Go" {
+		t.Errorf("published giveaway = %+v, %v; want it unchanged", g, err)
 	}
 
 	// Telegram numbers posts per channel, so another channel may reuse message 42.
-	if err := store.Create(
+	if err := store.SaveDraft(
 		ctx,
-		&giveaway.Giveaway{ChatID: channelID - 1, MessageID: 42, CreatedBy: adminID},
+		&giveaway.Giveaway{ChatID: channelID - 1, MessageID: 42, CreatedBy: fanID},
 	); err != nil {
-		t.Errorf("Create in another channel: %v", err)
+		t.Errorf("SaveDraft in another channel: %v", err)
+	}
+}
+
+func TestDeleteDraftKeepsPublished(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+
+	if err := store.SaveDraft(
+		ctx,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 43, CreatedBy: adminID},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteDraft(ctx, adminID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Draft after delete: err = %v, want ErrNotFound", err)
+	}
+
+	if _, err := store.Find(ctx, channelID, 42); err != nil {
+		t.Errorf("published giveaway after DeleteDraft: %v", err)
+	}
+
+	if err := store.DeleteDraft(ctx, fanID); err != nil {
+		t.Errorf("DeleteDraft without a draft: %v", err)
 	}
 }
 
@@ -95,10 +206,7 @@ func TestStoreJoin(t *testing.T) {
 	store, conn := newStore(t)
 	ctx := t.Context()
 
-	g := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID}
-	if err := store.Create(ctx, g); err != nil {
-		t.Fatal(err)
-	}
+	g := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
 
 	for i, want := range []bool{true, false} {
 		added, err := store.Join(ctx, g.ID, fanID)
@@ -118,78 +226,5 @@ func TestStoreJoin(t *testing.T) {
 
 	if _, err := store.Join(ctx, g.ID, 7_000_000_099); err == nil {
 		t.Error("Join for a user with no users row: err = nil, want a foreign key error")
-	}
-}
-
-func TestDraftSaveReplaces(t *testing.T) {
-	store, _ := newStore(t)
-	ctx := t.Context()
-
-	first := &giveaway.Draft{UserID: adminID, ChatID: channelID, MessageID: 1, ChannelTitle: "Old", Winners: 5}
-	if err := store.SaveDraft(ctx, first); err != nil {
-		t.Fatal(err)
-	}
-
-	// A new setup resets every field, so nothing from the abandoned one leaks in.
-	if err := store.SaveDraft(ctx, &giveaway.Draft{UserID: adminID, ChatID: channelID, MessageID: 2}); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := store.Draft(ctx, adminID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if got.MessageID != 2 || got.ChannelTitle != "" || got.Winners != 0 {
-		t.Errorf("draft = %+v; want message 2 with every other field reset", got)
-	}
-}
-
-func TestDraftDelete(t *testing.T) {
-	store, _ := newStore(t)
-	ctx := t.Context()
-
-	if _, err := store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
-		t.Fatalf("Draft before save: err = %v, want ErrNotFound", err)
-	}
-
-	if err := store.SaveDraft(ctx, &giveaway.Draft{UserID: adminID, ChatID: channelID, MessageID: 1}); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.DeleteDraft(ctx, adminID); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
-		t.Errorf("Draft after delete: err = %v, want ErrNotFound", err)
-	}
-
-	if err := store.DeleteDraft(ctx, fanID); err != nil {
-		t.Errorf("DeleteDraft without a draft: %v", err)
-	}
-}
-
-func TestCreateSavesSetupFields(t *testing.T) {
-	store, _ := newStore(t)
-	ctx := t.Context()
-	ends := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
-
-	g := &giveaway.Giveaway{
-		ChatID: channelID, MessageID: 43, CreatedBy: adminID, Language: "uk",
-		EndsAt: &ends, Winners: 3, ButtonText: "Беру участь",
-	}
-	if err := store.Create(ctx, g); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := store.Find(ctx, channelID, 43)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if got.EndsAt == nil || !got.EndsAt.Equal(ends) || got.Winners != 3 || got.ButtonText != "Беру участь" ||
-		got.FinishedAt != nil {
-		t.Errorf("found %+v; want ends %v, 3 winners, button text, not finished", got, ends)
 	}
 }

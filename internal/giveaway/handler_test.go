@@ -149,7 +149,7 @@ func TestMessageHandlerWrongKindRepeatsPrompt(t *testing.T) {
 			}
 
 			if !tt.atPost {
-				h.svc.Forward(ctx, h.tg, adminID, channelID, 42, "Read Wine")
+				h.svc.Forward(ctx, h.tg, adminID, channelID, 42, "en")
 			}
 
 			h.messageHandler()(ctx, h.bot, h.message("hello", tt.forward))
@@ -170,7 +170,7 @@ func TestMessageHandlerInvalidValue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.svc.Forward(ctx, h.tg, adminID, channelID, 42, "Read Wine")
+	h.svc.Forward(ctx, h.tg, adminID, channelID, 42, "en")
 	h.messageHandler()(ctx, h.bot, h.message("25.10.2026", false))
 
 	want := []string{h.texts.Text("en", i18n.GiveawayInvalidDate), h.texts.Text("en", i18n.GiveawayAskEndDate)}

@@ -31,17 +31,18 @@ const (
 	JoinFailed                      // the tap could not be recorded
 )
 
-// Storage finds and saves giveaways and participants. *Store implements it.
+// Storage finds published giveaways, publishes drafts and records participants. *Store
+// implements it.
 type Storage interface {
 	Find(ctx context.Context, chatID, messageID int64) (Giveaway, error)
-	Create(ctx context.Context, g *Giveaway) error
+	Publish(ctx context.Context, id uint) error
 	Join(ctx context.Context, giveawayID uint, telegramID int64) (bool, error)
 }
 
-// Drafts saves the inputs of unfinished giveaway setups. *Store implements it.
+// Drafts saves the unpublished giveaways of unfinished setups. *Store implements it.
 type Drafts interface {
-	SaveDraft(ctx context.Context, d *Draft) error
-	Draft(ctx context.Context, userID int64) (Draft, error)
+	SaveDraft(ctx context.Context, g *Giveaway) error
+	Draft(ctx context.Context, userID int64) (Giveaway, error)
 	DeleteDraft(ctx context.Context, userID int64) error
 }
 
