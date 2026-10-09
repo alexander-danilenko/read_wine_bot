@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/go-telegram/bot"
+
+	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
 
 func TestIgnoreNotModified(t *testing.T) {
@@ -32,5 +34,23 @@ func TestIgnoreNotModified(t *testing.T) {
 				t.Errorf("ignoreNotModified(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestJoinText(t *testing.T) {
+	tests := []struct {
+		result JoinResult
+		want   i18n.Key
+	}{
+		{Joined, i18n.GiveawayJoined},
+		{AlreadyJoined, i18n.GiveawayAlreadyJoined},
+		{JoinFailed, i18n.GiveawayJoinFailed},
+		{Ended, i18n.GiveawayEnded},
+	}
+
+	for _, tt := range tests {
+		if got := joinText(tt.result); got != tt.want {
+			t.Errorf("joinText(%v) = %q, want %q", tt.result, got, tt.want)
+		}
 	}
 }
