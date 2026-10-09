@@ -2,6 +2,8 @@
   "$schema": "../schema.json",
   "greeting": "Hi! I'm the @read_wine bot.",
   "menu.giveaway": "🎁 New giveaway",
+  "menu.edit": "✏️ Edit giveaway",
+  "menu.list": "📋 My giveaways",
   "menu.language": "🌐 Change language",
   "language.prompt": "Choose your language:",
   "language.selected": "Language selected: %[1]s",

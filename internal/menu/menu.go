@@ -13,10 +13,10 @@ import (
 // Keyboard returns the menu keyboard with labels in lang. It stays visible until replaced.
 func Keyboard(texts *i18n.Catalog, lang string) *models.ReplyKeyboardMarkup {
 	return &models.ReplyKeyboardMarkup{
-		Keyboard: [][]models.KeyboardButton{{
-			{Text: texts.Text(lang, i18n.MenuGiveaway)},
-			{Text: texts.Text(lang, i18n.MenuLanguage)},
-		}},
+		Keyboard: [][]models.KeyboardButton{
+			{{Text: texts.Text(lang, i18n.MenuGiveaway)}, {Text: texts.Text(lang, i18n.MenuEdit)}},
+			{{Text: texts.Text(lang, i18n.MenuList)}, {Text: texts.Text(lang, i18n.MenuLanguage)}},
+		},
 		IsPersistent:   true,
 		ResizeKeyboard: true,
 	}
@@ -25,7 +25,9 @@ func Keyboard(texts *i18n.Catalog, lang string) *models.ReplyKeyboardMarkup {
 // IsLabel returns a function that reports whether a message text is a menu button label in
 // any language, so a keyboard sent before a language switch still counts.
 func IsLabel(texts *i18n.Catalog) func(text string) bool {
-	labels := slices.Concat(texts.All(i18n.MenuGiveaway), texts.All(i18n.MenuLanguage))
+	labels := slices.Concat(
+		texts.All(i18n.MenuGiveaway), texts.All(i18n.MenuEdit), texts.All(i18n.MenuList), texts.All(i18n.MenuLanguage),
+	)
 
 	return func(text string) bool { return slices.Contains(labels, text) }
 }

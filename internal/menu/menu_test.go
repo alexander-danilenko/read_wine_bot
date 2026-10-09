@@ -15,10 +15,10 @@ func TestKeyboard(t *testing.T) {
 
 	tests := []struct {
 		lang string
-		want [2]string
+		want [4]string
 	}{
-		{lang: "uk", want: [2]string{"🎁 Новий розіграш", "🌐 Змінити мову"}},
-		{lang: "de", want: [2]string{"🎁 New giveaway", "🌐 Change language"}},
+		{lang: "uk", want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Мої розіграші", "🌐 Змінити мову"}},
+		{lang: "de", want: [4]string{"🎁 New giveaway", "✏️ Edit giveaway", "📋 My giveaways", "🌐 Change language"}},
 	}
 
 	for _, tt := range tests {
@@ -28,11 +28,17 @@ func TestKeyboard(t *testing.T) {
 				t.Errorf("IsPersistent = %v, ResizeKeyboard = %v, want both true", kb.IsPersistent, kb.ResizeKeyboard)
 			}
 
-			if len(kb.Keyboard) != 1 || len(kb.Keyboard[0]) != 2 {
-				t.Fatalf("keyboard = %+v, want one row of two buttons", kb.Keyboard)
+			if len(kb.Keyboard) != 2 || len(kb.Keyboard[0]) != 2 || len(kb.Keyboard[1]) != 2 {
+				t.Fatalf("keyboard = %+v, want two rows of two buttons", kb.Keyboard)
 			}
 
-			if got := [2]string{kb.Keyboard[0][0].Text, kb.Keyboard[0][1].Text}; got != tt.want {
+			got := [4]string{
+				kb.Keyboard[0][0].Text,
+				kb.Keyboard[0][1].Text,
+				kb.Keyboard[1][0].Text,
+				kb.Keyboard[1][1].Text,
+			}
+			if got != tt.want {
 				t.Errorf("labels = %q, want %q", got, tt.want)
 			}
 		})
@@ -51,6 +57,8 @@ func TestIsLabel(t *testing.T) {
 		"🎁 New giveaway":   true,
 		"🎁 Новий розіграш": true,
 		"🌐 Змінити мову":   true,
+		"✏️ Edit giveaway": true,
+		"📋 Мої розіграші":  true,
 		"5":                false,
 		"/start":           false,
 	} {

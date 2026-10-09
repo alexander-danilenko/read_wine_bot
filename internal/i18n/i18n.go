@@ -24,6 +24,8 @@ type Key string
 const (
 	Greeting         Key = "greeting"
 	MenuGiveaway     Key = "menu.giveaway"
+	MenuEdit         Key = "menu.edit"
+	MenuList         Key = "menu.list"
 	MenuLanguage     Key = "menu.language"
 	LanguagePrompt   Key = "language.prompt"
 	LanguageSelected Key = "language.selected"
