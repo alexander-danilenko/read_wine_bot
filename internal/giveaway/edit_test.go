@@ -194,7 +194,12 @@ func TestEditEndTime(t *testing.T) {
 		{
 			name: "today at a passed time", ends: s.kyivTime(20, 19, 0),
 			field: giveaway.FieldEndDate, in: "2026-10-09", want: s.kyivTime(20, 19, 0),
-			wantNotice: i18n.GiveawayDateInPast,
+			wantNotice: i18n.EditDateTimeInPast,
+		},
+		{
+			// A due giveaway's old date is past, so a new time moves it to today.
+			name: "time of a due giveaway", ends: s.kyivTime(8, 19, 0),
+			field: giveaway.FieldEndTime, in: "22:00", want: s.kyivTime(9, 22, 0),
 		},
 		{
 			name: "passed time", ends: s.kyivTime(9, 21, 0),
@@ -441,5 +446,56 @@ func TestEditShowMenuOfAnotherCreator(t *testing.T) {
 
 	if r := s.ed.ShowMenu(t.Context(), s.tg, fanID, g.ID); r.Next != menu(g.ID) {
 		t.Errorf("ShowMenu by the creator = %+v, want the menu", r)
+	}
+}
+
+func TestEditCancelWithoutRights(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+
+	s.tg.removeErr = errBoom
+
+	want := giveaway.Reply{Notice: i18n.EditNoRights, Next: menu(g.ID)}
+	if r := s.ed.Cancel(ctx, s.tg, s.tg, adminID, g.ID); r != want {
+		t.Errorf("Cancel = %+v, want no rights and the menu", r)
+	}
+
+	if !s.read(t, g.ID).Published {
+		t.Error("giveaway cancelled although its button stayed on the post")
+	}
+}
+
+func TestEditRestoreWithoutRights(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.cancelOpen(t)
+
+	s.tg.attachErr = errBoom
+
+	want := giveaway.Reply{Notice: i18n.EditNoRights, Next: menu(g.ID)}
+	if r := s.ed.Restore(ctx, s.tg, adminID, g.ID); r != want {
+		t.Errorf("Restore = %+v, want no rights and the menu", r)
+	}
+
+	if s.read(t, g.ID).Published {
+		t.Error("giveaway published although its button is not on the post")
+	}
+}
+
+func TestEditValueAfterAdminLoss(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 1})
+
+	r := s.ed.Field(ctx, s.tg, adminID, g.ID, giveaway.FieldWinners)
+	s.tg.admin = false
+
+	if got := s.ed.Value(ctx, s.tg, adminID, r.Next, "3"); got != (giveaway.Reply{Notice: i18n.EditNotAdmin}) {
+		t.Errorf("Value after losing admin = %+v, want the not-admin notice", got)
+	}
+
+	if s.read(t, g.ID).Winners != 1 || s.step(t) != "" {
+		t.Errorf("winners %d, step %q; want 1 and no step", s.read(t, g.ID).Winners, s.step(t))
 	}
 }

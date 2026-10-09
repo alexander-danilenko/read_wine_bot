@@ -273,6 +273,16 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 		return
 	}
 
+	menuFields := []struct {
+		field string
+		label i18n.Key
+	}{
+		{FieldEndDate, i18n.EditFieldEndDate},
+		{FieldEndTime, i18n.EditFieldEndTime},
+		{FieldWinners, i18n.EditFieldWinners},
+		{FieldButtonText, i18n.EditFieldButtonText},
+	}
+
 	rawID := strconv.FormatUint(uint64(id), 10)
 	rows := make([][]models.InlineKeyboardButton, 0, len(menuFields)+1)
 
@@ -292,17 +302,6 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 	}
 
 	h.ask(ctx, b, userID, text, append(rows, []models.InlineKeyboardButton{last}))
-}
-
-// menuFields are the field buttons of the menu, in order.
-var menuFields = []struct { //nolint:gochecknoglobals // read-only table of the menu buttons
-	field string
-	label i18n.Key
-}{
-	{FieldEndDate, i18n.EditFieldEndDate},
-	{FieldEndTime, i18n.EditFieldEndTime},
-	{FieldWinners, i18n.EditFieldWinners},
-	{FieldButtonText, i18n.EditFieldButtonText},
 }
 
 // ask sends text with an inline keyboard of rows.
