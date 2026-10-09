@@ -15,9 +15,9 @@ type Recorder interface {
 	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
 }
 
-// Middleware returns a bot middleware that runs before every handler. It saves the name of
-// the sender of every private message and every button tap, so the users table always has
-// current names. A private command, or a text that isLabel reports as a menu button, clears
+// Middleware returns a bot middleware that runs before every handler. It records the profile
+// of whoever sent the update, in any chat, so the users table always has current profiles and
+// their revisions. A private command, or a text that isLabel reports as a menu button, clears
 // the pending command, so the user leaves any unfinished setup; the handler that runs next
 // may start a new one. A store error is logged and the handler still runs, so a database
 // problem never silences a reply.
@@ -30,21 +30,17 @@ func Middleware(store Recorder, isLabel func(text string) bool, log *slog.Logger
 	}
 }
 
-// record saves the sender's names and, for a private command or menu button, clears the
+// record saves the sender's profile and, for a private command or menu button, clears the
 // pending command.
 func record(ctx context.Context, store Recorder, isLabel func(string) bool, log *slog.Logger, update *models.Update) {
-	if q := update.CallbackQuery; q != nil {
-		recordSender(ctx, store, log, &q.From)
-
-		return
+	if from := sender(update); from != nil {
+		recordSender(ctx, store, log, from)
 	}
 
 	msg := update.Message
 	if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
 		return
 	}
-
-	recordSender(ctx, store, log, msg.From)
 
 	if !strings.HasPrefix(msg.Text, "/") && !isLabel(msg.Text) {
 		return
@@ -53,6 +49,36 @@ func record(ctx context.Context, store Recorder, isLabel func(string) bool, log 
 	if err := store.SetPendingCommand(ctx, msg.From.ID, ""); err != nil {
 		log.ErrorContext(ctx, "save pending command", "user_id", msg.From.ID, "error", err)
 	}
+}
+
+// sender returns the user behind the update, or nil when it has none. Inline queries, poll
+// answers and payments never reach this bot, and chat_member updates are not recorded.
+func sender(update *models.Update) *models.User {
+	switch {
+	case update.Message != nil:
+		return messageSender(update.Message)
+	case update.EditedMessage != nil:
+		return messageSender(update.EditedMessage)
+	case update.CallbackQuery != nil:
+		return &update.CallbackQuery.From
+	case update.MyChatMember != nil:
+		return &update.MyChatMember.From
+	case update.ChatJoinRequest != nil:
+		return &update.ChatJoinRequest.From
+	default:
+		return nil
+	}
+}
+
+// messageSender returns the user who sent msg, or nil when it was sent on behalf of a chat:
+// a post made as the channel, an anonymous group admin, or the channel's automatic forward
+// into its discussion chat. Telegram fills From with a placeholder account for those.
+func messageSender(msg *models.Message) *models.User {
+	if msg.SenderChat != nil {
+		return nil
+	}
+
+	return msg.From
 }
 
 // recordSender saves the profile of the user who sent the update.
