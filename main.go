@@ -106,21 +106,26 @@ func handlers(conn *gorm.DB, texts *i18n.Catalog, kyiv *time.Location, log *slog
 			bot.MatchTypeExact,
 			giveaway.JoinHandler(giveaways, texts, users, log),
 		),
-		// A forwarded post matches no handler above, so it lands here.
-		bot.WithDefaultHandler(giveaway.ForwardHandler(giveaways, texts, users, log)),
-	}, menuHandlers(texts, users, log))
+		bot.WithCallbackQueryDataHandler(
+			giveaway.SetupCallbackPrefix,
+			bot.MatchTypePrefix,
+			giveaway.SetupCallbackHandler(giveaways, texts, users, log),
+		),
+		// Forwarded posts and typed setup values match no handler above, so they land here.
+		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, texts, users, log)),
+	}, menuHandlers(texts, users, giveaways, log))
 }
 
 // menuHandlers wires the menu buttons. A button sends its label as text, so each label in
 // each language gets its own exact-match handler.
-func menuHandlers(texts *i18n.Catalog, users *user.Store, log *slog.Logger) []bot.Option {
+func menuHandlers(texts *i18n.Catalog, users *user.Store, giveaways *giveaway.Service, log *slog.Logger) []bot.Option {
 	giveawayLabels, languageLabels := texts.All(i18n.MenuGiveaway), texts.All(i18n.MenuLanguage)
 	opts := make([]bot.Option, 0, len(giveawayLabels)+len(languageLabels))
 
 	for _, label := range giveawayLabels {
 		opts = append(
 			opts,
-			bot.WithMessageTextHandler(label, bot.MatchTypeExact, giveaway.CommandHandler(texts, users, log)),
+			bot.WithMessageTextHandler(label, bot.MatchTypeExact, giveaway.StartHandler(giveaways, texts, users, log)),
 		)
 	}
 

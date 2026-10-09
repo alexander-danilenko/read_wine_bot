@@ -108,62 +108,6 @@ func newService(t *testing.T, store *fakeStore) *giveaway.Service {
 	return giveaway.NewService(store, store, nil, texts, time.UTC, time.Now, slog.New(slog.DiscardHandler))
 }
 
-func TestStart(t *testing.T) {
-	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42}
-
-	tests := []struct {
-		name      string
-		store     *fakeStore
-		telegram  *fakeTelegram
-		want      giveaway.StartResult
-		wantLabel string // button label attached, "" if none
-	}{
-		{"created", &fakeStore{}, &fakeTelegram{admin: true}, giveaway.Created, "Приймаю участь"},
-		{"already exists", &fakeStore{existing: existing}, &fakeTelegram{admin: true}, giveaway.Exists, ""},
-		{"find fails", &fakeStore{failOn: "find"}, &fakeTelegram{admin: true}, giveaway.Failed, ""},
-		{"not admin", &fakeStore{}, &fakeTelegram{}, giveaway.NotAdmin, ""},
-		{"admin check fails", &fakeStore{}, &fakeTelegram{adminErr: errBoom}, giveaway.NoRights, ""},
-		{"attach fails", &fakeStore{}, &fakeTelegram{admin: true, attachErr: errBoom}, giveaway.NoRights, ""},
-		{
-			"created by a concurrent start",
-			&fakeStore{createErr: giveaway.ErrExists},
-			&fakeTelegram{admin: true},
-			giveaway.Exists,
-			"Приймаю участь",
-		},
-		{"create fails", &fakeStore{createErr: errBoom}, &fakeTelegram{admin: true}, giveaway.Failed, "Приймаю участь"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := newService(t, tt.store).Start(t.Context(), tt.telegram, adminID, channelID, 42, "uk")
-
-			if got != tt.want {
-				t.Errorf("Start = %v, want %v", got, tt.want)
-			}
-
-			if tt.telegram.label != tt.wantLabel {
-				t.Errorf("attached label = %q, want %q", tt.telegram.label, tt.wantLabel)
-			}
-
-			created := tt.store.created != nil
-			if created != (tt.want == giveaway.Created) {
-				t.Errorf("giveaway saved = %v, want %v", created, tt.want == giveaway.Created)
-			}
-		})
-	}
-}
-
-func TestStartSavesAuthorAndLanguage(t *testing.T) {
-	store := &fakeStore{}
-	newService(t, store).Start(t.Context(), &fakeTelegram{admin: true}, adminID, channelID, 42, "uk")
-
-	want := giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"}
-	if store.created == nil || *store.created != want {
-		t.Errorf("saved %+v, want %+v", store.created, want)
-	}
-}
-
 func TestServiceJoin(t *testing.T) {
 	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42, Language: "uk"}
 	store := &fakeStore{existing: existing}
