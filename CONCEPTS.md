@@ -18,7 +18,7 @@ The once-a-minute step that finishes a due giveaway: it picks distinct participa
 
 ### Candidate filter
 
-The check every randomly picked participant passes before becoming a winner. A rejected candidate is set aside and the draw picks another. It accepts everyone until filter rules are defined.
+The check every randomly picked participant passes before becoming a winner. A rejected candidate is set aside and the draw picks another. A check that cannot decide stops the giveaway's draw with nothing recorded, and the next draw tries again. It accepts everyone until filter rules are defined.
 
 ### Cancelled giveaway
 
