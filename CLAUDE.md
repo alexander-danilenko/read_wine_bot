@@ -8,7 +8,7 @@ The owner reads code well but is not a Go developer. When a change relies on a n
 
 | Command | Purpose |
 | --- | --- |
-| `go run ./cmd/bot` | Run the bot |
+| `go run ./internal/cli` | Run the bot |
 | `go build ./...` | Compile everything |
 | `go test ./...` | Run all tests |
 | `golangci-lint run ./...` | Full lint; must report 0 issues |
@@ -24,10 +24,10 @@ Lint a package directory, never a single `.go` file: `golangci-lint run file.go`
 
 ## Layout
 
-Follows go.dev's "Organizing a Go module". No `pkg/`, no empty placeholder directories.
+Follows go.dev's "Organizing a Go module", except the main package lives in `internal/cli` instead of `cmd/`. No `pkg/`, no empty placeholder directories.
 
 ```text
-cmd/bot/          # main package: wiring only (config, logger, DB, bot, shutdown), no business logic
+internal/cli/     # main package: wiring only (config, logger, DB, bot, shutdown), no business logic
 internal/<name>/  # every other package, one responsibility each
 docs/plans/       # Compound Engineering plans
 docs/solutions/   # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
@@ -70,7 +70,7 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - **Open/closed:** extend with new types and composition, not with boolean flags on existing functions.
 - **Liskov substitution:** every implementation of an interface honours the same contract for errors, nil values and context cancellation.
 - **Interface segregation:** interfaces have 1-3 methods and are declared in the package that uses them, not the one that implements them.
-- **Dependency inversion:** constructors take dependencies as parameters (`NewService(store Store, log *slog.Logger)`). Accept interfaces, return concrete types. Wiring happens only in `cmd/bot`.
+- **Dependency inversion:** constructors take dependencies as parameters (`NewService(store Store, log *slog.Logger)`). Accept interfaces, return concrete types. Wiring happens only in `internal/cli`.
 - Do not create an interface for a single implementation unless a test needs a fake.
 
 ## Database
