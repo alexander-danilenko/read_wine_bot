@@ -211,16 +211,16 @@ func (d *Drawer) resultMessages(lang string, winners []user.User) []string {
 	for i, w := range winners {
 		name := strings.TrimSpace(w.FirstName + " " + w.LastName)
 		number := strconv.Itoa(i+1) + ". "
-		// +1 for the line break before the line.
-		lineSize := 1 + utf16Len(number) + utf16Len(name)
+		lineSize := utf16Len(number) + utf16Len(name)
 
-		if size+lineSize > maxMessageLen {
+		if size+1+lineSize > maxMessageLen { // +1 for the line break before the line
 			messages = append(messages, current)
-			current, size = "", -1 // the first line of a message has no line break before it
+			current, size = "", 0
 		}
 
 		if current != "" {
 			current += "\n"
+			size++
 		}
 
 		current += number + `<a href="tg://user?id=` + strconv.FormatInt(w.TelegramID, 10) + `">` +

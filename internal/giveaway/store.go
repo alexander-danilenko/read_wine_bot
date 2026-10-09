@@ -279,10 +279,6 @@ func (s *Store) Finish(ctx context.Context, id uint, winnerIDs []int64, now time
 			Where("giveaway_id = ? AND user_id IN ?", id, winnerIDs).
 			Update("winner", true).Error
 	})
-	if errors.Is(err, ErrNotFound) {
-		return ErrNotFound
-	}
-
 	if err != nil {
 		return fmt.Errorf("finish giveaway %d: %w", id, err)
 	}
