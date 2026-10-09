@@ -18,7 +18,7 @@ The owner reads code well but is not a Go developer. When a change relies on a n
 
 Tools: `brew install go golangci-lint markdownlint-cli2 jq`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
-Config comes only from a `.env` file and environment variables (the bot ships as a Docker container): copy `.env.example` to `.env`. An environment variable overrides the same key in `.env`, and a missing `.env` is fine. `internal/config` loads it with viper and validates it; see Fail fast.
+Config comes only from environment variables (the bot ships as a Docker container); `internal/config` reads them with `os.Getenv` and validates them, see Fail fast. The bot never reads `.env` itself: copy `.env.example` to `.env`, then pass it with `docker run --env-file .env`, Compose `env_file:`, or locally `set -a; . ./.env; set +a` before `go run ./cmd/bot`.
 
 Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
 
@@ -37,7 +37,7 @@ CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
 ## Dependencies: standard library first
 
 - Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
-- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`, `github.com/spf13/viper`. Add nothing else without the owner's approval.
+- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
 - Never use `gorm.io/driver/sqlite` or `github.com/mattn/go-sqlite3`: both need CGO.
 - Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators.
