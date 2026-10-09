@@ -27,3 +27,13 @@ A giveaway whose winners are recorded. Passing the end time does not finish a gi
 ### Channel
 
 The @read_wine Telegram channel the bot serves. Its audience takes part in giveaways.
+
+## Users
+
+### User profile
+
+What Telegram tells the bot about a user: first and last name, username, Telegram language code, premium flag and whether the account is a bot. The language chosen in the bot's menu and the pending command are bot state, not part of the profile.
+
+### User revision
+
+A saved snapshot of a user profile. The bot writes a new revision only when the profile it receives differs from the saved one. Revisions count per user from 1, and the user row records the latest number.
