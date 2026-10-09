@@ -5,15 +5,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"os/signal"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embeds the time zone database for Europe/Kyiv
 
 	"github.com/go-telegram/bot"
-	"gorm.io/gorm"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 	"github.com/alexander-danilenko/read_wine_bot/internal/db"
@@ -67,24 +68,34 @@ func run() error {
 	defer sqlDB.Close()
 
 	log := slog.Default()
+	users := user.NewStore(conn)
+	store := giveaway.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	b, err := bot.New(cfg.TelegramBotToken, handlers(conn, texts, kyiv, log)...)
+	b, err := bot.New(cfg.TelegramBotToken, handlers(users, store, texts, kyiv, log)...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
 
+	drawer := giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
+
+	// The draw shares ctx with the bot, so the same signal stops both. Waiting for it before
+	// returning keeps the deferred database close from cutting a draw short.
+	var wg sync.WaitGroup
+	wg.Go(func() { drawer.Run(ctx, b) })
+
 	slog.InfoContext(ctx, "bot started")
 	b.Start(ctx)
+	wg.Wait()
 	slog.InfoContext(ctx, "bot stopped")
 
 	return nil
 }
 
 // handlers wires every update the bot handles to the package that handles it.
-func handlers(conn *gorm.DB, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger) []bot.Option {
-	users := user.NewStore(conn)
-	store := giveaway.NewStore(conn)
+func handlers(
+	users *user.Store, store *giveaway.Store, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger,
+) []bot.Option {
 	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
 	editor := giveaway.NewEditor(giveaways, store, store)
 
