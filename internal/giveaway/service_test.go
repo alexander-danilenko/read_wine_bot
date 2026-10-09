@@ -20,7 +20,7 @@ type fakeStore struct {
 	failOn   string
 }
 
-func (f *fakeStore) Find(_ context.Context, chatID, messageID int64) (giveaway.Giveaway, error) {
+func (f *fakeStore) Post(_ context.Context, chatID, messageID int64) (giveaway.Giveaway, error) {
 	if f.failOn == "find" {
 		return giveaway.Giveaway{}, errBoom
 	}
@@ -99,7 +99,7 @@ func newService(t *testing.T, store *fakeStore) *giveaway.Service {
 }
 
 func TestServiceJoin(t *testing.T) {
-	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42, Language: "uk"}
+	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42, Language: "uk", Published: true}
 	store := &fakeStore{existing: existing}
 	svc := newService(t, store)
 
@@ -114,6 +114,12 @@ func TestServiceJoin(t *testing.T) {
 		t.Errorf("Join on a post without a giveaway = %v, %q; want JoinFailed, \"\"", got, lang)
 	}
 
+	existing.Published = false // cancelled: the post keeps a stray button
+	if got, lang := svc.Join(t.Context(), channelID, 42, 7_000_000_003); got != giveaway.JoinFailed || lang != "" {
+		t.Errorf("Join on a cancelled giveaway = %v, %q; want JoinFailed, \"\"", got, lang)
+	}
+
+	existing.Published = true
 	store.failOn = "join"
 	if got, lang := svc.Join(t.Context(), channelID, 42, fanID); got != giveaway.JoinFailed || lang != "uk" {
 		t.Errorf("Join with a store error = %v, %q; want JoinFailed, \"uk\"", got, lang)

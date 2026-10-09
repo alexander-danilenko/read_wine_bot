@@ -66,6 +66,8 @@ func startText(r StartResult) i18n.Key {
 		return i18n.GiveawayCreated
 	case Exists:
 		return i18n.GiveawayExists
+	case Taken:
+		return i18n.GiveawayTaken
 	case NotAdmin:
 		return i18n.GiveawayNotAdmin
 	case NoRights:
