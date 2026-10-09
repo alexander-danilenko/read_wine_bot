@@ -17,6 +17,7 @@ import (
 	"github.com/go-telegram/bot"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
+	"github.com/alexander-danilenko/read_wine_bot/internal/cron"
 	"github.com/alexander-danilenko/read_wine_bot/internal/db"
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
@@ -79,10 +80,10 @@ func run() error {
 
 	drawer := giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
 
-	// The draw shares ctx with the bot, so the same signal stops both. Waiting for it before
-	// returning keeps the deferred database close from cutting a draw short.
+	// Regular tasks. They share ctx with the bot, so the same signal stops them all. Waiting
+	// for them before returning keeps the deferred database close from cutting a run short.
 	var wg sync.WaitGroup
-	wg.Go(func() { drawer.Run(ctx, b) })
+	wg.Go(func() { cron.Every(ctx, time.Minute, func(ctx context.Context) { drawer.DrawDue(ctx, b) }) })
 
 	slog.InfoContext(ctx, "bot started")
 	b.Start(ctx)
