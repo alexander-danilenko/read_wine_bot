@@ -2,8 +2,6 @@ package config_test
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,21 +11,12 @@ import (
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name    string
-		file    string // .env contents; empty means no file
 		env     string // TELEGRAM_BOT_TOKEN value; empty means unset
 		want    string
 		wantErr error
 	}{
-		{name: "file only", file: "TELEGRAM_BOT_TOKEN=111:from-file\n", want: "111:from-file"},
-		{name: "env only, no file", env: "222:from_env", want: "222:from_env"},
-		{
-			name: "env overrides file",
-			file: "TELEGRAM_BOT_TOKEN=111:from-file\n",
-			env:  "222:from_env",
-			want: "222:from_env",
-		},
-		{name: "neither", wantErr: config.ErrMissingToken},
-		{name: "file without token", file: "OTHER=x\n", wantErr: config.ErrMissingToken},
+		{name: "valid", env: "123456:AAH-secret_x", want: "123456:AAH-secret_x"},
+		{name: "unset", wantErr: config.ErrMissingToken},
 		{name: "no colon", env: "secret-only", wantErr: config.ErrInvalidToken},
 		{name: "non-numeric bot id", env: "bot:secret", wantErr: config.ErrInvalidToken},
 		{name: "empty secret", env: "123:", wantErr: config.ErrInvalidToken},
@@ -38,14 +27,7 @@ func TestLoad(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.env)
 
-			path := filepath.Join(t.TempDir(), ".env")
-			if tc.file != "" {
-				if err := os.WriteFile(path, []byte(tc.file), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			cfg, err := config.Load(t.Context(), path)
+			cfg, err := config.Load()
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}
