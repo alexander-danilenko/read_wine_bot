@@ -6,11 +6,19 @@ Shared domain vocabulary for this project: entities, named processes, and status
 
 ### Giveaway
 
-A prize draw the bot runs for the audience of the @read_wine Telegram channel. One giveaway is bound to one channel post: a channel admin creates it through the giveaway setup, and the bot attaches a join button to that post. A giveaway has an end time and a winner count. Until the admin confirms the setup, the giveaway is unpublished: its row holds the setup inputs and its post has no button yet. Winner selection is not defined yet.
+A prize draw the bot runs for the audience of the @read_wine Telegram channel. One giveaway is bound to one channel post: a channel admin creates it through the giveaway setup, and the bot attaches a join button to that post. A giveaway has an end time and a winner count. Until the admin confirms the setup, the giveaway is unpublished: its row holds the setup inputs and its post has no button yet. Winners are picked by the winner draw.
 
 ### Giveaway setup
 
 The guided dialogue in the bot's private chat that creates a giveaway: the admin forwards the post, then enters the end date, end time, winner count and join button text, and confirms a summary. Nothing appears on the post until the admin confirms; cancelling discards the setup.
+
+### Winner draw
+
+The once-a-minute step that finishes a due giveaway: it picks distinct participants at random up to the winner count, passes each one through the candidate filter, records the winners, removes the join button and replies to the giveaway post with the results. A giveaway is drawn at most once; with too few eligible participants it finishes with fewer winners, possibly none.
+
+### Candidate filter
+
+The check every randomly picked participant passes before becoming a winner. A rejected candidate is set aside and the draw picks another. It accepts everyone until filter rules are defined.
 
 ### Cancelled giveaway
 
