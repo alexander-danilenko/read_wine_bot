@@ -12,6 +12,10 @@ A prize draw the bot runs for the audience of the @read_wine Telegram channel. O
 
 The guided dialogue in the bot's private chat that creates a giveaway: the admin forwards the post, then enters the end date, end time, winner count and join button text, and confirms a summary. Nothing appears on the post until the admin confirms; cancelling discards the setup.
 
+### Cancelled giveaway
+
+A giveaway its creator took off the post: the join button is removed and the giveaway is unpublished again, but it keeps its participants and values. Only its creator can publish it again. A finished giveaway cannot be cancelled.
+
 ### Participant
 
 A Telegram user who tapped a giveaway's join button. A user participates in a giveaway at most once. A participant can be marked as a winner.
