@@ -80,7 +80,7 @@ func (f *fakeTelegram) AttachButton(_ context.Context, _, _ int64, label string)
 	return nil
 }
 
-func newService(t *testing.T, store *fakeStore, tg *fakeTelegram) *giveaway.Service {
+func newService(t *testing.T, store *fakeStore) *giveaway.Service {
 	t.Helper()
 
 	texts, err := i18n.Load()
@@ -88,7 +88,7 @@ func newService(t *testing.T, store *fakeStore, tg *fakeTelegram) *giveaway.Serv
 		t.Fatal(err)
 	}
 
-	return giveaway.NewService(store, tg, texts, slog.New(slog.DiscardHandler))
+	return giveaway.NewService(store, texts, slog.New(slog.DiscardHandler))
 }
 
 func TestStart(t *testing.T) {
@@ -119,7 +119,7 @@ func TestStart(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := newService(t, tt.store, tt.telegram).Start(t.Context(), adminID, channelID, 42, "uk")
+			got := newService(t, tt.store).Start(t.Context(), tt.telegram, adminID, channelID, 42, "uk")
 
 			if got != tt.want {
 				t.Errorf("Start = %v, want %v", got, tt.want)
@@ -139,7 +139,7 @@ func TestStart(t *testing.T) {
 
 func TestStartSavesAuthorAndLanguage(t *testing.T) {
 	store := &fakeStore{}
-	newService(t, store, &fakeTelegram{admin: true}).Start(t.Context(), adminID, channelID, 42, "uk")
+	newService(t, store).Start(t.Context(), &fakeTelegram{admin: true}, adminID, channelID, 42, "uk")
 
 	want := giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"}
 	if store.created == nil || *store.created != want {
@@ -150,7 +150,7 @@ func TestStartSavesAuthorAndLanguage(t *testing.T) {
 func TestServiceJoin(t *testing.T) {
 	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42, Language: "uk"}
 	store := &fakeStore{existing: existing}
-	svc := newService(t, store, &fakeTelegram{})
+	svc := newService(t, store)
 
 	for i, want := range []giveaway.JoinResult{giveaway.Joined, giveaway.AlreadyJoined} {
 		got, lang := svc.Join(t.Context(), channelID, 42, fanID)
