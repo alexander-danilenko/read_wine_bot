@@ -17,7 +17,8 @@ type User struct {
 	FirstName  string `gorm:"not null;default:''"` // from Telegram, refreshed on every interaction
 	LastName   string `gorm:"not null;default:''"` // "" when the user has none
 	Language   string `gorm:"size:16;not null"`    // a locale code from internal/i18n, chosen from the menu
-	// PendingCommand is the command waiting for the user's next message, "" when none. Columns added to a table with rows need a default in SQLite.
+	// PendingCommand is what the bot waits for in the user's next message, such as a giveaway
+	// setup step, or "" for nothing. Columns added to a table with rows need a default in SQLite.
 	PendingCommand string `gorm:"size:32;not null;default:''"`
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
