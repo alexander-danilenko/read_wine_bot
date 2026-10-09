@@ -179,6 +179,15 @@ func (t telegramAPI) IsChannelAdmin(ctx context.Context, chatID, userID int64) (
 	return m.Type == models.ChatMemberTypeOwner || m.Type == models.ChatMemberTypeAdministrator, nil
 }
 
+func (t telegramAPI) CanEditPosts(ctx context.Context, chatID int64) (bool, error) {
+	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: t.b.ID()})
+	if err != nil {
+		return false, err //nolint:wrapcheck // Service logs it with the chat ID
+	}
+
+	return m.Administrator != nil && m.Administrator.CanEditMessages, nil
+}
+
 func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, label string) error {
 	_, err := t.b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
 		ChatID:    chatID,
