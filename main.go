@@ -16,6 +16,7 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
+	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
 func main() {
@@ -53,6 +54,7 @@ func run() error {
 	defer sqlDB.Close()
 
 	log := slog.Default()
+	users := user.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
 	b, err := bot.New(
@@ -60,17 +62,17 @@ func run() error {
 		bot.WithMessageTextHandler(
 			greeting.Command,
 			bot.MatchTypeCommandStartOnly,
-			greeting.Handler(texts, log),
+			greeting.Handler(texts, users, log),
 		),
 		bot.WithMessageTextHandler(
 			language.Command,
 			bot.MatchTypeCommandStartOnly,
-			language.CommandHandler(texts, log),
+			language.CommandHandler(texts, users, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,
 			bot.MatchTypePrefix,
-			language.ButtonHandler(texts, log),
+			language.ButtonHandler(texts, users, log),
 		),
 	)
 	if err != nil {
