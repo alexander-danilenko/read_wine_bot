@@ -21,11 +21,10 @@ const Command = "giveaway"
 // giveaway, so the data needs nothing else.
 const JoinCallback = "giveaway:join"
 
-// Users reads the saved language and the pending command of a user. *user.Store implements it.
+// Users reads a user's saved language and takes their pending command. *user.Store implements it.
 type Users interface {
 	language.Reader
-	PendingCommand(ctx context.Context, telegramID int64) (string, error)
-	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
+	TakePendingCommand(ctx context.Context, telegramID int64, command string) (bool, error)
 }
 
 // CommandHandler returns a handler that answers /giveaway in a private chat by asking for the
@@ -60,19 +59,17 @@ func ForwardHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Lo
 			return
 		}
 
-		pending, err := users.PendingCommand(ctx, msg.From.ID)
+		// Taking the pending command ends the wait whatever Start returns, and only one of
+		// several posts forwarded together can take it.
+		took, err := users.TakePendingCommand(ctx, msg.From.ID, Command)
 		if err != nil {
-			log.ErrorContext(ctx, "read pending command", "user_id", msg.From.ID, "error", err)
+			log.ErrorContext(ctx, "take pending command", "user_id", msg.From.ID, "error", err)
 
 			return
 		}
 
-		if pending != Command {
+		if !took {
 			return
-		}
-
-		if err = users.SetPendingCommand(ctx, msg.From.ID, ""); err != nil {
-			log.ErrorContext(ctx, "clear pending command", "user_id", msg.From.ID, "error", err)
 		}
 
 		origin := msg.ForwardOrigin.MessageOriginChannel

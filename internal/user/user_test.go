@@ -136,25 +136,30 @@ func TestSetLanguageKeepsNames(t *testing.T) {
 	}
 }
 
-func TestPendingCommand(t *testing.T) {
-	const id int64 = 7_000_000_003
+func TestTakePendingCommand(t *testing.T) {
+	const id int64 = 7_000_000_004
 
-	store, _ := newStore(t)
+	store, db := newStore(t)
 	ctx := t.Context()
 
-	got, err := store.PendingCommand(ctx, id)
-	if err != nil || got != "" {
-		t.Fatalf("unknown user: PendingCommand = %q, %v; want \"\", nil", got, err)
+	took, err := store.TakePendingCommand(ctx, id, "giveaway")
+	if err != nil || took {
+		t.Fatalf("unknown user: TakePendingCommand = %v, %v; want false, nil", took, err)
 	}
 
-	for _, want := range []string{"giveaway", ""} {
-		if err := store.SetPendingCommand(ctx, id, want); err != nil {
-			t.Fatal(err)
-		}
+	if err = store.SetPendingCommand(ctx, id, "giveaway"); err != nil {
+		t.Fatal(err)
+	}
 
-		got, err := store.PendingCommand(ctx, id)
-		if err != nil || got != want {
-			t.Errorf("PendingCommand = %q, %v; want %q, nil", got, err, want)
+	// Two forwards race for one /giveaway: only the first may take it.
+	for i, want := range []bool{true, false} {
+		took, err := store.TakePendingCommand(ctx, id, "giveaway")
+		if err != nil || took != want {
+			t.Errorf("take #%d = %v, %v; want %v, nil", i+1, took, err, want)
 		}
+	}
+
+	if got := readUser(t, db, id); got.PendingCommand != "" {
+		t.Errorf("after take: pending command = %q, want \"\"", got.PendingCommand)
 	}
 }

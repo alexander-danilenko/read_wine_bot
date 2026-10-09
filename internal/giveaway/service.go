@@ -59,9 +59,10 @@ func NewService(store Storage, texts *i18n.Catalog, log *slog.Logger) *Service {
 }
 
 // Start starts a giveaway on the channel post for the admin, with the button and popups in
-// lang. tg is passed per call because handlers get the bot only when an update arrives. It checks, in order: no giveaway runs on the post yet, the admin is a channel admin,
-// the bot can attach the button. Only then does it save the giveaway, so a saved giveaway
-// always has its button.
+// lang. tg is passed per call because handlers get the bot only when an update arrives.
+// It checks, in order: no giveaway runs on the post yet, the admin is a channel admin, the
+// bot can attach the button. Only then does it save the giveaway, so a saved giveaway always
+// has its button.
 func (s *Service) Start(ctx context.Context, tg Telegram, adminID, chatID, messageID int64, lang string) StartResult {
 	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", adminID)
 
