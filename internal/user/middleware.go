@@ -11,7 +11,7 @@ import (
 
 // Recorder saves what the middleware learns from each update.
 type Recorder interface {
-	SaveNames(ctx context.Context, telegramID int64, firstName, lastName string) error
+	Record(ctx context.Context, p Profile) error
 	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
 }
 
@@ -34,7 +34,7 @@ func Middleware(store Recorder, isLabel func(text string) bool, log *slog.Logger
 // pending command.
 func record(ctx context.Context, store Recorder, isLabel func(string) bool, log *slog.Logger, update *models.Update) {
 	if q := update.CallbackQuery; q != nil {
-		saveNames(ctx, store, log, &q.From)
+		recordSender(ctx, store, log, &q.From)
 
 		return
 	}
@@ -44,7 +44,7 @@ func record(ctx context.Context, store Recorder, isLabel func(string) bool, log 
 		return
 	}
 
-	saveNames(ctx, store, log, msg.From)
+	recordSender(ctx, store, log, msg.From)
 
 	if !strings.HasPrefix(msg.Text, "/") && !isLabel(msg.Text) {
 		return
@@ -55,8 +55,18 @@ func record(ctx context.Context, store Recorder, isLabel func(string) bool, log 
 	}
 }
 
-func saveNames(ctx context.Context, store Recorder, log *slog.Logger, from *models.User) {
-	if err := store.SaveNames(ctx, from.ID, from.FirstName, from.LastName); err != nil {
-		log.ErrorContext(ctx, "save user names", "user_id", from.ID, "error", err)
+// recordSender saves the profile of the user who sent the update.
+func recordSender(ctx context.Context, store Recorder, log *slog.Logger, from *models.User) {
+	p := Profile{
+		TelegramID:   from.ID,
+		IsBot:        from.IsBot,
+		FirstName:    from.FirstName,
+		LastName:     from.LastName,
+		Username:     from.Username,
+		LanguageCode: from.LanguageCode,
+		IsPremium:    from.IsPremium,
+	}
+	if err := store.Record(ctx, p); err != nil {
+		log.ErrorContext(ctx, "record user", "user_id", from.ID, "error", err)
 	}
 }

@@ -38,7 +38,7 @@ func newStore(t *testing.T) (*giveaway.Store, *gorm.DB) {
 
 	users := user.NewStore(conn)
 	for _, id := range []int64{adminID, fanID} {
-		if err := users.SaveNames(t.Context(), id, "Name", ""); err != nil {
+		if err := users.Record(t.Context(), user.Profile{TelegramID: id, FirstName: "Name"}); err != nil {
 			t.Fatal(err)
 		}
 	}

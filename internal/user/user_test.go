@@ -18,7 +18,7 @@ func newStore(t *testing.T) (*user.Store, *gorm.DB) {
 		t.Fatal(err)
 	}
 
-	if err := db.AutoMigrate(&user.User{}); err != nil {
+	if err := db.AutoMigrate(&user.User{}, &user.Revision{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,54 +76,13 @@ func readUser(t *testing.T, db *gorm.DB, id int64) user.User {
 	return u
 }
 
-func TestSaveNamesNewUser(t *testing.T) {
-	const id int64 = 7_000_000_002
-
-	store, db := newStore(t)
-
-	if err := store.SaveNames(t.Context(), id, "Olena", ""); err != nil {
-		t.Fatal(err)
-	}
-
-	want := user.User{TelegramID: id, FirstName: "Olena"}
-	got := readUser(t, db, id)
-	got.CreatedAt, got.UpdatedAt = want.CreatedAt, want.UpdatedAt
-
-	if got != want {
-		t.Errorf("new user = %+v, want %+v", got, want)
-	}
-}
-
-func TestSaveNamesKeepsLanguageAndPending(t *testing.T) {
-	const id int64 = 7_000_000_002
-
-	store, db := newStore(t)
-	ctx := t.Context()
-
-	for _, err := range []error{
-		store.SaveNames(ctx, id, "Olena", ""),
-		store.SetLanguage(ctx, id, "uk"),
-		store.SetPendingCommand(ctx, id, "giveaway"),
-		store.SaveNames(ctx, id, "Olena", "Koval"),
-	} {
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got := readUser(t, db, id)
-	if got.FirstName != "Olena" || got.LastName != "Koval" || got.Language != "uk" || got.PendingCommand != "giveaway" {
-		t.Errorf("after rename = %+v; want Olena Koval, language uk, pending giveaway", got)
-	}
-}
-
 func TestSetLanguageKeepsNames(t *testing.T) {
 	const id int64 = 7_000_000_002
 
 	store, db := newStore(t)
 	ctx := t.Context()
 
-	if err := store.SaveNames(ctx, id, "Olena", "Koval"); err != nil {
+	if err := store.Record(ctx, user.Profile{TelegramID: id, FirstName: "Olena", LastName: "Koval"}); err != nil {
 		t.Fatal(err)
 	}
 

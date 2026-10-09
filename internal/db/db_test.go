@@ -58,7 +58,7 @@ func TestOpen(t *testing.T) {
 func TestOpenForeignKeys(t *testing.T) {
 	conn := open(t, filepath.Join(t.TempDir(), "bot.db"))
 
-	if err := user.NewStore(conn).SaveNames(t.Context(), 1, "Olena", ""); err != nil {
+	if err := user.NewStore(conn).Record(t.Context(), user.Profile{TelegramID: 1, FirstName: "Olena"}); err != nil {
 		t.Errorf("insert into users after Open: %v", err)
 	}
 
