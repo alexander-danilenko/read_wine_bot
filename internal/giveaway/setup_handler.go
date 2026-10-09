@@ -29,14 +29,19 @@ type Users interface {
 	PendingCommand(ctx context.Context, telegramID int64) (string, error)
 }
 
-// prompts holds the question each setup step asks; the confirm step shows the summary.
-func prompts() map[string]i18n.Key {
-	return map[string]i18n.Key{
-		StepPost:       i18n.GiveawayPrompt,
-		StepEndDate:    i18n.GiveawayAskEndDate,
-		StepEndTime:    i18n.GiveawayAskEndTime,
-		StepWinners:    i18n.GiveawayAskWinners,
-		StepButtonText: i18n.GiveawayAskButtonText,
+// promptKey returns the question a setup step asks; the confirm step shows the summary instead.
+func promptKey(step string) i18n.Key {
+	switch step {
+	case StepEndDate:
+		return i18n.GiveawayAskEndDate
+	case StepEndTime:
+		return i18n.GiveawayAskEndTime
+	case StepWinners:
+		return i18n.GiveawayAskWinners
+	case StepButtonText:
+		return i18n.GiveawayAskButtonText
+	default:
+		return i18n.GiveawayPrompt
 	}
 }
 
@@ -44,14 +49,13 @@ func prompts() map[string]i18n.Key {
 type setupHandler struct {
 	svc   *Service
 	texts *i18n.Catalog
-	users Users
 	log   *slog.Logger
 }
 
 // StartHandler returns the handler for the giveaway menu button in a private chat: it starts
 // a new setup and asks for the post.
 func StartHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, texts: texts, users: users, log: log}
+	h := setupHandler{svc: svc, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
@@ -73,7 +77,7 @@ func StartHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logg
 // only while the sender is in a giveaway setup: the post step takes a forwarded channel post,
 // the value steps take text, and any other input asks the current step again.
 func MessageHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, texts: texts, users: users, log: log}
+	h := setupHandler{svc: svc, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
@@ -88,7 +92,7 @@ func MessageHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Lo
 			return
 		}
 
-		if !strings.HasPrefix(step, "giveaway:") {
+		if !inSetup(step) {
 			return
 		}
 
@@ -118,7 +122,7 @@ func (h setupHandler) step(ctx context.Context, b *bot.Bot, msg *models.Message,
 // SetupCallbackHandler returns the handler for the default, Cancel and Confirm buttons. A
 // button whose step has passed gets an "outdated" popup and loses its buttons.
 func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, texts: texts, users: users, log: log}
+	h := setupHandler{svc: svc, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
@@ -205,14 +209,16 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 		return
 	}
 
-	rows := [][]models.InlineKeyboardButton{{cancel}}
+	var rows [][]models.InlineKeyboardButton
 	if value := h.svc.Default(step, lang); value != "" {
-		rows = append([][]models.InlineKeyboardButton{{{Text: value, CallbackData: defaultData + step}}}, rows...)
+		rows = append(rows, []models.InlineKeyboardButton{{Text: value, CallbackData: defaultData + step}})
 	}
+
+	rows = append(rows, []models.InlineKeyboardButton{cancel})
 
 	h.send(ctx, b, &bot.SendMessageParams{
 		ChatID:      userID,
-		Text:        h.texts.Text(lang, prompts()[step]),
+		Text:        h.texts.Text(lang, promptKey(step)),
 		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
 	})
 }

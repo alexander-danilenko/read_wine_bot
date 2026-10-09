@@ -68,8 +68,8 @@ func PromptHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Handl
 
 // ButtonHandler returns a handler for taps on the language buttons. It stops the button's
 // loading spinner, saves the choice and confirms it in the chosen language with the menu
-// keyboard relabelled in that language. If saving fails,
-// it logs the error and still confirms, so the user is not left without an answer.
+// keyboard relabelled in that language. If saving fails, it logs the error and still
+// confirms, so the user is not left without an answer.
 func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
