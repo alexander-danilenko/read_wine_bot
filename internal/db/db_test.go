@@ -3,6 +3,7 @@ package db_test
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -228,5 +229,32 @@ func TestOpenExistingGiveaways(t *testing.T) {
 func TestOpenMissingDir(t *testing.T) {
 	if _, err := db.Open(t.Context(), filepath.Join(t.TempDir(), "missing", "bot.db")); err == nil {
 		t.Fatal("err = nil, want an error for a directory that does not exist")
+	}
+}
+
+// TestOpenConcurrentRecords sends a burst of first-time users through Record at once, as a
+// busy chat does: each update runs in its own goroutine. None may fail with "database is locked".
+func TestOpenConcurrentRecords(t *testing.T) {
+	conn := open(t, filepath.Join(t.TempDir(), "bot.db"))
+	users := user.NewStore(conn)
+
+	const n = 200
+
+	errs := make(chan error, n)
+
+	var wg sync.WaitGroup
+	for id := range int64(n) {
+		wg.Go(func() {
+			errs <- users.Record(t.Context(), user.Profile{TelegramID: id + 1, FirstName: "Fan"})
+		})
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Record: %v", err)
+		}
 	}
 }

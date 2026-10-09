@@ -88,6 +88,9 @@ func TestRecordRevisions(t *testing.T) {
 	premium := anna
 	premium.IsPremium = true
 
+	bot := anna
+	bot.IsBot = true
+
 	noLanguage := anna
 	noLanguage.LanguageCode = ""
 
@@ -105,6 +108,7 @@ func TestRecordRevisions(t *testing.T) {
 		{"last name removed", []user.Profile{anna, noLastName}, []user.Profile{anna, noLastName}},
 		{"username added", []user.Profile{anna, withUsername}, []user.Profile{anna, withUsername}},
 		{"premium flipped", []user.Profile{anna, premium}, []user.Profile{anna, premium}},
+		{"bot flag flipped", []user.Profile{anna, bot}, []user.Profile{anna, bot}},
 		{"empty language code keeps the saved one", []user.Profile{anna, noLanguage}, []user.Profile{anna}},
 		{"rename without language code keeps it", []user.Profile{anna, renamedNoLanguage}, []user.Profile{anna, anya}},
 	}

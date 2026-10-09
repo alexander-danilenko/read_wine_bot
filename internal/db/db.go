@@ -32,6 +32,11 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("get connection pool: %w", err)
 	}
 
+	// SQLite has one writer. With one connection, concurrent updates queue in Go instead of
+	// spinning in SQLite's busy handler until busy_timeout fails them with "database is
+	// locked". A transaction must therefore use only its own tx, never the pool.
+	sqlDB.SetMaxOpenConns(1)
+
 	if err := sqlDB.PingContext(ctx); err != nil {
 		_ = sqlDB.Close()
 
