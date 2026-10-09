@@ -140,6 +140,24 @@ func (t telegramAPI) RemoveButton(ctx context.Context, chatID, messageID int64) 
 	return ignoreNotModified(err)
 }
 
+// SendHTML sends an HTML text without a link preview, as a reply to message replyTo of the
+// same chat unless replyTo is 0.
+func (t telegramAPI) SendHTML(ctx context.Context, chatID, replyTo int64, text string) error {
+	params := &bot.SendMessageParams{
+		ChatID:             chatID,
+		Text:               text,
+		ParseMode:          models.ParseModeHTML,
+		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
+	}
+	if replyTo != 0 {
+		params.ReplyParameters = &models.ReplyParameters{MessageID: int(replyTo)}
+	}
+
+	_, err := t.b.SendMessage(ctx, params)
+
+	return err //nolint:wrapcheck // Drawer logs it with the giveaway, chat and message IDs
+}
+
 // ignoreNotModified treats Telegram's "message is not modified" answer as success: it means
 // the post already carries this exact button, for example after a retry.
 func ignoreNotModified(err error) error {

@@ -65,6 +65,8 @@ Domain code still checks `g.Published` after a `managed` read, because `managed`
 
 `publish` in `internal/giveaway/setup.go:253-266`, and `Cancel` and `Restore` in `edit.go`, change the join button on the post first and the row second. If the database write then fails, the row still describes the old state, and a retry repeats the Telegram call and completes the write. The conditional `UPDATE` makes that retry safe.
 
+The winner draw (`Drawer` in `internal/giveaway/draw.go`) reverses this order on purpose: `Store.Finish` saves the winners and the finish time first, then the draw removes the button and posts the results. Saving first means a failed Telegram call can never lead to a second draw that picks different winners. `Finish` guards on the giveaway still being due, so a cancel or a later end time saved in the meantime wins.
+
 ## Why This Matters
 
 - A missing scope on a read is silent. A draft shows up in the edit flow, or a cancelled giveaway accepts participants, and no test fails unless it covers that state.

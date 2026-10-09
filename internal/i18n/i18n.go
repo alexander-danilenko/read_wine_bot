@@ -57,6 +57,9 @@ const (
 	GiveawayAlreadyJoined     Key = "giveaway.already_joined"
 	GiveawayJoinFailed        Key = "giveaway.join_failed"
 	GiveawayEnded             Key = "giveaway.ended"
+	DrawResults               Key = "draw.results"
+	DrawNoWinners             Key = "draw.no_winners"
+	DrawPrivatePrefix         Key = "draw.private_prefix"
 
 	EditPrompt          Key = "edit.prompt"
 	EditNotFound        Key = "edit.not_found"
