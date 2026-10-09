@@ -81,6 +81,7 @@ type Giveaways interface {
 type Writer interface {
 	SaveFields(ctx context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error
 	Cancel(ctx context.Context, id uint) error
+	Publish(ctx context.Context, id uint) error
 }
 
 // ButtonRemover takes the join button off a channel post. A post without a button counts as
@@ -295,7 +296,7 @@ func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint
 		return Reply{Notice: i18n.EditNoRights, Next: menu}
 	}
 
-	err := e.svc.store.Publish(ctx, id)
+	err := e.writer.Publish(ctx, id)
 	if errors.Is(err, ErrNotFound) {
 		return Reply{Stale: true}
 	}
@@ -437,10 +438,11 @@ func (e *Editor) fill(g *Giveaway, field, value string) i18n.Key {
 }
 
 // newEnd returns g's end time with a new date or time of day. A new date keeps the time of
-// day, or takes the default end time when g has none; a new time keeps the date, or takes
-// today when g has none.
+// day, or takes the default end time when g has none. A new time keeps the date, or takes
+// today when g has none or its date has passed, as a due giveaway's has.
 func (e *Editor) newEnd(g Giveaway, field, value string) (*time.Time, i18n.Key) {
 	kyiv, now := e.svc.kyiv, e.svc.now()
+	today := now.In(kyiv).Format(dateLayout)
 
 	date, timeOfDay := e.svc.endDate(g), value
 	if field == FieldEndDate {
@@ -455,13 +457,14 @@ func (e *Editor) newEnd(g Giveaway, field, value string) (*time.Time, i18n.Key) 
 		}
 	}
 
-	if date == "" {
-		date = now.In(kyiv).Format(dateLayout)
+	if date < today {
+		date = today
 	}
 
 	ends, errKey := parseTime(date, timeOfDay, kyiv, now)
 	if errKey == i18n.GiveawayTimeInPast && field == FieldEndDate {
-		errKey = i18n.GiveawayDateInPast
+		// The date is today, but the kept time of day has passed.
+		errKey = i18n.EditDateTimeInPast
 	}
 
 	return utcPtr(ends), errKey

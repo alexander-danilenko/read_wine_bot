@@ -55,6 +55,7 @@
   "edit.cancelled": "The giveaway is cancelled and its button is removed from the post.",
   "edit.restored": "The giveaway is published again and its button is back on the post.",
   "edit.end_passed": "The end time has passed. Change the date or time, then publish the giveaway.",
+  "edit.date_time_in_past": "On that date the end time has already passed. Change the end time first, or pick a later date.",
   "edit.stopped": "Editing cancelled.",
   "edit.list": "Your running giveaways:",
   "edit.list_item": "%[1]s — ends %[2]s",

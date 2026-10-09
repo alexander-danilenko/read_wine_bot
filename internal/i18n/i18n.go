@@ -79,6 +79,7 @@ const (
 	EditCancelled       Key = "edit.cancelled"
 	EditRestored        Key = "edit.restored"
 	EditEndPassed       Key = "edit.end_passed"
+	EditDateTimeInPast  Key = "edit.date_time_in_past"
 	EditStopped         Key = "edit.stopped"
 	EditList            Key = "edit.list"
 	EditListItem        Key = "edit.list_item"

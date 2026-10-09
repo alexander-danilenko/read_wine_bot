@@ -41,8 +41,9 @@ func NewStore(db *gorm.DB) *Store {
 	return &Store{db: db}
 }
 
-// Publish marks the draft with id as published. It returns ErrNotFound when no unpublished
-// giveaway has that id, for example after a second Confirm.
+// Publish marks the unpublished giveaway id, a setup draft or a cancelled giveaway, as
+// published and clears its cancel mark. It returns ErrNotFound when no unpublished giveaway
+// has that id, for example after a second Confirm or Publish.
 func (s *Store) Publish(ctx context.Context, id uint) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
 		Where("id = ? AND published = ?", id, false).
