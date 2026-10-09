@@ -86,6 +86,7 @@ func handlers(conn *gorm.DB, texts *i18n.Catalog, kyiv *time.Location, log *slog
 	users := user.NewStore(conn)
 	store := giveaway.NewStore(conn)
 	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
+	editor := giveaway.NewEditor(giveaways, store, store)
 
 	return slices.Concat([]bot.Option{
 		// Runs before every handler: keeps users' names current and leaves any unfinished
@@ -112,7 +113,7 @@ func handlers(conn *gorm.DB, texts *i18n.Catalog, kyiv *time.Location, log *slog
 			giveaway.SetupCallbackHandler(giveaways, texts, users, log),
 		),
 		// Forwarded posts and typed setup values match no handler above, so they land here.
-		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, texts, users, log)),
+		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, log)),
 	}, menuHandlers(texts, users, giveaways, log))
 }
 
