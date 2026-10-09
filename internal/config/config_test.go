@@ -76,6 +76,8 @@ func TestLoad(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.env)
+			t.Setenv("DB_DRIVER", config.DriverSQLite)
+			t.Setenv("DB_DSN", "bot.db")
 
 			root := t.TempDir()
 			for dir, contents := range tc.files {
@@ -95,6 +97,85 @@ func TestLoad(t *testing.T) {
 				t.Errorf("token = %q, want %q", cfg.TelegramBotToken, tc.want)
 			}
 		})
+	}
+}
+
+func TestLoadDB(t *testing.T) {
+	const token = "1:secret"
+
+	tests := []struct {
+		name     string
+		token    string
+		driver   string
+		dsn      string
+		wantErrs []error
+	}{
+		{name: "sqlite path", token: token, driver: config.DriverSQLite, dsn: "data/bot.db"},
+		{
+			name:   "postgres with query",
+			token:  token,
+			driver: config.DriverPostgres,
+			dsn:    "postgres://db:5432/bot?sslmode=disable",
+		},
+		{name: "missing driver", token: token, dsn: "bot.db", wantErrs: []error{config.ErrMissingDBDriver}},
+		{
+			name:     "unknown driver",
+			token:    token,
+			driver:   "mysql",
+			dsn:      "bot.db",
+			wantErrs: []error{config.ErrInvalidDBDriver},
+		},
+		{name: "missing dsn", token: token, driver: config.DriverPostgres, wantErrs: []error{config.ErrMissingDBDSN}},
+		{
+			name:     "sqlite dsn with query",
+			token:    token,
+			driver:   config.DriverSQLite,
+			dsn:      "bot.db?_pragma=foreign_keys(1)",
+			wantErrs: []error{config.ErrInvalidDBDSN},
+		},
+		{
+			name:     "every problem in one error",
+			driver:   "mysql",
+			wantErrs: []error{config.ErrMissingToken, config.ErrInvalidDBDriver, config.ErrMissingDBDSN},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TELEGRAM_BOT_TOKEN", tc.token)
+			t.Setenv("DB_DRIVER", tc.driver)
+			t.Setenv("DB_DSN", tc.dsn)
+
+			cfg, err := config.Load(t.Context(), t.TempDir())
+			if len(tc.wantErrs) == 0 {
+				if err != nil {
+					t.Fatalf("err = %v, want nil", err)
+				}
+
+				if cfg.DBDriver != tc.driver || cfg.DBDSN != tc.dsn {
+					t.Errorf("got driver %q dsn %q, want %q %q", cfg.DBDriver, cfg.DBDSN, tc.driver, tc.dsn)
+				}
+
+				return
+			}
+
+			checkErrs(t, err, tc.wantErrs, tc.dsn)
+		})
+	}
+}
+
+// checkErrs fails the test unless err wraps every error in want and keeps secret out of its text.
+func checkErrs(t *testing.T, err error, want []error, secret string) {
+	t.Helper()
+
+	for _, w := range want {
+		if !errors.Is(err, w) {
+			t.Errorf("err = %v, want it to wrap %v", err, w)
+		}
+	}
+
+	if err != nil && secret != "" && strings.Contains(err.Error(), secret) {
+		t.Errorf("error %q leaks a setting's value", err)
 	}
 }
 
