@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "read_wine_bot translations",
+  "description": "Keys every locales/*.json file must have. Add a key to both properties and required, then to every locale file.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "giveaway.winner": { "type": "string", "description": "Posted with giveaway results. %[1]s: the winner's @username." },
+    "greeting": { "type": "string", "description": "Reply to /start in a private chat." },
+    "spam.removed": { "type": "string", "description": "Posted in the chat after a spam message is deleted. %[1]s: the sender's @username." }
+  },
+  "required": ["giveaway.winner", "greeting", "spam.removed"],
+  "additionalProperties": false
+}

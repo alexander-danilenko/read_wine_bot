@@ -1,7 +1,7 @@
 # golangci-lint v2 — https://golangci-lint.run/docs/configuration/
 # Every linter is on except the short list below; each disabled linter says why.
 #   golangci-lint run ./...                  # lint the whole module
-#   golangci-lint run --fix ./cmd/bot/       # autofix and format one package (never a single file)
+#   golangci-lint run --fix ./internal/i18n/ # autofix and format one package (never a single file)
 #   golangci-lint config verify              # validate this file
 version: "2"
 

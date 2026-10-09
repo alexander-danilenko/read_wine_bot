@@ -5,7 +5,6 @@ package main
 // that library, and delete this file once it is empty.
 import (
 	_ "github.com/glebarez/sqlite"
-	_ "github.com/go-telegram/bot"
 	_ "gorm.io/driver/postgres"
 	_ "gorm.io/gorm"
 )
