@@ -30,6 +30,7 @@ const (
 	Joined        JoinResult = iota // the user is now a participant
 	AlreadyJoined                   // the user was a participant before this tap
 	JoinFailed                      // the tap could not be recorded
+	Ended                           // the giveaway is past its end time; nothing was recorded
 )
 
 // Storage finds the giveaway on a post, publishes drafts and records participants. *Store
@@ -101,6 +102,11 @@ func (s *Service) Join(ctx context.Context, chatID, messageID, userID int64) (Jo
 	// A cancelled giveaway's post has no button; a tap on one left behind joins nothing.
 	if !g.Published {
 		return JoinFailed, ""
+	}
+
+	// The button stays on the post until the next minute's draw removes it.
+	if g.State(s.now()) != Active {
+		return Ended, g.Language
 	}
 
 	added, err := s.store.Join(ctx, g.ID, userID)

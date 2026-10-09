@@ -137,3 +137,46 @@ func TestServiceJoin(t *testing.T) {
 		t.Errorf("Join with a store error = %v, %q; want JoinFailed, \"uk\"", got, lang)
 	}
 }
+
+func TestServiceJoinAfterEnd(t *testing.T) {
+	texts, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ends := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	finished := ends.Add(time.Minute)
+
+	tests := []struct {
+		name     string
+		endsAt   *time.Time
+		finished *time.Time
+		now      time.Time
+		want     giveaway.JoinResult
+	}{
+		{"a second before the end", &ends, nil, ends.Add(-time.Second), giveaway.Joined},
+		{"exactly at the end", &ends, nil, ends, giveaway.Ended},
+		{"after the end, not drawn yet", &ends, nil, ends.Add(30 * time.Second), giveaway.Ended},
+		{"finished", &ends, &finished, ends.Add(time.Hour), giveaway.Ended},
+		{"no end time", nil, nil, ends.Add(time.Hour), giveaway.Joined},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeStore{existing: &giveaway.Giveaway{
+				ID: 1, ChatID: channelID, MessageID: 42, Language: "uk", Published: true,
+				EndsAt: tt.endsAt, FinishedAt: tt.finished,
+			}}
+			now := func() time.Time { return tt.now }
+			svc := giveaway.NewService(store, store, nil, texts, time.UTC, now, slog.New(slog.DiscardHandler))
+
+			got, lang := svc.Join(t.Context(), channelID, 42, fanID)
+			if got != tt.want || lang != "uk" {
+				t.Errorf("Join = %v, %q; want %v, \"uk\"", got, lang, tt.want)
+			}
+
+			if joined := store.joined[fanID]; joined != (tt.want == giveaway.Joined) {
+				t.Errorf("participant recorded = %v, want %v", joined, tt.want == giveaway.Joined)
+			}
+		})
+	}
+}

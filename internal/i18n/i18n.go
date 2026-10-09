@@ -56,6 +56,7 @@ const (
 	GiveawayJoined            Key = "giveaway.joined"
 	GiveawayAlreadyJoined     Key = "giveaway.already_joined"
 	GiveawayJoinFailed        Key = "giveaway.join_failed"
+	GiveawayEnded             Key = "giveaway.ended"
 
 	EditPrompt          Key = "edit.prompt"
 	EditNotFound        Key = "edit.not_found"

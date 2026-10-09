@@ -87,6 +87,8 @@ func joinText(r JoinResult) i18n.Key {
 		return i18n.GiveawayAlreadyJoined
 	case JoinFailed:
 		return i18n.GiveawayJoinFailed
+	case Ended:
+		return i18n.GiveawayEnded
 	default:
 		return i18n.GiveawayJoinFailed
 	}
