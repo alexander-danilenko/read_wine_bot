@@ -25,6 +25,17 @@ const (
 	Greeting         Key = "greeting"
 	LanguagePrompt   Key = "language.prompt"
 	LanguageSelected Key = "language.selected"
+
+	GiveawayPrompt        Key = "giveaway.prompt"
+	GiveawayCreated       Key = "giveaway.created"
+	GiveawayExists        Key = "giveaway.exists"
+	GiveawayNotAdmin      Key = "giveaway.not_admin"
+	GiveawayNoRights      Key = "giveaway.no_rights"
+	GiveawayFailed        Key = "giveaway.failed"
+	GiveawayButton        Key = "giveaway.button"
+	GiveawayJoined        Key = "giveaway.joined"
+	GiveawayAlreadyJoined Key = "giveaway.already_joined"
+	GiveawayJoinFailed    Key = "giveaway.join_failed"
 )
 
 // ErrMissingDefault means locales/ has no file for DefaultLang.

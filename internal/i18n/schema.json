@@ -7,8 +7,18 @@
     "$schema": { "type": "string" },
     "greeting": { "type": "string", "description": "Reply to /start in a private chat." },
     "language.prompt": { "type": "string", "description": "Reply to /language, shown above the language buttons." },
-    "language.selected": { "type": "string", "description": "Sent after a user taps a language button. %[1]s: the chosen language's button label." }
+    "language.selected": { "type": "string", "description": "Sent after a user taps a language button. %[1]s: the chosen language's button label." },
+    "giveaway.prompt": { "type": "string", "description": "Reply to /giveaway: asks the admin to forward the channel post." },
+    "giveaway.created": { "type": "string", "description": "Sent after the join button is attached and the giveaway is saved." },
+    "giveaway.exists": { "type": "string", "description": "Sent when a giveaway already runs on the forwarded post." },
+    "giveaway.not_admin": { "type": "string", "description": "Sent when the forwarder is not an admin of the post's channel." },
+    "giveaway.no_rights": { "type": "string", "description": "Sent when the bot cannot edit the post; names the admin right the bot needs." },
+    "giveaway.failed": { "type": "string", "description": "Sent when starting the giveaway fails for another reason." },
+    "giveaway.button": { "type": "string", "description": "Label of the join button under the channel post." },
+    "giveaway.joined": { "type": "string", "description": "Popup after a user taps the join button for the first time." },
+    "giveaway.already_joined": { "type": "string", "description": "Popup after a user taps the join button again." },
+    "giveaway.join_failed": { "type": "string", "description": "Popup when the tap could not be recorded." }
   },
-  "required": ["greeting", "language.prompt", "language.selected"],
+  "required": ["greeting", "language.prompt", "language.selected", "giveaway.prompt", "giveaway.created", "giveaway.exists", "giveaway.not_admin", "giveaway.no_rights", "giveaway.failed", "giveaway.button", "giveaway.joined", "giveaway.already_joined", "giveaway.join_failed"],
   "additionalProperties": false
 }
