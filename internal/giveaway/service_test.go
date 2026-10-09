@@ -1,0 +1,170 @@
+package giveaway_test
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"testing"
+
+	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
+	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+)
+
+var errBoom = errors.New("boom")
+
+// fakeStore holds at most one giveaway and fails the call named in failOn.
+type fakeStore struct {
+	existing  *giveaway.Giveaway
+	created   *giveaway.Giveaway
+	joined    map[int64]bool
+	createErr error
+	failOn    string
+}
+
+func (f *fakeStore) Find(_ context.Context, chatID, messageID int64) (giveaway.Giveaway, error) {
+	if f.failOn == "find" {
+		return giveaway.Giveaway{}, errBoom
+	}
+
+	if f.existing == nil || f.existing.ChatID != chatID || f.existing.MessageID != messageID {
+		return giveaway.Giveaway{}, giveaway.ErrNotFound
+	}
+
+	return *f.existing, nil
+}
+
+func (f *fakeStore) Create(_ context.Context, g *giveaway.Giveaway) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+
+	f.created = g
+
+	return nil
+}
+
+func (f *fakeStore) Join(_ context.Context, _ uint, telegramID int64) (bool, error) {
+	if f.failOn == "join" {
+		return false, errBoom
+	}
+
+	if f.joined == nil {
+		f.joined = map[int64]bool{}
+	}
+
+	added := !f.joined[telegramID]
+	f.joined[telegramID] = true
+
+	return added, nil
+}
+
+// fakeTelegram answers the admin check and records the attached button label.
+type fakeTelegram struct {
+	admin     bool
+	adminErr  error
+	attachErr error
+	label     string
+}
+
+func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, error) {
+	return f.admin, f.adminErr
+}
+
+func (f *fakeTelegram) AttachButton(_ context.Context, _, _ int64, label string) error {
+	if f.attachErr != nil {
+		return f.attachErr
+	}
+
+	f.label = label
+
+	return nil
+}
+
+func newService(t *testing.T, store *fakeStore, tg *fakeTelegram) *giveaway.Service {
+	t.Helper()
+
+	texts, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return giveaway.NewService(store, tg, texts, slog.New(slog.DiscardHandler))
+}
+
+func TestStart(t *testing.T) {
+	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42}
+
+	tests := []struct {
+		name      string
+		store     *fakeStore
+		telegram  *fakeTelegram
+		want      giveaway.StartResult
+		wantLabel string // button label attached, "" if none
+	}{
+		{"created", &fakeStore{}, &fakeTelegram{admin: true}, giveaway.Created, "Приймаю участь"},
+		{"already exists", &fakeStore{existing: existing}, &fakeTelegram{admin: true}, giveaway.Exists, ""},
+		{"find fails", &fakeStore{failOn: "find"}, &fakeTelegram{admin: true}, giveaway.Failed, ""},
+		{"not admin", &fakeStore{}, &fakeTelegram{}, giveaway.NotAdmin, ""},
+		{"admin check fails", &fakeStore{}, &fakeTelegram{adminErr: errBoom}, giveaway.NoRights, ""},
+		{"attach fails", &fakeStore{}, &fakeTelegram{admin: true, attachErr: errBoom}, giveaway.NoRights, ""},
+		{
+			"created by a concurrent start",
+			&fakeStore{createErr: giveaway.ErrExists},
+			&fakeTelegram{admin: true},
+			giveaway.Exists,
+			"Приймаю участь",
+		},
+		{"create fails", &fakeStore{createErr: errBoom}, &fakeTelegram{admin: true}, giveaway.Failed, "Приймаю участь"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := newService(t, tt.store, tt.telegram).Start(t.Context(), adminID, channelID, 42, "uk")
+
+			if got != tt.want {
+				t.Errorf("Start = %v, want %v", got, tt.want)
+			}
+
+			if tt.telegram.label != tt.wantLabel {
+				t.Errorf("attached label = %q, want %q", tt.telegram.label, tt.wantLabel)
+			}
+
+			created := tt.store.created != nil
+			if created != (tt.want == giveaway.Created) {
+				t.Errorf("giveaway saved = %v, want %v", created, tt.want == giveaway.Created)
+			}
+		})
+	}
+}
+
+func TestStartSavesAuthorAndLanguage(t *testing.T) {
+	store := &fakeStore{}
+	newService(t, store, &fakeTelegram{admin: true}).Start(t.Context(), adminID, channelID, 42, "uk")
+
+	want := giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"}
+	if store.created == nil || *store.created != want {
+		t.Errorf("saved %+v, want %+v", store.created, want)
+	}
+}
+
+func TestServiceJoin(t *testing.T) {
+	existing := &giveaway.Giveaway{ID: 1, ChatID: channelID, MessageID: 42, Language: "uk"}
+	store := &fakeStore{existing: existing}
+	svc := newService(t, store, &fakeTelegram{})
+
+	for i, want := range []giveaway.JoinResult{giveaway.Joined, giveaway.AlreadyJoined} {
+		got, lang := svc.Join(t.Context(), channelID, 42, fanID)
+		if got != want || lang != "uk" {
+			t.Errorf("Join #%d = %v, %q; want %v, \"uk\"", i+1, got, lang, want)
+		}
+	}
+
+	if got, lang := svc.Join(t.Context(), channelID, 43, fanID); got != giveaway.JoinFailed || lang != "" {
+		t.Errorf("Join on a post without a giveaway = %v, %q; want JoinFailed, \"\"", got, lang)
+	}
+
+	store.failOn = "join"
+	if got, lang := svc.Join(t.Context(), channelID, 42, fanID); got != giveaway.JoinFailed || lang != "uk" {
+		t.Errorf("Join with a store error = %v, %q; want JoinFailed, \"uk\"", got, lang)
+	}
+}
