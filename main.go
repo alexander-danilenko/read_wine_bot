@@ -12,8 +12,9 @@ import (
 	"github.com/go-telegram/bot"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
+	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
-	"github.com/alexander-danilenko/read_wine_bot/internal/wave"
+	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
 func main() {
@@ -32,13 +33,33 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// No handler sends translated texts yet; Load still runs so a broken locale file stops the bot.
-	if _, err = i18n.Load(); err != nil {
+	// A broken locale file stops the bot here.
+	texts, err := i18n.Load()
+	if err != nil {
 		return fmt.Errorf("load translations: %w", err)
 	}
 
+	log := slog.Default()
+
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	b, err := bot.New(cfg.TelegramBotToken, bot.WithDefaultHandler(wave.Handler(slog.Default())))
+	b, err := bot.New(
+		cfg.TelegramBotToken,
+		bot.WithMessageTextHandler(
+			greeting.Command,
+			bot.MatchTypeCommandStartOnly,
+			greeting.Handler(texts, log),
+		),
+		bot.WithMessageTextHandler(
+			language.Command,
+			bot.MatchTypeCommandStartOnly,
+			language.CommandHandler(texts, log),
+		),
+		bot.WithCallbackQueryDataHandler(
+			language.CallbackPrefix,
+			bot.MatchTypePrefix,
+			language.ButtonHandler(texts, log),
+		),
+	)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}

@@ -5,10 +5,10 @@
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },
-    "giveaway.winner": { "type": "string", "description": "Posted with giveaway results. %[1]s: the winner's @username." },
     "greeting": { "type": "string", "description": "Reply to /start in a private chat." },
-    "spam.removed": { "type": "string", "description": "Posted in the chat after a spam message is deleted. %[1]s: the sender's @username." }
+    "language.prompt": { "type": "string", "description": "Reply to /language, shown above the language buttons." },
+    "language.selected": { "type": "string", "description": "Sent after a user taps a language button. %[1]s: the chosen language's button label." }
   },
-  "required": ["giveaway.winner", "greeting", "spam.removed"],
+  "required": ["greeting", "language.prompt", "language.selected"],
   "additionalProperties": false
 }
