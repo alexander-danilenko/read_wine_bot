@@ -22,7 +22,7 @@ type fakeRecorder struct {
 }
 
 func (f *fakeRecorder) Record(_ context.Context, p user.Profile) error {
-	f.calls = append(f.calls, fmt.Sprintf("names %s %s %d", p.FirstName, p.LastName, p.TelegramID))
+	f.calls = append(f.calls, fmt.Sprintf("record %s %s %d", p.FirstName, p.LastName, p.TelegramID))
 	f.profiles = append(f.profiles, p)
 
 	return f.err
@@ -72,21 +72,21 @@ func TestMiddleware(t *testing.T) {
 		update *models.Update
 		want   []string
 	}{
-		{"plain message", privateMessage("hello"), []string{"names Olena Koval 7"}},
-		{"number keeps the step", privateMessage("5"), []string{"names Olena Koval 7"}},
-		{"start clears", privateMessage("/start"), []string{"names Olena Koval 7", "pending  7"}},
+		{"plain message", privateMessage("hello"), []string{"record Olena Koval 7"}},
+		{"number keeps the step", privateMessage("5"), []string{"record Olena Koval 7"}},
+		{"start clears", privateMessage("/start"), []string{"record Olena Koval 7", "pending  7"}},
 		{
 			"any command clears",
 			privateMessage("/giveaway@read_wine_bot"),
-			[]string{"names Olena Koval 7", "pending  7"},
+			[]string{"record Olena Koval 7", "pending  7"},
 		},
-		{"menu label clears", privateMessage("🌐 Змінити мову"), []string{"names Olena Koval 7", "pending  7"}},
-		{"group message records only", group, []string{"names Olena Koval 7"}},
+		{"menu label clears", privateMessage("🌐 Змінити мову"), []string{"record Olena Koval 7", "pending  7"}},
+		{"group message records only", group, []string{"record Olena Koval 7"}},
 		{"message as a channel", asChannel, nil},
-		{"edited message records only", edited, []string{"names Olena Koval 7"}},
-		{"callback query", callback, []string{"names Taras  9"}},
-		{"bot blocked or added", blocked, []string{"names Taras  9"}},
-		{"join request", joinRequest, []string{"names Taras  9"}},
+		{"edited message records only", edited, []string{"record Olena Koval 7"}},
+		{"callback query", callback, []string{"record Taras  9"}},
+		{"bot blocked or added", blocked, []string{"record Taras  9"}},
+		{"join request", joinRequest, []string{"record Taras  9"}},
 		{"no sender", &models.Update{}, nil},
 	}
 
