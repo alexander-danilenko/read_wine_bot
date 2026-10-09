@@ -23,19 +23,36 @@ type Key string
 // reorder them.
 const (
 	Greeting         Key = "greeting"
+	MenuGiveaway     Key = "menu.giveaway"
+	MenuLanguage     Key = "menu.language"
 	LanguagePrompt   Key = "language.prompt"
 	LanguageSelected Key = "language.selected"
 
-	GiveawayPrompt        Key = "giveaway.prompt"
-	GiveawayCreated       Key = "giveaway.created"
-	GiveawayExists        Key = "giveaway.exists"
-	GiveawayNotAdmin      Key = "giveaway.not_admin"
-	GiveawayNoRights      Key = "giveaway.no_rights"
-	GiveawayFailed        Key = "giveaway.failed"
-	GiveawayButton        Key = "giveaway.button"
-	GiveawayJoined        Key = "giveaway.joined"
-	GiveawayAlreadyJoined Key = "giveaway.already_joined"
-	GiveawayJoinFailed    Key = "giveaway.join_failed"
+	GiveawayPrompt            Key = "giveaway.prompt"
+	GiveawayAskEndDate        Key = "giveaway.ask_end_date"
+	GiveawayAskEndTime        Key = "giveaway.ask_end_time"
+	GiveawayAskWinners        Key = "giveaway.ask_winners"
+	GiveawayAskButtonText     Key = "giveaway.ask_button_text"
+	GiveawayInvalidDate       Key = "giveaway.invalid_date"
+	GiveawayDateInPast        Key = "giveaway.date_in_past"
+	GiveawayInvalidTime       Key = "giveaway.invalid_time"
+	GiveawayTimeInPast        Key = "giveaway.time_in_past"
+	GiveawayInvalidWinners    Key = "giveaway.invalid_winners"
+	GiveawayInvalidButtonText Key = "giveaway.invalid_button_text"
+	GiveawaySummary           Key = "giveaway.summary"
+	GiveawayConfirm           Key = "giveaway.confirm"
+	GiveawayCancel            Key = "giveaway.cancel"
+	GiveawayCancelled         Key = "giveaway.cancelled"
+	GiveawayOutdated          Key = "giveaway.outdated"
+	GiveawayCreated           Key = "giveaway.created"
+	GiveawayExists            Key = "giveaway.exists"
+	GiveawayNotAdmin          Key = "giveaway.not_admin"
+	GiveawayNoRights          Key = "giveaway.no_rights"
+	GiveawayFailed            Key = "giveaway.failed"
+	GiveawayButton            Key = "giveaway.button"
+	GiveawayJoined            Key = "giveaway.joined"
+	GiveawayAlreadyJoined     Key = "giveaway.already_joined"
+	GiveawayJoinFailed        Key = "giveaway.join_failed"
 )
 
 // ErrMissingDefault means locales/ has no file for DefaultLang.
@@ -145,6 +162,21 @@ func (c *Catalog) Text(lang string, key Key, args ...any) string {
 	}
 
 	return fmt.Sprintf(text, args...)
+}
+
+// All returns the text for key in every language, sorted and without duplicates. The bot
+// uses it to recognize a menu button whatever language the keyboard was sent in.
+func (c *Catalog) All(key Key) []string {
+	var all []string
+	for _, m := range c.texts {
+		if text, ok := m[key]; ok {
+			all = append(all, text)
+		}
+	}
+
+	slices.Sort(all)
+
+	return slices.Compact(all)
 }
 
 // keyDiff returns the keys present in only one of want and got, sorted.
