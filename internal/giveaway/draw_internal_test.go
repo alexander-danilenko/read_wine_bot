@@ -357,18 +357,26 @@ func TestResultMessages(t *testing.T) {
 		t.Fatalf("got %d messages, want 1", len(got))
 	}
 
-	for _, want := range []string{
-		`<a href="tg://user?id=1">Ann Smith</a>`,
-		`<a href="tg://user?id=2">Bob</a>`,
-		`<a href="tg://user?id=3">&lt;b&gt;&amp;</a>`,
-	} {
-		if !strings.Contains(got[0], want) {
-			t.Errorf("message %q does not contain %q", got[0], want)
-		}
+	want := "🎉 The giveaway is over! Winners:\n\n" +
+		`🏆 <a href="tg://user?id=1">Ann Smith</a>` + "\n" +
+		`🏆 <a href="tg://user?id=2">Bob</a>` + "\n" +
+		`🏆 <a href="tg://user?id=3">&lt;b&gt;&amp;</a>` + "\n\n" +
+		d.texts.Text("en", i18n.DrawCongrats)
+	if got[0] != want {
+		t.Errorf("message = %q, want %q", got[0], want)
 	}
+}
 
-	if !strings.HasPrefix(got[0], d.texts.Text("en", i18n.DrawResults)) {
-		t.Errorf("message %q does not start with the header", got[0])
+func TestResultMessagesOneWinner(t *testing.T) {
+	d, _ := newDrawer(t, &fakeDrawStore{}, AcceptAll, noShuffle)
+
+	got := d.resultMessages("uk", []user.User{{TelegramID: 1, FirstName: "Alex"}})
+
+	want := "🎉 Розіграш завершено! Переможець:\n\n" +
+		`🏆 <a href="tg://user?id=1">Alex</a>` + "\n\n" +
+		"Вітаємо переможця! 🥳🍷"
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("got %q, want [%q]", got, want)
 	}
 }
 

@@ -42,8 +42,8 @@ func TestText(t *testing.T) {
 	}{
 		{name: "exact language", lang: "uk", want: "Мову обрано: English"},
 		{name: "region suffix dropped", lang: "en-US", want: "Language selected: English"},
-		{name: "unknown language falls back", lang: "de", want: "Language selected: English"},
-		{name: "empty language falls back", lang: "", want: "Language selected: English"},
+		{name: "unknown language falls back", lang: "de", want: "Мову обрано: English"},
+		{name: "empty language falls back", lang: "", want: "Мову обрано: English"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -110,7 +110,7 @@ func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Handl
 }
 
 // UserLanguage returns the language the user chose from the menu, or else their Telegram app
-// language; i18n.Catalog.Text falls back to English after that. A read error is logged and
+// language; i18n.Catalog.Text falls back to Ukrainian after that. A read error is logged and
 // falls back to the app language, so a database problem never silences a reply.
 func UserLanguage(ctx context.Context, store Reader, log *slog.Logger, from *models.User) string {
 	if from == nil {

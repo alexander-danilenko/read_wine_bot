@@ -14,7 +14,7 @@ import (
 )
 
 // DefaultLang is the language used when a user's language has no file in locales/.
-const DefaultLang = "en"
+const DefaultLang = "uk"
 
 // Key names one user-facing text. Every key exists in every locales/*.json file.
 type Key string
@@ -58,6 +58,9 @@ const (
 	GiveawayJoinFailed        Key = "giveaway.join_failed"
 	GiveawayEnded             Key = "giveaway.ended"
 	DrawResults               Key = "draw.results"
+	DrawResultsOne            Key = "draw.results_one"
+	DrawCongrats              Key = "draw.congrats"
+	DrawCongratsOne           Key = "draw.congrats_one"
 	DrawNoWinners             Key = "draw.no_winners"
 	DrawPrivatePrefix         Key = "draw.private_prefix"
 

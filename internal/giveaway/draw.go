@@ -20,6 +20,9 @@ import (
 // the markup is parsed.
 const maxMessageLen = 4096
 
+// winnerBullet starts each winner line of the results.
+const winnerBullet = "🏆 "
+
 // DrawStore finds due giveaways and records their winners. *Store implements it.
 type DrawStore interface {
 	Due(ctx context.Context, now time.Time) ([]Giveaway, error)
@@ -182,38 +185,54 @@ func (d *Drawer) sendToCreator(ctx context.Context, tg Announcer, g Giveaway, me
 	}
 }
 
-// resultMessages returns the results as HTML messages, each within Telegram's length limit.
-// The header goes only in the first.
+// resultMessages returns the results as HTML messages, each within Telegram's length limit:
+// the header, a blank line, one winner per line, a blank line and the congratulations. A
+// split starts a new message without the separator.
 func (d *Drawer) resultMessages(lang string, winners []user.User) []string {
 	if len(winners) == 0 {
 		return []string{html.EscapeString(d.texts.Text(lang, i18n.DrawNoWinners))}
 	}
 
-	header := d.texts.Text(lang, i18n.DrawResults)
-	current := html.EscapeString(header)
-	size := utf16Len(header)
+	var (
+		messages []string
+		current  string
+		size     int
+	)
 
-	var messages []string
-
-	for i, w := range winners {
-		name := strings.TrimSpace(w.FirstName + " " + w.LastName)
-		number := strconv.Itoa(i+1) + ". "
-		lineSize := utf16Len(number) + utf16Len(name)
-
-		if size+1+lineSize > maxMessageLen { // +1 for the line break before the line
+	// add appends text, which shows as plain visible characters, to the current message.
+	add := func(sep, text string, visible int) {
+		if current != "" && size+len(sep)+visible > maxMessageLen {
 			messages = append(messages, current)
 			current, size = "", 0
 		}
 
 		if current != "" {
-			current += "\n"
-			size++
+			current += sep
+			size += len(sep)
 		}
 
-		current += number + `<a href="tg://user?id=` + strconv.FormatInt(w.TelegramID, 10) + `">` +
-			html.EscapeString(name) + "</a>"
-		size += lineSize
+		current += text
+		size += visible
 	}
+
+	headerKey, congratsKey := i18n.DrawResults, i18n.DrawCongrats
+	if len(winners) == 1 {
+		headerKey, congratsKey = i18n.DrawResultsOne, i18n.DrawCongratsOne
+	}
+
+	header := d.texts.Text(lang, headerKey)
+	add("", html.EscapeString(header), utf16Len(header))
+
+	sep := "\n\n"
+	for _, w := range winners {
+		name := strings.TrimSpace(w.FirstName + " " + w.LastName)
+		add(sep, winnerBullet+`<a href="tg://user?id=`+strconv.FormatInt(w.TelegramID, 10)+`">`+
+			html.EscapeString(name)+"</a>", utf16Len(winnerBullet)+utf16Len(name))
+		sep = "\n"
+	}
+
+	congrats := d.texts.Text(lang, congratsKey)
+	add("\n\n", html.EscapeString(congrats), utf16Len(congrats))
 
 	return append(messages, current)
 }

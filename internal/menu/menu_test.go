@@ -18,7 +18,8 @@ func TestKeyboard(t *testing.T) {
 		want [4]string
 	}{
 		{lang: "uk", want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Мої розіграші", "🌐 Змінити мову"}},
-		{lang: "de", want: [4]string{"🎁 New giveaway", "✏️ Edit giveaway", "📋 My giveaways", "🌐 Change language"}},
+		{lang: "en", want: [4]string{"🎁 New giveaway", "✏️ Edit giveaway", "📋 My giveaways", "🌐 Change language"}},
+		{lang: "de", want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Мої розіграші", "🌐 Змінити мову"}},
 	}
 
 	for _, tt := range tests {
