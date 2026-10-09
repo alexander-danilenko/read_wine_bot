@@ -183,8 +183,12 @@ func TestOpenExistingGiveaways(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !g.Published || g.Winners != 1 || g.ButtonText != "" || g.EndsAt != nil || g.FinishedAt != nil {
-		t.Errorf("existing giveaway = %+v; want published, 1 winner, empty button text, no end or finish time", g)
+	if !g.Published || g.Winners != 1 || g.ButtonText != "" || g.EndsAt != nil || g.FinishedAt != nil ||
+		g.CancelledAt != nil {
+		t.Errorf(
+			"existing giveaway = %+v; want published, 1 winner, empty button text, no end, finish or cancel time",
+			g,
+		)
 	}
 
 	var p giveaway.Participant

@@ -11,7 +11,8 @@ import (
 )
 
 // Giveaway is one row of the giveaways table: a channel post that carries, or during the
-// setup will carry, the join button. An unpublished row is the admin's unfinished setup.
+// setup will carry, the join button. An unpublished row without a cancel mark is the admin's
+// unfinished setup; one with the mark is a cancelled giveaway.
 type Giveaway struct {
 	ID        uint  `gorm:"primaryKey"`
 	ChatID    int64 `gorm:"not null;uniqueIndex:idx_giveaways_post"` // the channel
@@ -27,6 +28,10 @@ type Giveaway struct {
 	ButtonText string     `gorm:"not null;default:''"`
 	// FinishedAt is set together with the participants' winner marks; nil until then.
 	FinishedAt *time.Time
+	// CancelledAt is set when the creator takes a published giveaway off its post: the row is
+	// unpublished again but keeps its participants, so it is no setup draft. Publishing it
+	// clears the mark. Nil for drafts and published giveaways.
+	CancelledAt *time.Time
 	// Published is set once the join button is on the post. The default is true so that
 	// giveaways older than the setup, which all have their button, count as published.
 	// GORM leaves a false zero value out of an INSERT for a column with a default, so
