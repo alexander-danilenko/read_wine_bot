@@ -20,4 +20,4 @@
 # Compound Engineering local files
 .compound-engineering/*.local.yaml
 .context/compound-engineering/
-/cli
+/read_wine_bot

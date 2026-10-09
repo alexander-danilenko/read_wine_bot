@@ -1,0 +1,6 @@
+{
+  "$schema": "../schema.json",
+  "giveaway.winner": "Победитель розыгрыша: %[1]s 🎉",
+  "greeting": "Привет! Я бот канала @read_wine.",
+  "spam.removed": "%[1]s, ваше сообщение удалено как спам."
+}
