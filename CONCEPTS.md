@@ -6,7 +6,11 @@ Shared domain vocabulary for this project: entities, named processes, and status
 
 ### Giveaway
 
-A prize draw the bot runs for the audience of the @read_wine Telegram channel. Its rules, entry conditions and winner selection are not defined yet.
+A prize draw the bot runs for the audience of the @read_wine Telegram channel. One giveaway is bound to one channel post: a channel admin starts it with `/giveaway` and a forward of the post, and the bot attaches a join button to that post. Winner selection is not defined yet.
+
+### Participant
+
+A Telegram user who tapped a giveaway's join button. A user participates in a giveaway at most once.
 
 ### Channel
 
