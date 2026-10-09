@@ -46,7 +46,7 @@ func TestOpen(t *testing.T) {
 		t.Errorf("foreign_keys = %d, want 1", foreignKeys)
 	}
 
-	for _, table := range []any{&user.User{}, &giveaway.Giveaway{}, &giveaway.Participant{}} {
+	for _, table := range []any{&user.User{}, &user.Revision{}, &giveaway.Giveaway{}, &giveaway.Participant{}} {
 		if !conn.Migrator().HasTable(table) {
 			t.Errorf("table for %T missing after Open", table)
 		}
@@ -66,6 +66,7 @@ func TestOpenForeignKeys(t *testing.T) {
 		"users":                 nil,
 		"giveaways":             {"REFERENCES `users`"},
 		"giveaway_participants": {"FOREIGN KEY (`user_id`) REFERENCES `users`", "REFERENCES `giveaways`"},
+		"user_revisions":        {"FOREIGN KEY (`user_id`) REFERENCES `users`"},
 	} {
 		var ddl string
 		if err := conn.Raw("SELECT sql FROM sqlite_master WHERE name = ?", table).Scan(&ddl).Error; err != nil {
@@ -84,10 +85,11 @@ func TestOpenForeignKeys(t *testing.T) {
 	}
 }
 
-// TestOpenExistingUsers opens a database whose users table predates the name and pending
-// command columns and already has a row, as the deployed bot's database does.
-func TestOpenExistingUsers(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "bot.db")
+// createOldUsers creates the database file at path with a users table that predates the
+// name, pending command and profile columns and holds one user, as the deployed bot's
+// database does.
+func createOldUsers(t *testing.T, path string) {
+	t.Helper()
 
 	old, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
@@ -103,7 +105,11 @@ func TestOpenExistingUsers(t *testing.T) {
 	if sqlDB, dbErr := old.DB(); dbErr == nil {
 		_ = sqlDB.Close()
 	}
+}
 
+func TestOpenExistingUsers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bot.db")
+	createOldUsers(t, path)
 	conn := open(t, path)
 
 	var got user.User
@@ -111,8 +117,24 @@ func TestOpenExistingUsers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.Language != "uk" || got.FirstName != "" || got.PendingCommand != "" {
-		t.Errorf("existing user = %+v; want language uk, empty names and pending command", got)
+	if got.Language != "uk" || got.FirstName != "" || got.PendingCommand != "" || got.Revision != 1 {
+		t.Errorf("existing user = %+v; want language uk, empty names and pending command, revision 1", got)
+	}
+}
+
+// TestOpenBackfillsRevisions checks that a user saved before revisions existed gets revision 1.
+func TestOpenBackfillsRevisions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bot.db")
+	createOldUsers(t, path)
+	conn := open(t, path)
+
+	var revs []user.Revision
+	if err := conn.Where("user_id = ?", 1).Find(&revs).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if len(revs) != 1 || revs[0].Number != 1 {
+		t.Errorf("existing user revisions = %+v; want one revision 1 from the backfill", revs)
 	}
 }
 
