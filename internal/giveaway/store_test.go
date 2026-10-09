@@ -3,6 +3,7 @@ package giveaway_test
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -498,5 +499,229 @@ func TestRunning(t *testing.T) {
 
 	if len(got) != 2 || got[0].ID != sooner.ID || got[1].ID != later.ID {
 		t.Errorf("Running = %+v; want the giveaways on posts 42 and 41, in that order", got)
+	}
+}
+
+// publishEnding publishes a giveaway on post that ends at ends, or never when ends is zero.
+func publishEnding(t *testing.T, store *giveaway.Store, post int64, ends time.Time) giveaway.Giveaway {
+	t.Helper()
+
+	g := &giveaway.Giveaway{ChatID: channelID, MessageID: post, CreatedBy: adminID, Winners: 1}
+	if !ends.IsZero() {
+		g.EndsAt = &ends
+	}
+
+	return publish(t, store, g)
+}
+
+func dueIDs(t *testing.T, store *giveaway.Store, now time.Time) []uint {
+	t.Helper()
+
+	gs, err := store.Due(t.Context(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids := make([]uint, 0, len(gs))
+	for _, g := range gs {
+		ids = append(ids, g.ID)
+	}
+
+	return ids
+}
+
+func TestDue(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
+
+	endsNow := publishEnding(t, store, 1, now)
+	endedEarlier := publishEnding(t, store, 2, now.Add(-time.Hour))
+	publishEnding(t, store, 3, now.Add(time.Minute)) // still running
+	publishEnding(t, store, 4, time.Time{})          // no end time
+
+	cancelled := publishEnding(t, store, 5, now.Add(-time.Hour))
+	if err := store.Cancel(ctx, cancelled.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	finished := publishEnding(t, store, 6, now.Add(-time.Hour))
+	if err := store.Finish(ctx, finished.ID, nil, now); err != nil {
+		t.Fatal(err)
+	}
+
+	ended := now.Add(-time.Hour)
+	if err := store.SaveDraft(ctx, &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 7, CreatedBy: fanID, EndsAt: &ended,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := dueIDs(t, store, now)
+	if want := []uint{endedEarlier.ID, endsNow.ID}; !slices.Equal(got, want) {
+		t.Errorf("Due = %v, want %v (soonest end first)", got, want)
+	}
+}
+
+// TestDueComparesInstants guards against the driver binding times as text with their zone
+// offset: a Kyiv-time now must not match a UTC end time that is still in the future.
+func TestDueComparesInstants(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	kyiv, err := time.LoadLocation("Europe/Kyiv")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ends := time.Date(2026, 10, 25, 14, 0, 0, 0, time.UTC)
+	g := publishEnding(t, store, 1, ends)
+
+	before := ends.Add(-30 * time.Minute).In(kyiv)
+	if got := dueIDs(t, store, before); len(got) != 0 {
+		t.Errorf("Due 30 minutes before the end in Kyiv time = %v, want none", got)
+	}
+
+	if err := store.Finish(ctx, g.ID, nil, before); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Finish before the end in Kyiv time: err = %v, want ErrNotFound", err)
+	}
+
+	after := ends.Add(time.Minute).In(kyiv)
+	if got := dueIDs(t, store, after); !slices.Equal(got, []uint{g.ID}) {
+		t.Errorf("Due a minute after the end in Kyiv time = %v, want [%d]", got, g.ID)
+	}
+
+	if err := store.Finish(ctx, g.ID, nil, after); err != nil {
+		t.Errorf("Finish after the end in Kyiv time: %v", err)
+	}
+}
+
+func TestCandidates(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	g := publishEnding(t, store, 1, time.Time{})
+
+	got, err := store.Candidates(ctx, g.ID)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("Candidates of a giveaway nobody joined = %v, %v; want none", got, err)
+	}
+
+	join(t, store, g.ID, adminID, fanID)
+
+	got, err = store.Candidates(ctx, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 2 || got[0].TelegramID != adminID || got[1].TelegramID != fanID || got[1].FirstName != "Name" {
+		t.Errorf("Candidates = %+v, want the admin and the fan in join order with their names", got)
+	}
+}
+
+// join records the users as participants of the giveaway, in order.
+func join(t *testing.T, store *giveaway.Store, giveawayID uint, userIDs ...int64) {
+	t.Helper()
+
+	for _, id := range userIDs {
+		if _, err := store.Join(t.Context(), giveawayID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func winnerMarks(t *testing.T, conn *gorm.DB, giveawayID uint) map[int64]bool {
+	t.Helper()
+
+	var ps []giveaway.Participant
+	if err := conn.Where("giveaway_id = ?", giveawayID).Find(&ps).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	marks := make(map[int64]bool, len(ps))
+	for _, p := range ps {
+		marks[p.UserID] = p.Winner
+	}
+
+	return marks
+}
+
+func TestFinish(t *testing.T) {
+	store, conn := newStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
+
+	g := publishEnding(t, store, 1, now.Add(-time.Minute))
+	join(t, store, g.ID, adminID, fanID)
+
+	if err := store.Finish(ctx, g.ID, []int64{fanID}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := winnerMarks(t, conn, g.ID); !got[fanID] || got[adminID] {
+		t.Errorf("winner marks = %v, want only the fan", got)
+	}
+
+	got, err := store.ByID(ctx, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.FinishedAt == nil || !got.FinishedAt.Equal(now) {
+		t.Errorf("FinishedAt = %v, want %v", got.FinishedAt, now)
+	}
+
+	// A second draw changes nothing.
+	if err := store.Finish(ctx, g.ID, []int64{adminID}, now); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("second Finish: err = %v, want ErrNotFound", err)
+	}
+
+	if got := winnerMarks(t, conn, g.ID); !got[fanID] || got[adminID] {
+		t.Errorf("winner marks after a second Finish = %v, want only the fan", got)
+	}
+}
+
+func TestFinishWithoutWinners(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
+
+	g := publishEnding(t, store, 1, now)
+	if err := store.Finish(ctx, g.ID, nil, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := store.ByID(ctx, g.ID); err != nil || got.FinishedAt == nil {
+		t.Errorf("giveaway after Finish = %+v, %v; want it finished", got, err)
+	}
+}
+
+func TestFinishSkipsGiveawaysNoLongerDue(t *testing.T) {
+	store, conn := newStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
+
+	// The creator moved the end time after the draw found the giveaway due.
+	moved := publishEnding(t, store, 1, now.Add(-time.Minute))
+	later := now.Add(6 * time.Hour)
+	if err := store.SaveFields(ctx, moved.ID, &later, 1, "Go"); err != nil {
+		t.Fatal(err)
+	}
+
+	cancelled := publishEnding(t, store, 2, now.Add(-time.Minute))
+	join(t, store, cancelled.ID, fanID)
+
+	if err := store.Cancel(ctx, cancelled.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, g := range []giveaway.Giveaway{moved, cancelled} {
+		if err := store.Finish(ctx, g.ID, []int64{fanID}, now); !errors.Is(err, giveaway.ErrNotFound) {
+			t.Errorf("Finish of giveaway %d: err = %v, want ErrNotFound", g.ID, err)
+		}
+	}
+
+	if got := winnerMarks(t, conn, cancelled.ID); got[fanID] {
+		t.Error("the cancelled giveaway's participant was marked as a winner")
 	}
 }
