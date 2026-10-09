@@ -1,6 +1,7 @@
-// Package giveaway runs giveaways on channel posts: a channel admin starts one from the menu
-// with a forwarded post, the bot attaches a join button to the post, and every tap records a
-// participant.
+// Package giveaway runs giveaways on channel posts. A channel admin creates one through the
+// giveaway setup in the bot's private chat: forward the post, enter the end date and time,
+// the winner count and the button text, and confirm a summary. Only then does the bot attach
+// the join button to the post, and every tap records a participant.
 package giveaway
 
 import (

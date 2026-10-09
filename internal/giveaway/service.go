@@ -9,7 +9,7 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
 
-// StartResult is the outcome of an attempt to start a giveaway on a channel post.
+// StartResult is the outcome of the post check or of creating a giveaway on a channel post.
 type StartResult int
 
 // Start outcomes, each answered with its own reply to the admin.
@@ -82,38 +82,6 @@ func NewService(
 	texts *i18n.Catalog, kyiv *time.Location, now func() time.Time, log *slog.Logger,
 ) *Service {
 	return &Service{store: store, drafts: drafts, steps: steps, texts: texts, kyiv: kyiv, now: now, log: log}
-}
-
-// Start starts a giveaway on the channel post for the admin, with the button and popups in
-// lang. tg is passed per call because handlers get the bot only when an update arrives.
-// Only after the post check passes and the button is attached does it save the giveaway, so
-// a saved giveaway always has its button.
-func (s *Service) Start(ctx context.Context, tg Telegram, adminID, chatID, messageID int64, lang string) StartResult {
-	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", adminID)
-
-	if result, ok := s.checkPost(ctx, tg, adminID, chatID, messageID); !ok {
-		return result
-	}
-
-	err := tg.AttachButton(ctx, chatID, messageID, s.texts.Text(lang, i18n.GiveawayButton))
-	if err != nil {
-		log.WarnContext(ctx, "attach join button", "error", err)
-
-		return NoRights
-	}
-
-	err = s.store.Create(ctx, &Giveaway{ChatID: chatID, MessageID: messageID, CreatedBy: adminID, Language: lang})
-	if errors.Is(err, ErrExists) {
-		return Exists
-	}
-
-	if err != nil {
-		log.ErrorContext(ctx, "save giveaway", "error", err)
-
-		return Failed
-	}
-
-	return Created
 }
 
 // Join records the user as a participant of the giveaway on the channel post. It also

@@ -263,6 +263,11 @@ func TestSetupConfirmRechecks(t *testing.T) {
 			want: i18n.GiveawayExists,
 		},
 		{
+			name:   "bot lost the edit right",
+			change: func(_ *testing.T, s *setup) { s.tg.attachErr = errBoom },
+			want:   i18n.GiveawayNoRights,
+		},
+		{
 			name:     "end time passed today",
 			change:   func(_ *testing.T, s *setup) { s.now = time.Date(2026, 10, 25, 19, 30, 0, 0, s.now.Location()) },
 			want:     i18n.GiveawayTimeInPast,

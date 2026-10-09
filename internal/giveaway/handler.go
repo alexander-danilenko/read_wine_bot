@@ -13,84 +13,9 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
-// Command is the pending command that makes the bot wait for a forwarded post.
-const Command = "giveaway"
-
 // JoinCallback is the callback data of every join button. The post itself identifies the
 // giveaway, so the data needs nothing else.
 const JoinCallback = "giveaway:join"
-
-// Users reads a user's saved language and takes their pending command. *user.Store implements it.
-type Users interface {
-	language.Reader
-	MovePendingCommand(ctx context.Context, telegramID int64, from, to string) (bool, error)
-	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
-}
-
-// CommandHandler returns a handler that answers the giveaway menu button in a private chat:
-// it marks the user as waiting for a forwarded post and asks for it.
-func CommandHandler(texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
-			return
-		}
-
-		if err := users.SetPendingCommand(ctx, msg.From.ID, Command); err != nil {
-			log.ErrorContext(ctx, "start giveaway setup", "user_id", msg.From.ID, "error", err)
-
-			return
-		}
-
-		lang := language.UserLanguage(ctx, users, log, msg.From)
-
-		_, err := b.SendMessage(
-			ctx,
-			&bot.SendMessageParams{ChatID: msg.Chat.ID, Text: texts.Text(lang, i18n.GiveawayPrompt)},
-		)
-		if err != nil {
-			log.ErrorContext(ctx, "send giveaway prompt", "chat_id", msg.Chat.ID, "error", err)
-		}
-	}
-}
-
-// ForwardHandler returns the handler for messages no other handler matched. It acts only on a
-// channel post forwarded in a private chat by a user who tapped the giveaway button; everything
-// else is ignored silently. The forward ends the wait whatever the outcome.
-func ForwardHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate ||
-			msg.ForwardOrigin == nil || msg.ForwardOrigin.MessageOriginChannel == nil {
-			return
-		}
-
-		// Taking the pending command ends the wait whatever Start returns, and only one of
-		// several posts forwarded together can take it.
-		took, err := users.MovePendingCommand(ctx, msg.From.ID, Command, "")
-		if err != nil {
-			log.ErrorContext(ctx, "take pending command", "user_id", msg.From.ID, "error", err)
-
-			return
-		}
-
-		if !took {
-			return
-		}
-
-		origin := msg.ForwardOrigin.MessageOriginChannel
-		lang := language.UserLanguage(ctx, users, log, msg.From)
-		result := svc.Start(ctx, telegramAPI{b: b}, msg.From.ID, origin.Chat.ID, int64(origin.MessageID), lang)
-
-		_, err = b.SendMessage(
-			ctx,
-			&bot.SendMessageParams{ChatID: msg.Chat.ID, Text: texts.Text(lang, startText(result))},
-		)
-		if err != nil {
-			log.ErrorContext(ctx, "send giveaway result", "chat_id", msg.Chat.ID, "error", err)
-		}
-	}
-}
 
 // JoinHandler returns a handler for taps on the join button. It records the participant and
 // answers with a popup in the giveaway's language, or the tapper's when no giveaway runs on
