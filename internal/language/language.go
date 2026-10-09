@@ -1,4 +1,4 @@
-// Package language lets a user pick the bot's language with /language and saves the choice.
+// Package language lets a user pick the bot's language from the menu and saves the choice.
 package language
 
 import (
@@ -10,10 +10,8 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 )
-
-// Command is the bot command, without the slash, that shows the language buttons.
-const Command = "language"
 
 // CallbackPrefix starts the callback data of every language button; the language code follows.
 const CallbackPrefix = "language:"
@@ -43,9 +41,9 @@ func options() []option {
 	}
 }
 
-// CommandHandler returns a handler that answers /language in a private chat with one button
-// per language, in the user's saved language. It ignores the command in groups and channels.
-func CommandHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.HandlerFunc {
+// PromptHandler returns a handler that answers the language menu button in a private chat
+// with one button per language, in the user's saved language. It ignores groups and channels.
+func PromptHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
 		if msg == nil || msg.Chat.Type != models.ChatTypePrivate {
@@ -69,7 +67,8 @@ func CommandHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Hand
 }
 
 // ButtonHandler returns a handler for taps on the language buttons. It stops the button's
-// loading spinner, saves the choice and confirms it in the chosen language. If saving fails,
+// loading spinner, saves the choice and confirms it in the chosen language with the menu
+// keyboard relabelled in that language. If saving fails,
 // it logs the error and still confirms, so the user is not left without an answer.
 func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -95,8 +94,9 @@ func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Handl
 
 			// The buttons are sent only in private chats, where the chat ID equals the user ID.
 			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID: query.From.ID,
-				Text:   texts.Text(o.code, i18n.LanguageSelected, o.label),
+				ChatID:      query.From.ID,
+				Text:        texts.Text(o.code, i18n.LanguageSelected, o.label),
+				ReplyMarkup: menu.Keyboard(texts, o.code),
 			})
 			if err != nil {
 				log.ErrorContext(ctx, "send language selected", "user_id", query.From.ID, "error", err)
@@ -109,7 +109,7 @@ func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Handl
 	}
 }
 
-// UserLanguage returns the language the user saved with /language, or else their Telegram app
+// UserLanguage returns the language the user chose from the menu, or else their Telegram app
 // language; i18n.Catalog.Text falls back to English after that. A read error is logged and
 // falls back to the app language, so a database problem never silences a reply.
 func UserLanguage(ctx context.Context, store Reader, log *slog.Logger, from *models.User) string {

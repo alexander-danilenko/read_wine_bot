@@ -32,6 +32,9 @@ func (f *fakeRecorder) SetPendingCommand(_ context.Context, id int64, command st
 	return f.err
 }
 
+// isLabel stands in for menu.IsLabel with one known label.
+func isLabel(text string) bool { return text == "🌐 Змінити мову" }
+
 func privateMessage(text string) *models.Update {
 	return &models.Update{Message: &models.Message{
 		Text: text,
@@ -54,14 +57,14 @@ func TestMiddleware(t *testing.T) {
 		want   []string
 	}{
 		{"plain message", privateMessage("hello"), []string{"names Olena Koval 7"}},
-		{"giveaway", privateMessage("/giveaway"), []string{"names Olena Koval 7", "pending giveaway 7"}},
-		{
-			"giveaway with bot name",
-			privateMessage("/giveaway@read_wine_bot"),
-			[]string{"names Olena Koval 7", "pending giveaway 7"},
-		},
+		{"number keeps the step", privateMessage("5"), []string{"names Olena Koval 7"}},
 		{"start clears", privateMessage("/start"), []string{"names Olena Koval 7", "pending  7"}},
-		{"language clears", privateMessage("/language"), []string{"names Olena Koval 7", "pending  7"}},
+		{
+			"any command clears",
+			privateMessage("/giveaway@read_wine_bot"),
+			[]string{"names Olena Koval 7", "pending  7"},
+		},
+		{"menu label clears", privateMessage("🌐 Змінити мову"), []string{"names Olena Koval 7", "pending  7"}},
 		{"group message", group, nil},
 		{"callback query", callback, []string{"names Taras  9"}},
 	}
@@ -72,7 +75,7 @@ func TestMiddleware(t *testing.T) {
 			called := false
 			next := func(context.Context, *bot.Bot, *models.Update) { called = true }
 
-			user.Middleware(rec, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, tt.update)
+			user.Middleware(rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, tt.update)
 
 			if !slices.Equal(rec.calls, tt.want) {
 				t.Errorf("calls = %q, want %q", rec.calls, tt.want)
@@ -90,7 +93,7 @@ func TestMiddlewareStoreError(t *testing.T) {
 	called := false
 	next := func(context.Context, *bot.Bot, *models.Update) { called = true }
 
-	user.Middleware(rec, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, privateMessage("/giveaway"))
+	user.Middleware(rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, privateMessage("/start"))
 
 	if !called {
 		t.Error("next handler not called after a store error")

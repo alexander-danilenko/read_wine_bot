@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"github.com/go-telegram/bot"
@@ -18,6 +19,7 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
+	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
@@ -75,28 +77,19 @@ func handlers(conn *gorm.DB, texts *i18n.Catalog, log *slog.Logger) []bot.Option
 	users := user.NewStore(conn)
 	giveaways := giveaway.NewService(giveaway.NewStore(conn), texts, log)
 
-	return []bot.Option{
-		// Runs before every handler: keeps users' names current and tracks /giveaway.
-		bot.WithMiddlewares(user.Middleware(users, log)),
+	return slices.Concat([]bot.Option{
+		// Runs before every handler: keeps users' names current and leaves any unfinished
+		// setup on a command or menu button.
+		bot.WithMiddlewares(user.Middleware(users, menu.IsLabel(texts), log)),
 		bot.WithMessageTextHandler(
 			greeting.Command,
 			bot.MatchTypeCommandStartOnly,
 			greeting.Handler(texts, users, log),
 		),
-		bot.WithMessageTextHandler(
-			language.Command,
-			bot.MatchTypeCommandStartOnly,
-			language.CommandHandler(texts, users, log),
-		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,
 			bot.MatchTypePrefix,
 			language.ButtonHandler(texts, users, log),
-		),
-		bot.WithMessageTextHandler(
-			giveaway.Command,
-			bot.MatchTypeCommandStartOnly,
-			giveaway.CommandHandler(texts, users, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.JoinCallback,
@@ -105,5 +98,28 @@ func handlers(conn *gorm.DB, texts *i18n.Catalog, log *slog.Logger) []bot.Option
 		),
 		// A forwarded post matches no handler above, so it lands here.
 		bot.WithDefaultHandler(giveaway.ForwardHandler(giveaways, texts, users, log)),
+	}, menuHandlers(texts, users, log))
+}
+
+// menuHandlers wires the menu buttons. A button sends its label as text, so each label in
+// each language gets its own exact-match handler.
+func menuHandlers(texts *i18n.Catalog, users *user.Store, log *slog.Logger) []bot.Option {
+	giveawayLabels, languageLabels := texts.All(i18n.MenuGiveaway), texts.All(i18n.MenuLanguage)
+	opts := make([]bot.Option, 0, len(giveawayLabels)+len(languageLabels))
+
+	for _, label := range giveawayLabels {
+		opts = append(
+			opts,
+			bot.WithMessageTextHandler(label, bot.MatchTypeExact, giveaway.CommandHandler(texts, users, log)),
+		)
 	}
+
+	for _, label := range languageLabels {
+		opts = append(
+			opts,
+			bot.WithMessageTextHandler(label, bot.MatchTypeExact, language.PromptHandler(texts, users, log)),
+		)
+	}
+
+	return opts
 }

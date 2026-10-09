@@ -1,5 +1,5 @@
-// Package giveaway runs giveaways on channel posts: a channel admin starts one with /giveaway
-// and a forwarded post, the bot attaches a join button to the post, and every tap records a
+// Package giveaway runs giveaways on channel posts: a channel admin starts one from the menu
+// with a forwarded post, the bot attaches a join button to the post, and every tap records a
 // participant.
 package giveaway
 

@@ -13,8 +13,7 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
-// Command is the bot command, without the slash, that starts a giveaway. internal/user's
-// middleware sets the same name as the user's pending command when it sees it.
+// Command is the pending command that makes the bot wait for a forwarded post.
 const Command = "giveaway"
 
 // JoinCallback is the callback data of every join button. The post itself identifies the
@@ -25,14 +24,21 @@ const JoinCallback = "giveaway:join"
 type Users interface {
 	language.Reader
 	TakePendingCommand(ctx context.Context, telegramID int64, command string) (bool, error)
+	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
 }
 
-// CommandHandler returns a handler that answers /giveaway in a private chat by asking for the
-// post to forward. The user middleware has already marked the user as waiting.
-func CommandHandler(texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
+// CommandHandler returns a handler that answers the giveaway menu button in a private chat:
+// it marks the user as waiting for a forwarded post and asks for it.
+func CommandHandler(texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
-		if msg == nil || msg.Chat.Type != models.ChatTypePrivate {
+		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+			return
+		}
+
+		if err := users.SetPendingCommand(ctx, msg.From.ID, Command); err != nil {
+			log.ErrorContext(ctx, "start giveaway setup", "user_id", msg.From.ID, "error", err)
+
 			return
 		}
 
@@ -49,7 +55,7 @@ func CommandHandler(texts *i18n.Catalog, users language.Reader, log *slog.Logger
 }
 
 // ForwardHandler returns the handler for messages no other handler matched. It acts only on a
-// channel post forwarded in a private chat by a user who sent /giveaway before; everything
+// channel post forwarded in a private chat by a user who tapped the giveaway button; everything
 // else is ignored silently. The forward ends the wait whatever the outcome.
 func ForwardHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
