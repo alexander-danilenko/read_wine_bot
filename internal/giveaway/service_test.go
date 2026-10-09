@@ -63,7 +63,9 @@ type fakeTelegram struct {
 	adminErr    error
 	noEdit      bool // the bot may not edit the channel's posts
 	attachErr   error
+	removeErr   error
 	label       string
+	removed     int
 	adminChecks int
 	attached    int
 }
@@ -83,6 +85,16 @@ func (f *fakeTelegram) AttachButton(_ context.Context, _, _ int64, label string)
 
 	f.label = label
 	f.attached++
+
+	return nil
+}
+
+func (f *fakeTelegram) RemoveButton(context.Context, int64, int64) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
+
+	f.removed++
 
 	return nil
 }
