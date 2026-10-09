@@ -219,7 +219,7 @@ func (s *Service) Confirm(ctx context.Context, tg Telegram, userID int64) Reply 
 // was taken over by another admin who forwarded the same post.
 func (*Service) missingDraft(ctx context.Context, log *slog.Logger, err error) Reply {
 	if errors.Is(err, ErrNotFound) {
-		return Reply{Notice: i18n.GiveawayExists}
+		return Reply{Notice: i18n.GiveawayTaken}
 	}
 
 	log.ErrorContext(ctx, "read giveaway draft", "error", err)

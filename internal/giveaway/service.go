@@ -15,7 +15,8 @@ type StartResult int
 // Start outcomes, each answered with its own reply to the admin.
 const (
 	Created  StartResult = iota // button attached and giveaway saved
-	Exists                      // a giveaway already runs on the post
+	Exists                      // the admin's own giveaway, published or cancelled, is on the post
+	Taken                       // another admin's giveaway, published or cancelled, is on the post
 	NotAdmin                    // the forwarder is not an admin of the post's channel
 	NoRights                    // the bot cannot read the channel's admins or edit the post
 	Failed                      // anything else went wrong
@@ -31,10 +32,10 @@ const (
 	JoinFailed                      // the tap could not be recorded
 )
 
-// Storage finds published giveaways, publishes drafts and records participants. *Store
+// Storage finds the giveaway on a post, publishes drafts and records participants. *Store
 // implements it.
 type Storage interface {
-	Find(ctx context.Context, chatID, messageID int64) (Giveaway, error)
+	Post(ctx context.Context, chatID, messageID int64) (Giveaway, error)
 	Publish(ctx context.Context, id uint) error
 	Join(ctx context.Context, giveawayID uint, telegramID int64) (bool, error)
 }
@@ -90,10 +91,15 @@ func NewService(
 func (s *Service) Join(ctx context.Context, chatID, messageID, userID int64) (JoinResult, string) {
 	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", userID)
 
-	g, err := s.store.Find(ctx, chatID, messageID)
+	g, err := s.store.Post(ctx, chatID, messageID)
 	if err != nil {
 		log.ErrorContext(ctx, "find giveaway for join", "error", err)
 
+		return JoinFailed, ""
+	}
+
+	// A cancelled giveaway's post has no button; a tap on one left behind joins nothing.
+	if !g.Published {
 		return JoinFailed, ""
 	}
 
@@ -111,15 +117,19 @@ func (s *Service) Join(ctx context.Context, chatID, messageID, userID int64) (Jo
 	return Joined, g.Language
 }
 
-// checkPost checks, in order, that no giveaway runs on the post yet, that the admin is an
-// admin of its channel and that the bot may edit its posts. It returns the failed outcome
+// checkPost checks, in order, that the post carries no published or cancelled giveaway, that
+// the admin is an admin of its channel and that the bot may edit its posts. It returns the failed outcome
 // and false, or true when every check passes.
 func (s *Service) checkPost(ctx context.Context, tg Telegram, adminID, chatID, messageID int64) (StartResult, bool) {
 	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", adminID)
 
-	_, err := s.store.Find(ctx, chatID, messageID)
+	g, err := s.store.Post(ctx, chatID, messageID)
 	if err == nil {
-		return Exists, false
+		if g.CreatedBy == adminID {
+			return Exists, false
+		}
+
+		return Taken, false
 	}
 
 	if !errors.Is(err, ErrNotFound) {

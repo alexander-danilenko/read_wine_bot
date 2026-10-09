@@ -46,6 +46,7 @@ const (
 	GiveawayOutdated          Key = "giveaway.outdated"
 	GiveawayCreated           Key = "giveaway.created"
 	GiveawayExists            Key = "giveaway.exists"
+	GiveawayTaken             Key = "giveaway.taken"
 	GiveawayNotAdmin          Key = "giveaway.not_admin"
 	GiveawayNoRights          Key = "giveaway.no_rights"
 	GiveawayFailed            Key = "giveaway.failed"

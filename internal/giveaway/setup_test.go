@@ -109,7 +109,7 @@ func TestSetupConfirmCreates(t *testing.T) {
 		t.Fatalf("Confirm = %+v, want created", r)
 	}
 
-	g, err := s.store.Find(ctx, channelID, 42)
+	g, err := s.store.Post(ctx, channelID, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,12 +143,28 @@ func TestSetupConfirmTwice(t *testing.T) {
 
 func TestSetupForwardChecks(t *testing.T) {
 	tests := []struct {
-		name     string
-		existing bool
-		tg       *fakeTelegram
-		want     i18n.Key
+		name      string
+		owner     int64 // creator of a giveaway already on the post; 0 for none
+		cancelled bool  // that giveaway is cancelled
+		tg        *fakeTelegram
+		want      i18n.Key
 	}{
-		{name: "giveaway exists", existing: true, tg: &fakeTelegram{admin: true}, want: i18n.GiveawayExists},
+		{name: "own giveaway", owner: adminID, tg: &fakeTelegram{admin: true}, want: i18n.GiveawayExists},
+		{
+			name:      "own cancelled giveaway",
+			owner:     adminID,
+			cancelled: true,
+			tg:        &fakeTelegram{admin: true},
+			want:      i18n.GiveawayExists,
+		},
+		{name: "another admin's giveaway", owner: fanID, tg: &fakeTelegram{admin: true}, want: i18n.GiveawayTaken},
+		{
+			name:      "another admin's cancelled giveaway",
+			owner:     fanID,
+			cancelled: true,
+			tg:        &fakeTelegram{admin: true},
+			want:      i18n.GiveawayTaken,
+		},
 		{name: "not admin", tg: &fakeTelegram{}, want: i18n.GiveawayNotAdmin},
 		{name: "bot cannot edit", tg: &fakeTelegram{admin: true, noEdit: true}, want: i18n.GiveawayNoRights},
 	}
@@ -158,8 +174,13 @@ func TestSetupForwardChecks(t *testing.T) {
 			s := newSetup(t)
 			ctx := t.Context()
 
-			if tt.existing {
-				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
+			if tt.owner != 0 {
+				g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: tt.owner})
+				if tt.cancelled {
+					if err := s.store.Cancel(ctx, g.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
 			}
 
 			if err := s.svc.Begin(ctx, adminID); err != nil {
@@ -252,7 +273,7 @@ func TestSetupConfirmRechecks(t *testing.T) {
 
 				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
 			},
-			want: i18n.GiveawayExists,
+			want: i18n.GiveawayTaken,
 		},
 		{
 			name:     "bot lost the edit right",

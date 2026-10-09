@@ -69,7 +69,7 @@ func publish(t *testing.T, store *giveaway.Store, g *giveaway.Giveaway) giveaway
 	return d
 }
 
-func TestFindSeesOnlyPublished(t *testing.T) {
+func TestPostSkipsDrafts(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
@@ -80,8 +80,8 @@ func TestFindSeesOnlyPublished(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := store.Find(ctx, channelID, 41); !errors.Is(err, giveaway.ErrNotFound) {
-		t.Errorf("Find a draft: err = %v, want ErrNotFound", err)
+	if _, err := store.Post(ctx, channelID, 41); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Post of a draft: err = %v, want ErrNotFound", err)
 	}
 
 	published := publish(
@@ -90,13 +90,13 @@ func TestFindSeesOnlyPublished(t *testing.T) {
 		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"},
 	)
 
-	got, err := store.Find(ctx, channelID, 42)
+	got, err := store.Post(ctx, channelID, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if got.ID != published.ID || !got.Published || got.Language != "uk" {
-		t.Errorf("Find = %+v, want the published giveaway %d", got, published.ID)
+		t.Errorf("Post = %+v, want the published giveaway %d", got, published.ID)
 	}
 }
 
@@ -159,7 +159,7 @@ func TestSaveDraftOnPublishedPost(t *testing.T) {
 		t.Errorf("SaveDraft on a published post: err = %v, want ErrExists", err)
 	}
 
-	if g, err := store.Find(ctx, channelID, 42); err != nil || g.CreatedBy != adminID || g.ButtonText != "Go" {
+	if g, err := store.Post(ctx, channelID, 42); err != nil || g.CreatedBy != adminID || g.ButtonText != "Go" {
 		t.Errorf("published giveaway = %+v, %v; want it unchanged", g, err)
 	}
 
@@ -193,7 +193,7 @@ func TestDeleteDraftKeepsPublished(t *testing.T) {
 		t.Errorf("Draft after delete: err = %v, want ErrNotFound", err)
 	}
 
-	if _, err := store.Find(ctx, channelID, 42); err != nil {
+	if _, err := store.Post(ctx, channelID, 42); err != nil {
 		t.Errorf("published giveaway after DeleteDraft: %v", err)
 	}
 

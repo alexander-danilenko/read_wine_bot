@@ -40,23 +40,6 @@ func NewStore(db *gorm.DB) *Store {
 	return &Store{db: db}
 }
 
-// Find returns the published giveaway on the channel post, or ErrNotFound.
-func (s *Store) Find(ctx context.Context, chatID, messageID int64) (Giveaway, error) {
-	var g Giveaway
-
-	err := s.db.WithContext(ctx).
-		Where("chat_id = ? AND message_id = ? AND published = ?", chatID, messageID, true).Take(&g).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return Giveaway{}, ErrNotFound
-	}
-
-	if err != nil {
-		return Giveaway{}, fmt.Errorf("find giveaway on post %d in chat %d: %w", messageID, chatID, err)
-	}
-
-	return g, nil
-}
-
 // Publish marks the draft with id as published. It returns ErrNotFound when no unpublished
 // giveaway has that id, for example after a second Confirm.
 func (s *Store) Publish(ctx context.Context, id uint) error {
