@@ -1,6 +1,7 @@
 package i18n_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
@@ -50,5 +51,34 @@ func TestText(t *testing.T) {
 				t.Errorf("Text(%q) = %q, want %q", tt.lang, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAll(t *testing.T) {
+	c, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := c.All(i18n.MenuLanguage)
+	want := []string{"🌐 Change language", "🌐 Змінити мову"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("All(%q) = %q, want %q", i18n.MenuLanguage, got, want)
+	}
+}
+
+func TestSummaryPlaceholders(t *testing.T) {
+	c, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, lang := range []string{"en", "uk"} {
+		got := c.Text(lang, i18n.GiveawaySummary, "Read Wine", "2026-10-25 19:00", 3, "Go")
+		for _, part := range []string{"Read Wine", "2026-10-25 19:00", "3", "Go"} {
+			if !strings.Contains(got, part) {
+				t.Errorf("%s summary %q lacks %q", lang, got, part)
+			}
+		}
 	}
 }
