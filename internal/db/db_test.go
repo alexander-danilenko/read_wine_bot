@@ -107,6 +107,8 @@ func createOldUsers(t *testing.T, path string) {
 	}
 }
 
+// TestOpenExistingUsers checks that a user saved by an older bot keeps their row and gets
+// the new columns.
 func TestOpenExistingUsers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bot.db")
 	createOldUsers(t, path)

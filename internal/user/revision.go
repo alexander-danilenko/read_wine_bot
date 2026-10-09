@@ -45,11 +45,14 @@ func (Revision) TableName() string {
 	return "user_revisions"
 }
 
-// changedProfile matches a users row whose profile differs from the one in the arguments
-// is_bot, first_name, last_name, username, is_premium, language_code. An empty language code
-// matches the saved one, so an update that leaves it out is not a change.
+// keptLanguageCode is the language code to save from the argument: the saved one when the
+// argument is empty, since Telegram leaves it out of some updates.
+const keptLanguageCode = "COALESCE(NULLIF(?, ''), language_code)"
+
+// changedProfile matches a users row whose profile differs from the one in the arguments,
+// in order: is_bot, first_name, last_name, username, is_premium, language_code.
 const changedProfile = "is_bot <> ? OR first_name <> ? OR last_name <> ? OR username <> ? OR is_premium <> ? " +
-	"OR language_code <> COALESCE(NULLIF(?, ''), language_code)"
+	"OR language_code <> " + keptLanguageCode
 
 // Record saves the user's profile, creating the user on first use, and writes a new revision
 // when the profile differs from the saved one. It leaves the saved language and pending
@@ -78,7 +81,7 @@ func (s *Store) Record(ctx context.Context, p Profile) error {
 					"last_name":     p.LastName,
 					"username":      p.Username,
 					"is_premium":    p.IsPremium,
-					"language_code": gorm.Expr("COALESCE(NULLIF(?, ''), language_code)", p.LanguageCode),
+					"language_code": gorm.Expr(keptLanguageCode, p.LanguageCode),
 					"revision":      gorm.Expr("revision + 1"),
 				})
 			if res.Error != nil || res.RowsAffected == 0 {

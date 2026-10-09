@@ -126,13 +126,10 @@ func TestRecordRevisions(t *testing.T) {
 				}
 			}
 
-			if u := readUser(
-				t,
-				db,
-				id,
-			); u.Revision != len(tt.want) ||
-				u.FirstName != tt.want[len(tt.want)-1].FirstName ||
-				u.LanguageCode != tt.want[len(tt.want)-1].LanguageCode {
+			last := tt.want[len(tt.want)-1]
+
+			u := readUser(t, db, id)
+			if u.Revision != len(tt.want) || u.FirstName != last.FirstName || u.LanguageCode != last.LanguageCode {
 				t.Errorf("user row = %+v; want the latest revision %d", u, len(tt.want))
 			}
 		})
