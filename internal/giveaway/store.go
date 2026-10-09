@@ -26,6 +26,7 @@ const managed = "(published = true OR cancelled_at IS NOT NULL)"
 const (
 	colPublished  = "published"
 	colEndsAt     = "ends_at"
+	colCancelled  = "cancelled_at"
 	colWinners    = "winners"
 	colButtonText = "button_text"
 )
@@ -45,7 +46,7 @@ func NewStore(db *gorm.DB) *Store {
 func (s *Store) Publish(ctx context.Context, id uint) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
 		Where("id = ? AND published = ?", id, false).
-		Updates(map[string]any{colPublished: true, "cancelled_at": nil})
+		Updates(map[string]any{colPublished: true, colCancelled: nil})
 	if res.Error != nil {
 		return fmt.Errorf("publish giveaway %d: %w", id, res.Error)
 	}
@@ -202,7 +203,7 @@ func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winn
 func (s *Store) Cancel(ctx context.Context, id uint) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
 		Where("id = ? AND published = ? AND finished_at IS NULL", id, true).
-		Updates(map[string]any{colPublished: false, "cancelled_at": time.Now()})
+		Updates(map[string]any{colPublished: false, colCancelled: time.Now()})
 	if res.Error != nil {
 		return fmt.Errorf("cancel giveaway %d: %w", id, res.Error)
 	}
