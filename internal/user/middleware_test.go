@@ -16,12 +16,14 @@ import (
 
 // fakeRecorder records the calls the middleware makes and fails each one with err.
 type fakeRecorder struct {
-	calls []string
-	err   error
+	calls    []string
+	profiles []user.Profile
+	err      error
 }
 
 func (f *fakeRecorder) Record(_ context.Context, p user.Profile) error {
 	f.calls = append(f.calls, fmt.Sprintf("names %s %s %d", p.FirstName, p.LastName, p.TelegramID))
+	f.profiles = append(f.profiles, p)
 
 	return f.err
 }
@@ -47,7 +49,21 @@ func TestMiddleware(t *testing.T) {
 	group := privateMessage("/giveaway")
 	group.Message.Chat.Type = models.ChatTypeGroup
 
+	asChannel := privateMessage("hello")
+	asChannel.Message.Chat.Type = models.ChatTypeSupergroup
+	asChannel.Message.SenderChat = &models.Chat{ID: -100, Type: models.ChatTypeChannel}
+
+	edited := &models.Update{EditedMessage: privateMessage("/start").Message}
+
 	callback := &models.Update{CallbackQuery: &models.CallbackQuery{
+		From: models.User{ID: 9, FirstName: "Taras"},
+	}}
+
+	blocked := &models.Update{MyChatMember: &models.ChatMemberUpdated{
+		From: models.User{ID: 9, FirstName: "Taras"},
+	}}
+
+	joinRequest := &models.Update{ChatJoinRequest: &models.ChatJoinRequest{
 		From: models.User{ID: 9, FirstName: "Taras"},
 	}}
 
@@ -65,8 +81,13 @@ func TestMiddleware(t *testing.T) {
 			[]string{"names Olena Koval 7", "pending  7"},
 		},
 		{"menu label clears", privateMessage("🌐 Змінити мову"), []string{"names Olena Koval 7", "pending  7"}},
-		{"group message", group, nil},
+		{"group message records only", group, []string{"names Olena Koval 7"}},
+		{"message as a channel", asChannel, nil},
+		{"edited message records only", edited, []string{"names Olena Koval 7"}},
 		{"callback query", callback, []string{"names Taras  9"}},
+		{"bot blocked or added", blocked, []string{"names Taras  9"}},
+		{"join request", joinRequest, []string{"names Taras  9"}},
+		{"no sender", &models.Update{}, nil},
 	}
 
 	for _, tt := range tests {
@@ -97,5 +118,25 @@ func TestMiddlewareStoreError(t *testing.T) {
 
 	if !called {
 		t.Error("next handler not called after a store error")
+	}
+}
+
+func TestMiddlewareRecordsFullProfile(t *testing.T) {
+	from := models.User{
+		ID: 9, IsBot: true, FirstName: "Taras", LastName: "Shevchenko", Username: "kobzar",
+		LanguageCode: "uk", IsPremium: true,
+	}
+	rec := &fakeRecorder{}
+	next := func(context.Context, *bot.Bot, *models.Update) {}
+	update := &models.Update{CallbackQuery: &models.CallbackQuery{From: from}}
+
+	user.Middleware(rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, update)
+
+	want := user.Profile{
+		TelegramID: 9, IsBot: true, FirstName: "Taras", LastName: "Shevchenko", Username: "kobzar",
+		LanguageCode: "uk", IsPremium: true,
+	}
+	if len(rec.profiles) != 1 || rec.profiles[0] != want {
+		t.Errorf("recorded %+v, want %+v", rec.profiles, want)
 	}
 }
