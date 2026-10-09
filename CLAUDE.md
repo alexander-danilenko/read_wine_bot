@@ -18,6 +18,8 @@ The owner reads code well but is not a Go developer. When a change relies on a n
 
 Tools: `brew install go golangci-lint markdownlint-cli2 jq`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
+Config comes only from a `.env` file and environment variables (the bot ships as a Docker container): copy `.env.example` to `.env`. An environment variable overrides the same key in `.env`, and a missing `.env` is fine. `internal/config` loads it with viper and validates it; see Fail fast.
+
 Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
 
 ## Layout
@@ -35,7 +37,7 @@ CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
 ## Dependencies: standard library first
 
 - Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
-- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
+- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`, `github.com/spf13/viper`. Add nothing else without the owner's approval.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
 - Never use `gorm.io/driver/sqlite` or `github.com/mattn/go-sqlite3`: both need CGO.
 - Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators.
@@ -51,6 +53,16 @@ The linter is the style guide: `.golangci.yml` enables every linter except a sho
 - `context.Context` is the first parameter of every function that does I/O. Never store it in a struct.
 - No package-level mutable state and no `init()`.
 - Package names are short, lowercase and singular, and name what the package provides. Never `util`, `common`, `helpers` or `models`.
+
+## Fail fast
+
+A misconfigured bot must not start. Validate first: `main` checks everything it can before the bot handles its first update, and exits with an error that names the problem.
+
+- `internal/config` validates every setting as it loads: required values present, formats and ranges correct. It reports all invalid settings in one error with `errors.Join`, so one run shows every problem.
+- Check each external dependency at startup, not on first use: ping the database, call Telegram `getMe` with the token.
+- No silent defaults for required settings. A setting gets a default only when that default is safe in production.
+- Errors name the setting, never its value, so the bot token and DSN passwords stay out of the logs.
+- Packages return errors; only `main` logs them with `slog.Error` and calls `os.Exit(1)`.
 
 ## SOLID, the Go way
 
