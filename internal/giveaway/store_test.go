@@ -90,7 +90,7 @@ func TestCreateDuplicate(t *testing.T) {
 	}
 }
 
-func TestJoin(t *testing.T) {
+func TestStoreJoin(t *testing.T) {
 	store, conn := newStore(t)
 	ctx := t.Context()
 
