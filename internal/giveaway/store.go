@@ -8,6 +8,8 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
 // ErrNotFound means no giveaway runs on the post.
@@ -29,6 +31,7 @@ const (
 	colCancelled  = "cancelled_at"
 	colWinners    = "winners"
 	colButtonText = "button_text"
+	colFinished   = "finished_at"
 )
 
 // Store reads and writes giveaways and their participants.
@@ -211,6 +214,77 @@ func (s *Store) Cancel(ctx context.Context, id uint) error {
 
 	if res.RowsAffected == 0 {
 		return ErrNotFound
+	}
+
+	return nil
+}
+
+// Due returns the published, unfinished giveaways whose end time is at or before now, soonest
+// end first. Drafts and cancelled giveaways are unpublished, so they are never due.
+func (s *Store) Due(ctx context.Context, now time.Time) ([]Giveaway, error) {
+	var gs []Giveaway
+
+	// The driver binds a time as text with its zone offset and ends_at holds UTC text, so the
+	// comparison is only right for a UTC now.
+	err := s.db.WithContext(ctx).
+		Where("published = ? AND finished_at IS NULL AND ends_at IS NOT NULL AND ends_at <= ?", true, now.UTC()).
+		Order(colEndsAt).Order("id").Find(&gs).Error
+	if err != nil {
+		return nil, fmt.Errorf("list due giveaways: %w", err)
+	}
+
+	return gs, nil
+}
+
+// Candidates returns the users who participate in the giveaway, in the order they joined.
+func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, error) {
+	var us []user.User
+
+	err := s.db.WithContext(ctx).
+		Joins("JOIN giveaway_participants p ON p.user_id = users.telegram_id").
+		Where("p.giveaway_id = ?", giveawayID).
+		Order("p.created_at").Order("p.rowid").Find(&us).Error
+	if err != nil {
+		return nil, fmt.Errorf("list participants of giveaway %d: %w", giveawayID, err)
+	}
+
+	return us, nil
+}
+
+// Finish marks the winners of giveaway id and sets its finish time to now, both or neither.
+// It returns ErrNotFound when the giveaway is no longer due at now: cancelled, finished, or
+// given a later end time since it was found due.
+func (s *Store) Finish(ctx context.Context, id uint, winnerIDs []int64, now time.Time) error {
+	now = now.UTC() // see Due
+
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// The guarded write comes first: SQLite fails a transaction that reads before it writes
+		// while another writer holds the lock.
+		res := tx.Model(&Giveaway{}).
+			Where("id = ? AND published = ? AND finished_at IS NULL AND ends_at <= ?", id, true, now).
+			Update(colFinished, now)
+		if res.Error != nil {
+			return res.Error
+		}
+
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+
+		if len(winnerIDs) == 0 {
+			return nil
+		}
+
+		return tx.Model(&Participant{}).
+			Where("giveaway_id = ? AND user_id IN ?", id, winnerIDs).
+			Update("winner", true).Error
+	})
+	if errors.Is(err, ErrNotFound) {
+		return ErrNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("finish giveaway %d: %w", id, err)
 	}
 
 	return nil
