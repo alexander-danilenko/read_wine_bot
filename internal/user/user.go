@@ -63,18 +63,28 @@ func (s *Store) SaveNames(ctx context.Context, telegramID int64, firstName, last
 	return nil
 }
 
-// TakePendingCommand clears the user's pending command if it equals command, and reports
-// whether it did. It is one conditional update, so when several updates race for one
-// pending command, exactly one of them takes it.
-func (s *Store) TakePendingCommand(ctx context.Context, telegramID int64, command string) (bool, error) {
+// MovePendingCommand changes the user's pending command from to to, and reports whether
+// it did; it does nothing unless the pending command equals from. It is one conditional
+// update, so when several updates race for one step, exactly one of them moves it.
+func (s *Store) MovePendingCommand(ctx context.Context, telegramID int64, from, to string) (bool, error) {
 	res := s.db.WithContext(ctx).Model(&User{}).
-		Where("telegram_id = ? AND pending_command = ?", telegramID, command).
-		Update("pending_command", "")
+		Where("telegram_id = ? AND pending_command = ?", telegramID, from).
+		Update("pending_command", to)
 	if res.Error != nil {
-		return false, fmt.Errorf("take pending command of user %d: %w", telegramID, res.Error)
+		return false, fmt.Errorf("move pending command of user %d: %w", telegramID, res.Error)
 	}
 
 	return res.RowsAffected == 1, nil
+}
+
+// PendingCommand returns the user's pending command, or "" if there is none.
+func (s *Store) PendingCommand(ctx context.Context, telegramID int64) (string, error) {
+	u, err := s.read(ctx, telegramID, "pending_command")
+	if err != nil {
+		return "", fmt.Errorf("read pending command of user %d: %w", telegramID, err)
+	}
+
+	return u.PendingCommand, nil
 }
 
 // SetPendingCommand saves the command waiting for the user's next message; "" clears it.

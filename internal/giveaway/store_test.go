@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -117,5 +118,84 @@ func TestStoreJoin(t *testing.T) {
 
 	if _, err := store.Join(ctx, g.ID, 7_000_000_099); err == nil {
 		t.Error("Join for a user with no users row: err = nil, want a foreign key error")
+	}
+}
+
+func TestDraftSaveReplaces(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	first := &giveaway.Draft{UserID: adminID, ChatID: channelID, MessageID: 1, ChannelTitle: "Old", Winners: 5}
+	if err := store.SaveDraft(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	// A new setup resets every field, so nothing from the abandoned one leaks in.
+	if err := store.SaveDraft(ctx, &giveaway.Draft{UserID: adminID, ChatID: channelID, MessageID: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := store.UpdateDraft(ctx, adminID, map[string]any{"end_date": "2026-10-25", "button_text": "Go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.Draft(ctx, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.MessageID != 2 || got.ChannelTitle != "" || got.Winners != 0 || got.EndDate != "2026-10-25" ||
+		got.ButtonText != "Go" {
+		t.Errorf("draft = %+v; want message 2, fields reset, end date and button text updated", got)
+	}
+}
+
+func TestDraftDelete(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	if _, err := store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Fatalf("Draft before save: err = %v, want ErrNotFound", err)
+	}
+
+	if err := store.SaveDraft(ctx, &giveaway.Draft{UserID: adminID, ChatID: channelID, MessageID: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteDraft(ctx, adminID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
+		t.Errorf("Draft after delete: err = %v, want ErrNotFound", err)
+	}
+
+	if err := store.DeleteDraft(ctx, fanID); err != nil {
+		t.Errorf("DeleteDraft without a draft: %v", err)
+	}
+}
+
+func TestCreateSavesSetupFields(t *testing.T) {
+	store, _ := newStore(t)
+	ctx := t.Context()
+	ends := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
+
+	g := &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 43, CreatedBy: adminID, Language: "uk",
+		EndsAt: &ends, Winners: 3, ButtonText: "Беру участь",
+	}
+	if err := store.Create(ctx, g); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.Find(ctx, channelID, 43)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.EndsAt == nil || !got.EndsAt.Equal(ends) || got.Winners != 3 || got.ButtonText != "Беру участь" ||
+		got.FinishedAt != nil {
+		t.Errorf("found %+v; want ends %v, 3 winners, button text, not finished", got, ends)
 	}
 }

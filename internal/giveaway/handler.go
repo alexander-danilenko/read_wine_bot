@@ -23,7 +23,7 @@ const JoinCallback = "giveaway:join"
 // Users reads a user's saved language and takes their pending command. *user.Store implements it.
 type Users interface {
 	language.Reader
-	TakePendingCommand(ctx context.Context, telegramID int64, command string) (bool, error)
+	MovePendingCommand(ctx context.Context, telegramID int64, from, to string) (bool, error)
 	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
 }
 
@@ -67,7 +67,7 @@ func ForwardHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Lo
 
 		// Taking the pending command ends the wait whatever Start returns, and only one of
 		// several posts forwarded together can take it.
-		took, err := users.TakePendingCommand(ctx, msg.From.ID, Command)
+		took, err := users.MovePendingCommand(ctx, msg.From.ID, Command, "")
 		if err != nil {
 			log.ErrorContext(ctx, "take pending command", "user_id", msg.From.ID, "error", err)
 

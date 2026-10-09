@@ -136,30 +136,53 @@ func TestSetLanguageKeepsNames(t *testing.T) {
 	}
 }
 
-func TestTakePendingCommand(t *testing.T) {
+func TestMovePendingCommand(t *testing.T) {
 	const id int64 = 7_000_000_004
 
 	store, db := newStore(t)
 	ctx := t.Context()
 
-	took, err := store.TakePendingCommand(ctx, id, "giveaway")
-	if err != nil || took {
-		t.Fatalf("unknown user: TakePendingCommand = %v, %v; want false, nil", took, err)
+	moved, err := store.MovePendingCommand(ctx, id, "giveaway:post", "giveaway:end_date")
+	if err != nil || moved {
+		t.Fatalf("unknown user: MovePendingCommand = %v, %v; want false, nil", moved, err)
 	}
 
-	if err = store.SetPendingCommand(ctx, id, "giveaway"); err != nil {
+	if err = store.SetPendingCommand(ctx, id, "giveaway:end_date"); err != nil {
 		t.Fatal(err)
 	}
 
-	// Two forwards race for one /giveaway: only the first may take it.
+	if moved, err = store.MovePendingCommand(ctx, id, "giveaway:winners", ""); err != nil || moved {
+		t.Errorf("move from a step the user is not at = %v, %v; want false, nil", moved, err)
+	}
+
+	// Two updates race for one step: only the first may move it.
 	for i, want := range []bool{true, false} {
-		took, err := store.TakePendingCommand(ctx, id, "giveaway")
-		if err != nil || took != want {
-			t.Errorf("take #%d = %v, %v; want %v, nil", i+1, took, err, want)
+		moved, err := store.MovePendingCommand(ctx, id, "giveaway:end_date", "giveaway:end_time")
+		if err != nil || moved != want {
+			t.Errorf("move #%d = %v, %v; want %v, nil", i+1, moved, err, want)
 		}
 	}
 
-	if got := readUser(t, db, id); got.PendingCommand != "" {
-		t.Errorf("after take: pending command = %q, want \"\"", got.PendingCommand)
+	if got := readUser(t, db, id); got.PendingCommand != "giveaway:end_time" {
+		t.Errorf("after move: pending command = %q, want giveaway:end_time", got.PendingCommand)
+	}
+}
+
+func TestPendingCommand(t *testing.T) {
+	const id int64 = 7_000_000_005
+
+	store, _ := newStore(t)
+	ctx := t.Context()
+
+	if got, err := store.PendingCommand(ctx, id); err != nil || got != "" {
+		t.Errorf("unknown user: PendingCommand = %q, %v; want \"\", nil", got, err)
+	}
+
+	if err := store.SetPendingCommand(ctx, id, "giveaway:winners"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := store.PendingCommand(ctx, id); err != nil || got != "giveaway:winners" {
+		t.Errorf("PendingCommand = %q, %v; want giveaway:winners, nil", got, err)
 	}
 }

@@ -68,3 +68,48 @@ func (s *Store) Join(ctx context.Context, giveawayID uint, telegramID int64) (bo
 
 	return res.RowsAffected == 1, nil
 }
+
+// SaveDraft saves d as the user's draft, replacing every field of an earlier one.
+func (s *Store) SaveDraft(ctx context.Context, d *Draft) error {
+	res := s.db.WithContext(ctx).Omit(clause.Associations).Clauses(clause.OnConflict{UpdateAll: true}).Create(d)
+	if res.Error != nil {
+		return fmt.Errorf("save giveaway draft of user %d: %w", d.UserID, res.Error)
+	}
+
+	return nil
+}
+
+// Draft returns the user's draft, or ErrNotFound.
+func (s *Store) Draft(ctx context.Context, userID int64) (Draft, error) {
+	var d Draft
+
+	err := s.db.WithContext(ctx).Take(&d, "user_id = ?", userID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Draft{}, ErrNotFound
+	}
+
+	if err != nil {
+		return Draft{}, fmt.Errorf("read giveaway draft of user %d: %w", userID, err)
+	}
+
+	return d, nil
+}
+
+// UpdateDraft sets columns of the user's draft; columns maps column names to values.
+func (s *Store) UpdateDraft(ctx context.Context, userID int64, columns map[string]any) error {
+	err := s.db.WithContext(ctx).Model(&Draft{}).Where("user_id = ?", userID).Updates(columns).Error
+	if err != nil {
+		return fmt.Errorf("update giveaway draft of user %d: %w", userID, err)
+	}
+
+	return nil
+}
+
+// DeleteDraft deletes the user's draft. A user without one is not an error.
+func (s *Store) DeleteDraft(ctx context.Context, userID int64) error {
+	if err := s.db.WithContext(ctx).Delete(&Draft{}, "user_id = ?", userID).Error; err != nil {
+		return fmt.Errorf("delete giveaway draft of user %d: %w", userID, err)
+	}
+
+	return nil
+}
