@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -9,7 +10,9 @@ import (
 )
 
 func main() {
-	if _, err := config.Load(); err != nil {
+	ctx := context.Background()
+
+	if _, err := config.Load(ctx, "."); err != nil {
 		slog.Error("load config", "error", err)
 		os.Exit(1)
 	}

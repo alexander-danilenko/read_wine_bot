@@ -1,7 +1,8 @@
-// Package config loads the bot's settings from environment variables.
+// Package config loads the bot's settings from environment variables and .env files.
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,7 +10,7 @@ import (
 )
 
 var (
-	// ErrMissingToken means the environment does not set TELEGRAM_BOT_TOKEN.
+	// ErrMissingToken means neither the environment nor any .env file sets TELEGRAM_BOT_TOKEN.
 	ErrMissingToken = errors.New("TELEGRAM_BOT_TOKEN is not set")
 	// ErrInvalidToken means TELEGRAM_BOT_TOKEN does not have the <bot id>:<secret> form @BotFather issues.
 	ErrInvalidToken = errors.New("TELEGRAM_BOT_TOKEN is malformed, want <bot id>:<secret> from @BotFather")
@@ -23,9 +24,24 @@ type Config struct {
 	TelegramBotToken string
 }
 
-// Load reads settings from environment variables and validates them.
-func Load() (Config, error) {
-	cfg := Config{TelegramBotToken: os.Getenv("TELEGRAM_BOT_TOKEN")}
+// Load reads settings and validates them. Each setting comes from its environment variable when
+// that is non-empty, otherwise from the .env files in dir and its parent directories, where the
+// file nearest to dir wins.
+func Load(ctx context.Context, dir string) (Config, error) {
+	dotenv, err := readDotenvChain(ctx, dir)
+	if err != nil {
+		return Config{}, err
+	}
+
+	get := func(key string) string {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+
+		return dotenv[key]
+	}
+
+	cfg := Config{TelegramBotToken: get("TELEGRAM_BOT_TOKEN")}
 	if err := cfg.validate(); err != nil {
 		return Config{}, fmt.Errorf("invalid config: %w", err)
 	}

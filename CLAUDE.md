@@ -18,7 +18,7 @@ The owner reads code well but is not a Go developer. When a change relies on a n
 
 Tools: `brew install go golangci-lint markdownlint-cli2 jq`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
-Config comes only from environment variables (the bot ships as a Docker container); `internal/config` reads them with `os.Getenv` and validates them, see Fail fast. The bot never reads `.env` itself: copy `.env.example` to `.env`, then pass it with `docker run --env-file .env`, Compose `env_file:`, or locally `set -a; . ./.env; set +a` before `go run ./cmd/bot`.
+Config comes only from environment variables and `.env` files (the bot ships as a Docker container): copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result, see Fail fast. A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot. In Docker, pass settings with `docker run --env-file .env` or Compose `env_file:`.
 
 Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
 
