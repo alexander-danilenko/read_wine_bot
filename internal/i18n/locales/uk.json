@@ -1,0 +1,6 @@
+{
+  "$schema": "../schema.json",
+  "greeting": "Привіт! Я бот каналу @read_wine.",
+  "language.prompt": "Оберіть мову:",
+  "language.selected": "Мову обрано: %[1]s"
+}

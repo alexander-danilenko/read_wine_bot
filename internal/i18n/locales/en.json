@@ -1,6 +1,6 @@
 {
   "$schema": "../schema.json",
-  "giveaway.winner": "Giveaway winner: %[1]s 🎉",
   "greeting": "Hi! I'm the @read_wine bot.",
-  "spam.removed": "%[1]s, your message was removed as spam."
+  "language.prompt": "Choose your language:",
+  "language.selected": "Language selected: %[1]s"
 }

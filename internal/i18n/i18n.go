@@ -22,9 +22,9 @@ type Key string
 // Texts the bot sends. Placeholders use fmt's indexed verbs (%[1]s) so a translation can
 // reorder them.
 const (
-	Greeting       Key = "greeting"
-	GiveawayWinner Key = "giveaway.winner"
-	SpamRemoved    Key = "spam.removed"
+	Greeting         Key = "greeting"
+	LanguagePrompt   Key = "language.prompt"
+	LanguageSelected Key = "language.selected"
 )
 
 // ErrMissingDefault means locales/ has no file for DefaultLang.
@@ -118,7 +118,7 @@ func requiredKeys() ([]Key, error) {
 }
 
 // Text returns the text for key in lang, with args filled in the way fmt.Sprintf does.
-// lang is a Telegram language_code such as "ru" or "en-US"; a language without a locale
+// lang is a Telegram language_code such as "uk" or "en-US"; a language without a locale
 // file falls back to DefaultLang.
 func (c *Catalog) Text(lang string, key Key, args ...any) string {
 	base, _, _ := strings.Cut(lang, "-")
