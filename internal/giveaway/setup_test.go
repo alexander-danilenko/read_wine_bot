@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
@@ -14,7 +16,9 @@ import (
 // setup is a Service on real stores with a fake Telegram and a clock the test moves.
 type setup struct {
 	svc   *giveaway.Service
+	ed    *giveaway.Editor
 	store *giveaway.Store
+	db    *gorm.DB
 	users *user.Store
 	tg    *fakeTelegram
 	now   time.Time
@@ -34,7 +38,7 @@ func newSetup(t *testing.T) *setup {
 	}
 
 	store, conn := newStore(t)
-	s := &setup{store: store, users: user.NewStore(conn), tg: &fakeTelegram{admin: true}}
+	s := &setup{store: store, db: conn, users: user.NewStore(conn), tg: &fakeTelegram{admin: true}}
 	s.now = time.Date(2026, 10, 9, 19, 55, 0, 0, kyiv)
 	s.svc = giveaway.NewService(
 		store,
@@ -45,6 +49,7 @@ func newSetup(t *testing.T) *setup {
 		func() time.Time { return s.now },
 		slog.New(slog.DiscardHandler),
 	)
+	s.ed = giveaway.NewEditor(s.svc, store, store)
 
 	return s
 }

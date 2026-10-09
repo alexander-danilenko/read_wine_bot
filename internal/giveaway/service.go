@@ -138,6 +138,14 @@ func (s *Service) checkPost(ctx context.Context, tg Telegram, adminID, chatID, m
 		return Failed, false
 	}
 
+	return s.checkAdmin(ctx, tg, adminID, chatID)
+}
+
+// checkAdmin checks that the admin is an admin of the channel and that the bot may edit its
+// posts. It returns the failed outcome and false, or Created and true when both hold.
+func (s *Service) checkAdmin(ctx context.Context, tg Telegram, adminID, chatID int64) (StartResult, bool) {
+	log := s.log.With("chat_id", chatID, "user_id", adminID)
+
 	isAdmin, err := tg.IsChannelAdmin(ctx, chatID, adminID)
 	if err != nil {
 		log.WarnContext(ctx, "check channel admin", "error", err)

@@ -1,0 +1,432 @@
+package giveaway_test
+
+import (
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
+	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+)
+
+// kyivTime returns the moment in Kyiv as a pointer for Giveaway.EndsAt.
+func (s *setup) kyivTime(day, hour, minute int) *time.Time {
+	t := time.Date(2026, 10, day, hour, minute, 0, 0, s.now.Location()).UTC()
+
+	return &t
+}
+
+// menu is the Reply.Next that shows the field menu of giveaway id.
+func menu(id uint) string { return "edit:menu:" + strconv.FormatUint(uint64(id), 10) }
+
+// open publishes g for the admin and opens its field menu, as a forward through the edit
+// button does.
+func (s *setup) open(t *testing.T, g *giveaway.Giveaway) giveaway.Giveaway {
+	t.Helper()
+
+	p := publish(t, s.store, g)
+	s.forwardEdit(t, p.ID)
+
+	return p
+}
+
+func (s *setup) forwardEdit(t *testing.T, id uint) {
+	t.Helper()
+
+	ctx := t.Context()
+	if err := s.ed.BeginEdit(ctx, adminID); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := s.ed.ForwardEdit(ctx, s.tg, adminID, channelID, 42); r.Next != menu(id) || r.Notice != "" {
+		t.Fatalf("ForwardEdit = %+v, want the menu of %d", r, id)
+	}
+}
+
+// change taps the field button of giveaway id and sends value.
+func (s *setup) change(t *testing.T, id uint, field, value string) giveaway.Reply {
+	t.Helper()
+
+	r := s.ed.Field(t.Context(), s.tg, adminID, id, field)
+	if r.Next == "" || r.Notice != "" {
+		t.Fatalf("Field(%s) = %+v, want its prompt", field, r)
+	}
+
+	return s.ed.Value(t.Context(), s.tg, adminID, r.Next, value)
+}
+
+func (s *setup) read(t *testing.T, id uint) giveaway.Giveaway {
+	t.Helper()
+
+	g, err := s.store.ByID(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return g
+}
+
+func TestEditForwardChecks(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, s *setup)
+		want    i18n.Key
+	}{
+		{name: "no giveaway", prepare: func(*testing.T, *setup) {}, want: i18n.EditNotFound},
+		{
+			name: "only a draft",
+			prepare: func(t *testing.T, s *setup) {
+				t.Helper()
+
+				g := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID}
+				if err := s.store.SaveDraft(t.Context(), g); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: i18n.EditNotFound,
+		},
+		{
+			name: "another admin's giveaway",
+			prepare: func(t *testing.T, s *setup) {
+				t.Helper()
+				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
+			},
+			want: i18n.EditNotYours,
+		},
+		{
+			name: "finished",
+			prepare: func(t *testing.T, s *setup) {
+				t.Helper()
+
+				g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+				if err := s.db.Model(&g).Update("finished_at", time.Now()).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: i18n.EditFinished,
+		},
+		{
+			name: "not an admin any more",
+			prepare: func(t *testing.T, s *setup) {
+				t.Helper()
+				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+				s.tg.admin = false
+			},
+			want: i18n.EditNotAdmin,
+		},
+		{
+			name: "bot cannot edit",
+			prepare: func(t *testing.T, s *setup) {
+				t.Helper()
+				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+				s.tg.noEdit = true
+			},
+			want: i18n.EditNoRights,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSetup(t)
+			ctx := t.Context()
+			tt.prepare(t, s)
+
+			if err := s.ed.BeginEdit(ctx, adminID); err != nil {
+				t.Fatal(err)
+			}
+
+			if r := s.ed.ForwardEdit(ctx, s.tg, adminID, channelID, 42); r.Notice != tt.want || r.Next != "" {
+				t.Errorf("ForwardEdit = %+v, want notice %q and the edit ended", r, tt.want)
+			}
+
+			if step := s.step(t); step != "" {
+				t.Errorf("step = %q, want it cleared", step)
+			}
+		})
+	}
+}
+
+func TestEditWinners(t *testing.T) {
+	s := newSetup(t)
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
+
+	if r := s.change(t, g.ID, giveaway.FieldWinners, "3"); r != (giveaway.Reply{Next: menu(g.ID)}) {
+		t.Errorf("Value = %+v, want the menu again", r)
+	}
+
+	if got := s.read(t, g.ID); got.Winners != 3 || got.ButtonText != "Go" {
+		t.Errorf("giveaway = %+v, want 3 winners and the same text", got)
+	}
+
+	if s.tg.attached != 0 || s.step(t) != "" {
+		t.Errorf("attached %d, step %q; want no post edit and no step", s.tg.attached, s.step(t))
+	}
+}
+
+func TestEditEndTime(t *testing.T) {
+	s := newSetup(t)
+
+	tests := []struct {
+		name        string
+		ends        *time.Time
+		field, in   string
+		want        *time.Time
+		wantNotice  i18n.Key
+		wantMessage int64
+	}{
+		{
+			name: "date keeps the time", ends: s.kyivTime(20, 19, 0),
+			field: giveaway.FieldEndDate, in: "2026-10-25", want: s.kyivTime(25, 19, 0),
+		},
+		{
+			name: "time keeps the date", ends: s.kyivTime(20, 19, 0),
+			field: giveaway.FieldEndTime, in: "18:30", want: s.kyivTime(20, 18, 30),
+		},
+		{
+			name:  "date without an end time takes 19:00",
+			field: giveaway.FieldEndDate, in: "2026-10-25", want: s.kyivTime(25, 19, 0),
+		},
+		{
+			// A due giveaway gets a new future end and runs again.
+			name: "date of a due giveaway", ends: s.kyivTime(8, 19, 0),
+			field: giveaway.FieldEndDate, in: "2026-10-10", want: s.kyivTime(10, 19, 0),
+		},
+		{
+			name: "today at a passed time", ends: s.kyivTime(20, 19, 0),
+			field: giveaway.FieldEndDate, in: "2026-10-09", want: s.kyivTime(20, 19, 0),
+			wantNotice: i18n.GiveawayDateInPast,
+		},
+		{
+			name: "passed time", ends: s.kyivTime(9, 21, 0),
+			field: giveaway.FieldEndTime, in: "19:00", want: s.kyivTime(9, 21, 0),
+			wantNotice: i18n.GiveawayTimeInPast,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSetup(t)
+			g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: tt.ends})
+
+			r := s.change(t, g.ID, tt.field, tt.in)
+			if r.Notice != tt.wantNotice {
+				t.Errorf("Value = %+v, want notice %q", r, tt.wantNotice)
+			}
+
+			got := s.read(t, g.ID)
+			if got.EndsAt == nil || !got.EndsAt.Equal(*tt.want) {
+				t.Errorf("ends = %v, want %v", got.EndsAt, tt.want)
+			}
+
+			if tt.wantNotice != "" && s.step(t) != r.Next {
+				t.Errorf("step = %q, want it kept at %q", s.step(t), r.Next)
+			}
+
+			if tt.wantNotice == "" && got.State(s.now) != giveaway.Active {
+				t.Errorf("state = %v, want active", got.State(s.now))
+			}
+		})
+	}
+}
+
+func TestEditButtonText(t *testing.T) {
+	s := newSetup(t)
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
+
+	s.tg.attachErr = errBoom
+	if r := s.change(t, g.ID, giveaway.FieldButtonText, "Join"); r.Notice != i18n.EditNoRights {
+		t.Errorf("Value with no edit right = %+v, want the no-rights notice", r)
+	}
+
+	if got := s.read(t, g.ID); got.ButtonText != "Go" {
+		t.Errorf("text after a failed post edit = %q, want Go", got.ButtonText)
+	}
+
+	s.tg.attachErr = nil
+	if r := s.change(t, g.ID, giveaway.FieldButtonText, "Join"); r != (giveaway.Reply{Next: menu(g.ID)}) {
+		t.Errorf("Value = %+v, want the menu again", r)
+	}
+
+	if got := s.read(t, g.ID); got.ButtonText != "Join" || s.tg.label != "Join" {
+		t.Errorf("text = %q, post label %q; want Join on both", got.ButtonText, s.tg.label)
+	}
+}
+
+func TestEditButtonTextOfCancelled(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
+
+	if err := s.store.Cancel(ctx, g.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := s.change(t, g.ID, giveaway.FieldButtonText, "Join"); r != (giveaway.Reply{Next: menu(g.ID)}) {
+		t.Errorf("Value = %+v, want the menu again", r)
+	}
+
+	if got := s.read(t, g.ID); got.ButtonText != "Join" || s.tg.attached != 0 {
+		t.Errorf("text %q, attached %d; want Join saved and no button on the post", got.ButtonText, s.tg.attached)
+	}
+}
+
+func TestEditValueWithoutStep(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+
+	r := s.ed.Field(ctx, s.tg, adminID, g.ID, giveaway.FieldWinners)
+
+	// A menu press clears the pending command.
+	if err := s.users.SetPendingCommand(ctx, adminID, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := s.ed.Value(ctx, s.tg, adminID, r.Next, "3"); !got.Stale {
+		t.Errorf("Value after a menu press = %+v, want stale", got)
+	}
+
+	if s.read(t, g.ID).Winners == 3 {
+		t.Error("winners saved after the wait stopped")
+	}
+}
+
+// cancelOpen opens the menu of a published giveaway with a participant and cancels it.
+func (s *setup) cancelOpen(t *testing.T) giveaway.Giveaway {
+	t.Helper()
+
+	ctx := t.Context()
+	g := s.open(t, &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go", EndsAt: s.kyivTime(20, 19, 0),
+	})
+
+	if _, err := s.store.Join(ctx, g.ID, fanID); err != nil {
+		t.Fatal(err)
+	}
+
+	wantAsk := "edit:cancel:" + strconv.FormatUint(uint64(g.ID), 10)
+	if r := s.ed.AskCancel(ctx, s.tg, adminID, g.ID); r.Next != wantAsk {
+		t.Errorf("AskCancel = %+v, want the confirmation", r)
+	}
+
+	want := giveaway.Reply{Notice: i18n.EditCancelled, Next: menu(g.ID)}
+	if r := s.ed.Cancel(ctx, s.tg, s.tg, adminID, g.ID); r != want {
+		t.Errorf("Cancel = %+v, want cancelled and the menu", r)
+	}
+
+	return g
+}
+
+func TestEditCancel(t *testing.T) {
+	s := newSetup(t)
+	g := s.cancelOpen(t)
+
+	if got := s.read(t, g.ID); got.Published || s.tg.removed != 1 {
+		t.Errorf("published %v, removed %d; want cancelled and the button removed", got.Published, s.tg.removed)
+	}
+
+	if r := s.ed.Cancel(t.Context(), s.tg, s.tg, adminID, g.ID); !r.Stale || s.tg.removed != 1 {
+		t.Errorf("second Cancel = %+v, removed %d; want stale and no second removal", r, s.tg.removed)
+	}
+}
+
+func TestEditRestore(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.cancelOpen(t)
+
+	want := giveaway.Reply{Notice: i18n.EditRestored, Next: menu(g.ID)}
+	if r := s.ed.Restore(ctx, s.tg, adminID, g.ID); r != want {
+		t.Errorf("Restore = %+v, want restored and the menu", r)
+	}
+
+	if got := s.read(t, g.ID); !got.Published || s.tg.label != "Go" {
+		t.Errorf("published %v, label %q; want published with the stored text", got.Published, s.tg.label)
+	}
+
+	if added, err := s.store.Join(ctx, g.ID, fanID); err != nil || added {
+		t.Errorf("Join after restore = %v, %v; want the participant kept", added, err)
+	}
+}
+
+func TestEditRestoreAfterEnd(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.open(
+		t,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: s.kyivTime(8, 19, 0)},
+	)
+
+	if err := s.store.Cancel(ctx, g.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := s.ed.Restore(ctx, s.tg, adminID, g.ID); r.Notice != i18n.EditEndPassed || r.Next != menu(g.ID) {
+		t.Errorf("Restore = %+v, want the end-passed notice and the menu", r)
+	}
+
+	if got := s.read(t, g.ID); got.Published || s.tg.attached != 0 {
+		t.Errorf("published %v, attached %d; want nothing published", got.Published, s.tg.attached)
+	}
+}
+
+func TestEditStop(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+
+	if err := s.ed.BeginEdit(ctx, adminID); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := s.ed.Stop(ctx, adminID); r != (giveaway.Reply{Notice: i18n.EditStopped}) || s.step(t) != "" {
+		t.Errorf("Stop at the forward = %+v, step %q; want stopped and no step", r, s.step(t))
+	}
+
+	g := s.open(t, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	s.ed.Field(ctx, s.tg, adminID, g.ID, giveaway.FieldWinners)
+
+	if r := s.ed.Stop(ctx, adminID); r != (giveaway.Reply{Next: menu(g.ID)}) || s.step(t) != "" {
+		t.Errorf("Stop at a field = %+v, step %q; want the menu and no step", r, s.step(t))
+	}
+
+	if r := s.ed.Stop(ctx, adminID); !r.Stale {
+		t.Errorf("Stop with no edit = %+v, want stale", r)
+	}
+}
+
+func TestEditList(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+
+	if got, err := s.ed.List(ctx, adminID, "en"); err != nil || got != "You have no running giveaways." {
+		t.Errorf("empty List = %q, %v", got, err)
+	}
+
+	publish(
+		t,
+		s.store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID, EndsAt: s.kyivTime(25, 19, 0)},
+	)
+	publish(
+		t,
+		s.store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: s.kyivTime(8, 19, 0)},
+	)
+
+	gone := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 43, CreatedBy: adminID})
+	if err := s.store.Cancel(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ed.List(ctx, adminID, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "Your running giveaways:\n\n" +
+		"https://t.me/c/1234567890/42 — ends 2026-10-08 19:00, awaiting results\n" +
+		"https://t.me/c/1234567890/41 — ends 2026-10-25 19:00"
+	if got != want {
+		t.Errorf("List = %q, want %q", got, want)
+	}
+}
