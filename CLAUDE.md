@@ -63,6 +63,7 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - Check each external dependency at startup, not on first use: ping the database, call Telegram `getMe` with the token.
 - No silent defaults for required settings. A setting gets a default only when that default is safe in production.
 - Errors name the setting, never its value, so the bot token and DSN passwords stay out of the logs.
+- Never log `DB_DSN` or any part of it. Database drivers echo the DSN in some errors (pgx does on a parse failure and masks only a password in the URL's user part), so every driver error leaves `internal/db` through `redact`, which masks the DSN and each `password=` value.
 - Packages return errors; only `main` logs them with `slog.Error` and calls `os.Exit(1)`.
 
 ## SOLID, the Go way
