@@ -135,19 +135,13 @@ func TestDraftSaveReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := store.UpdateDraft(ctx, adminID, map[string]any{"end_date": "2026-10-25", "button_text": "Go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	got, err := store.Draft(ctx, adminID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if got.MessageID != 2 || got.ChannelTitle != "" || got.Winners != 0 || got.EndDate != "2026-10-25" ||
-		got.ButtonText != "Go" {
-		t.Errorf("draft = %+v; want message 2, fields reset, end date and button text updated", got)
+	if got.MessageID != 2 || got.ChannelTitle != "" || got.Winners != 0 {
+		t.Errorf("draft = %+v; want message 2 with every other field reset", got)
 	}
 }
 

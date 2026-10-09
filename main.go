@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
+	_ "time/tzdata" // embeds the time zone database for Europe/Kyiv
 
 	"github.com/go-telegram/bot"
 	"gorm.io/gorm"
@@ -45,6 +47,13 @@ func run() error {
 		return fmt.Errorf("load translations: %w", err)
 	}
 
+	// Giveaway end times are in Kyiv time. The time/tzdata import embeds the zone database,
+	// so this works in a container without /usr/share/zoneinfo.
+	kyiv, err := time.LoadLocation("Europe/Kyiv")
+	if err != nil {
+		return fmt.Errorf("load Kyiv time zone: %w", err)
+	}
+
 	// An unreachable database or a failed migration stops the bot here.
 	conn, err := db.Open(ctx, cfg.DBPath)
 	if err != nil {
@@ -60,7 +69,7 @@ func run() error {
 	log := slog.Default()
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	b, err := bot.New(cfg.TelegramBotToken, handlers(conn, texts, log)...)
+	b, err := bot.New(cfg.TelegramBotToken, handlers(conn, texts, kyiv, log)...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
@@ -73,9 +82,10 @@ func run() error {
 }
 
 // handlers wires every update the bot handles to the package that handles it.
-func handlers(conn *gorm.DB, texts *i18n.Catalog, log *slog.Logger) []bot.Option {
+func handlers(conn *gorm.DB, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger) []bot.Option {
 	users := user.NewStore(conn)
-	giveaways := giveaway.NewService(giveaway.NewStore(conn), texts, log)
+	store := giveaway.NewStore(conn)
+	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
 
 	return slices.Concat([]bot.Option{
 		// Runs before every handler: keeps users' names current and leaves any unfinished

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
@@ -43,6 +44,14 @@ func (f *fakeStore) Create(_ context.Context, g *giveaway.Giveaway) error {
 	return nil
 }
 
+func (*fakeStore) SaveDraft(context.Context, *giveaway.Draft) error { return nil }
+
+func (*fakeStore) Draft(context.Context, int64) (giveaway.Draft, error) {
+	return giveaway.Draft{}, giveaway.ErrNotFound
+}
+
+func (*fakeStore) DeleteDraft(context.Context, int64) error { return nil }
+
 func (f *fakeStore) Join(_ context.Context, _ uint, telegramID int64) (bool, error) {
 	if f.failOn == "join" {
 		return false, errBoom
@@ -58,17 +67,24 @@ func (f *fakeStore) Join(_ context.Context, _ uint, telegramID int64) (bool, err
 	return added, nil
 }
 
-// fakeTelegram answers the admin check and records the attached button label.
+// fakeTelegram answers the admin and rights checks and records the attached button label.
 type fakeTelegram struct {
-	admin     bool
-	adminErr  error
-	attachErr error
-	label     string
+	admin       bool
+	adminErr    error
+	noEdit      bool // the bot may not edit the channel's posts
+	attachErr   error
+	label       string
+	adminChecks int
+	attached    int
 }
 
 func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, error) {
+	f.adminChecks++
+
 	return f.admin, f.adminErr
 }
+
+func (f *fakeTelegram) CanEditPosts(context.Context, int64) (bool, error) { return !f.noEdit, nil }
 
 func (f *fakeTelegram) AttachButton(_ context.Context, _, _ int64, label string) error {
 	if f.attachErr != nil {
@@ -76,6 +92,7 @@ func (f *fakeTelegram) AttachButton(_ context.Context, _, _ int64, label string)
 	}
 
 	f.label = label
+	f.attached++
 
 	return nil
 }
@@ -88,7 +105,7 @@ func newService(t *testing.T, store *fakeStore) *giveaway.Service {
 		t.Fatal(err)
 	}
 
-	return giveaway.NewService(store, texts, slog.New(slog.DiscardHandler))
+	return giveaway.NewService(store, store, nil, texts, time.UTC, time.Now, slog.New(slog.DiscardHandler))
 }
 
 func TestStart(t *testing.T) {
