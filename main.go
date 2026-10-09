@@ -89,8 +89,8 @@ func handlers(conn *gorm.DB, texts *i18n.Catalog, kyiv *time.Location, log *slog
 	editor := giveaway.NewEditor(giveaways, store, store)
 
 	return slices.Concat([]bot.Option{
-		// Runs before every handler: keeps users' names current and leaves any unfinished
-		// setup on a command or menu button.
+		// Runs before every handler: records every sender's profile and its revisions, and
+		// leaves any unfinished setup on a command or menu button.
 		bot.WithMiddlewares(user.Middleware(users, menu.IsLabel(texts), log)),
 		bot.WithMessageTextHandler(
 			greeting.Command,
