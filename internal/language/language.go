@@ -120,6 +120,8 @@ func UserLanguage(ctx context.Context, store Reader, log *slog.Logger, from *mod
 	saved, err := store.Language(ctx, from.ID)
 	if err != nil {
 		log.ErrorContext(ctx, "read language", "user_id", from.ID, "error", err)
+
+		return from.LanguageCode
 	}
 
 	if saved != "" {
