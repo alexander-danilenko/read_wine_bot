@@ -64,7 +64,7 @@ func TestOpenForeignKeys(t *testing.T) {
 	for table, want := range map[string][]string{
 		"users":                 nil,
 		"giveaways":             {"REFERENCES `users`"},
-		"giveaway_participants": {"REFERENCES `users`", "REFERENCES `giveaways`"},
+		"giveaway_participants": {"FOREIGN KEY (`user_id`) REFERENCES `users`", "REFERENCES `giveaways`"},
 	} {
 		var ddl string
 		if err := conn.Raw("SELECT sql FROM sqlite_master WHERE name = ?", table).Scan(&ddl).Error; err != nil {

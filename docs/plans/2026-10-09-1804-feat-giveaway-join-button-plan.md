@@ -93,16 +93,16 @@ The schema is part of the decision, so it is recorded here. Columns are only add
 | `giveaways` | `language` | text, not null | locale of the button and popups |
 | `giveaways` | `created_at`, `updated_at` | time | |
 | `giveaway_participants` | `giveaway_id` | integer, FK → `giveaways.id` | composite PK part 1 |
-| `giveaway_participants` | `telegram_id` | int64, FK → `users.telegram_id` | composite PK part 2 |
+| `giveaway_participants` | `user_id` | int64, FK → `users.telegram_id` | composite PK part 2 |
 | `giveaway_participants` | `created_at` | time | when the user joined |
 
 - `giveaways` has a unique index on `(chat_id, message_id)`. Telegram numbers posts per channel, so `message_id` alone is not unique; the index also blocks a duplicate under a race (R9).
-- The composite primary key `(giveaway_id, telegram_id)` enforces one participant per giveaway (R12).
+- The composite primary key `(giveaway_id, user_id)` enforces one participant per giveaway (R12).
 
 ```mermaid
 erDiagram
   users ||--o{ giveaways : "created_by"
-  users ||--o{ giveaway_participants : "telegram_id"
+  users ||--o{ giveaway_participants : "user_id"
   giveaways ||--o{ giveaway_participants : "giveaway_id"
 ```
 
@@ -292,7 +292,7 @@ internal/user/
 - **Dependencies:** U1.
 - **Files:** `internal/giveaway/giveaway.go`, `internal/giveaway/store.go`, `internal/giveaway/store_test.go`, `internal/db/db.go`, `internal/db/db_test.go`.
 - **Approach:**
-  1. Define `Giveaway` and `Participant` per the Data model, with the unique index on `(chat_id, message_id)`, the composite primary key, and foreign keys to `users.telegram_id` and `giveaways.id`. Name the Go field for a user key differently from `User.TelegramID` (for example `UserID` mapped to column `telegram_id`, with an association tagged `foreignKey:UserID;references:TelegramID`; likewise `CreatedBy` on `Giveaway`). A field named `TelegramID` that is also a primary key makes GORM read the association as users → participants and put the foreign key on `users`, which breaks every later write to `users`.
+  1. Define `Giveaway` and `Participant` per the Data model, with the unique index on `(chat_id, message_id)`, the composite primary key, and foreign keys to `users.telegram_id` and `giveaways.id`. Name the Go field for a user key differently from `User.TelegramID` (for example `UserID`, column `user_id`, with an association tagged `foreignKey:UserID;references:TelegramID`; likewise `CreatedBy` on `Giveaway`). A field named `TelegramID` that is also a primary key makes GORM read the association as users → participants and put the foreign key on `users`, which breaks every later write to `users`.
   2. Store: find by `(chat_id, message_id)` returning a not-found sentinel error; create returning a sentinel error on unique conflict; join inserting with `ON CONFLICT DO NOTHING` and reporting whether a row was added (KTD6).
   3. Add both models to `AutoMigrate` in `internal/db/db.go` after `user.User`.
 - **Patterns to follow:** `internal/user/user.go` for store shape and error wrapping; sentinel errors compared with `errors.Is` per `CLAUDE.md`.

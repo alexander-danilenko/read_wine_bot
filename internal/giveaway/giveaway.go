@@ -26,9 +26,10 @@ type Giveaway struct {
 type Participant struct {
 	GiveawayID uint     `gorm:"primaryKey;autoIncrement:false"`
 	Giveaway   Giveaway // declares the foreign key from giveaway_id to giveaways; never loaded
-	// UserID is named differently from user.User.TelegramID on purpose: with the same name,
-	// GORM reads the link backwards and puts the foreign key on the users table.
-	UserID    int64     `gorm:"column:telegram_id;primaryKey;autoIncrement:false"`
+	// UserID (column user_id) holds the participant's users.telegram_id. It must not be named
+	// TelegramID: with the same name, GORM reads the link backwards and puts the foreign key
+	// on the users table.
+	UserID    int64     `gorm:"primaryKey;autoIncrement:false"`
 	User      user.User `gorm:"foreignKey:UserID;references:TelegramID"` // declares the foreign key; never loaded
 	CreatedAt time.Time
 }
