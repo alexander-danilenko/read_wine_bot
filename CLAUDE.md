@@ -38,7 +38,7 @@ CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
 ## Dependencies: standard library first
 
 - Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
-- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
+- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
 - Never use `gorm.io/driver/sqlite` or `github.com/mattn/go-sqlite3`: both need CGO.
 - Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators.
@@ -62,8 +62,7 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - `internal/config` validates every setting as it loads: required values present, formats and ranges correct. It reports all invalid settings in one error with `errors.Join`, so one run shows every problem.
 - Check each external dependency at startup, not on first use: ping the database, call Telegram `getMe` with the token.
 - No silent defaults for required settings. A setting gets a default only when that default is safe in production.
-- Errors name the setting, never its value, so the bot token and DSN passwords stay out of the logs.
-- Never log `DB_DSN` or any part of it. Database drivers echo the DSN in some errors (pgx does on a parse failure and masks only a password in the URL's user part), so every driver error leaves `internal/db` through `redact`, which masks the DSN and each `password=` value.
+- Errors name the setting, never its value, so the bot token stays out of the logs.
 - Packages return errors; only `main` logs them with `slog.Error` and calls `os.Exit(1)`.
 
 ## SOLID, the Go way
@@ -77,9 +76,9 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 
 ## Database
 
-- GORM with `AutoMigrate` from Go structs; the same code runs on SQLite and Postgres. Keep it portable: no Postgres-only types (arrays, `jsonb`, enums).
+- SQLite only, through GORM with `AutoMigrate` from Go structs. `DB_PATH` names the database file. Postgres was dropped; adding it back is an owner decision.
 - `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
-- SQLite leaves foreign keys off by default. Its DSN must carry `_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)`.
+- SQLite leaves foreign keys off by default. `internal/db` adds `_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)` to `DB_PATH`, so the path itself carries no `?`.
 - Store Telegram user and chat IDs as `int64`.
 
 ## Gotchas
