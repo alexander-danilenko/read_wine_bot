@@ -10,4 +10,4 @@ A prize draw the bot runs for the audience of the @read_wine Telegram channel. I
 
 ### Channel
 
-The @read_wine Telegram channel, whose audience takes part in giveaways.
+The @read_wine Telegram channel the bot serves. Its audience takes part in giveaways.
