@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alexander-danilenko/read_wine_giveaway_bot/internal/config"
+	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 )
 
 // The .env walk continues above t.TempDir() into the real filesystem, so these tests assume no

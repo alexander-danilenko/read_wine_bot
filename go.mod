@@ -1,4 +1,4 @@
-module github.com/alexander-danilenko/read_wine_giveaway_bot
+module github.com/alexander-danilenko/read_wine_bot
 
 go 1.27.0
 

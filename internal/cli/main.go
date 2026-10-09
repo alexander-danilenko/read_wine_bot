@@ -1,4 +1,4 @@
-// Command bot runs the Telegram bot behind quick giveaways in the @read_wine channel.
+// Command bot runs the Telegram bot for the @read_wine channel.
 package main
 
 import (
@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/alexander-danilenko/read_wine_giveaway_bot/internal/config"
+	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 )
 
 func main() {
@@ -17,5 +17,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("hello from read_wine_giveaway_bot")
+	slog.Info("hello from read_wine_bot")
 }

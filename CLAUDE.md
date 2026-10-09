@@ -1,6 +1,6 @@
-# read_wine_giveaway_bot
+# read_wine_bot
 
-Telegram bot that runs quick giveaways for the @read_wine channel. Go 1.27, single binary.
+General-purpose Telegram bot for the @read_wine channel. Planned features: giveaways with posted results, and spam detection in the chat; more may follow. Go 1.27, single binary.
 
 The owner reads code well but is not a Go developer. When a change relies on a non-obvious Go idiom, name it in one line in your summary.
 
