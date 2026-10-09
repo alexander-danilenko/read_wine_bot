@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
@@ -36,7 +37,8 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	if err := conn.WithContext(ctx).AutoMigrate(&user.User{}); err != nil {
+	if err := conn.WithContext(ctx).
+		AutoMigrate(&user.User{}, &giveaway.Giveaway{}, &giveaway.Participant{}); err != nil {
 		_ = sqlDB.Close()
 
 		return nil, fmt.Errorf("migrate database: %w", err)
