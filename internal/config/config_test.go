@@ -76,8 +76,7 @@ func TestLoad(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.env)
-			t.Setenv("DB_DRIVER", config.DriverSQLite)
-			t.Setenv("DB_DSN", "bot.db")
+			t.Setenv("DB_PATH", "bot.db")
 
 			root := t.TempDir()
 			for dir, contents := range tc.files {
@@ -100,51 +99,30 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestLoadDB(t *testing.T) {
+func TestLoadDBPath(t *testing.T) {
 	const token = "1:secret"
 
 	tests := []struct {
 		name     string
 		token    string
-		driver   string
-		dsn      string
+		path     string
 		wantErrs []error
 	}{
-		{name: "sqlite path", token: token, driver: config.DriverSQLite, dsn: "data/bot.db"},
+		{name: "file path", token: token, path: "data/bot.db"},
+		{name: "missing", token: token, wantErrs: []error{config.ErrMissingDBPath}},
 		{
-			name:   "postgres with query",
-			token:  token,
-			driver: config.DriverPostgres,
-			dsn:    "postgres://db:5432/bot?sslmode=disable",
-		},
-		{name: "missing driver", token: token, dsn: "bot.db", wantErrs: []error{config.ErrMissingDBDriver}},
-		{
-			name:     "unknown driver",
+			name:     "query string",
 			token:    token,
-			driver:   "mysql",
-			dsn:      "bot.db",
-			wantErrs: []error{config.ErrInvalidDBDriver},
+			path:     "bot.db?_pragma=foreign_keys(1)",
+			wantErrs: []error{config.ErrInvalidDBPath},
 		},
-		{name: "missing dsn", token: token, driver: config.DriverPostgres, wantErrs: []error{config.ErrMissingDBDSN}},
-		{
-			name:     "sqlite dsn with query",
-			token:    token,
-			driver:   config.DriverSQLite,
-			dsn:      "bot.db?_pragma=foreign_keys(1)",
-			wantErrs: []error{config.ErrInvalidDBDSN},
-		},
-		{
-			name:     "every problem in one error",
-			driver:   "mysql",
-			wantErrs: []error{config.ErrMissingToken, config.ErrInvalidDBDriver, config.ErrMissingDBDSN},
-		},
+		{name: "every problem in one error", wantErrs: []error{config.ErrMissingToken, config.ErrMissingDBPath}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.token)
-			t.Setenv("DB_DRIVER", tc.driver)
-			t.Setenv("DB_DSN", tc.dsn)
+			t.Setenv("DB_PATH", tc.path)
 
 			cfg, err := config.Load(t.Context(), t.TempDir())
 			if len(tc.wantErrs) == 0 {
@@ -152,30 +130,26 @@ func TestLoadDB(t *testing.T) {
 					t.Fatalf("err = %v, want nil", err)
 				}
 
-				if cfg.DBDriver != tc.driver || cfg.DBDSN != tc.dsn {
-					t.Errorf("got driver %q dsn %q, want %q %q", cfg.DBDriver, cfg.DBDSN, tc.driver, tc.dsn)
+				if cfg.DBPath != tc.path {
+					t.Errorf("DBPath = %q, want %q", cfg.DBPath, tc.path)
 				}
 
 				return
 			}
 
-			checkErrs(t, err, tc.wantErrs, tc.dsn)
+			checkErrs(t, err, tc.wantErrs)
 		})
 	}
 }
 
-// checkErrs fails the test unless err wraps every error in want and keeps secret out of its text.
-func checkErrs(t *testing.T, err error, want []error, secret string) {
+// checkErrs fails the test unless err wraps every error in want.
+func checkErrs(t *testing.T, err error, want []error) {
 	t.Helper()
 
 	for _, w := range want {
 		if !errors.Is(err, w) {
 			t.Errorf("err = %v, want it to wrap %v", err, w)
 		}
-	}
-
-	if err != nil && secret != "" && strings.Contains(err.Error(), secret) {
-		t.Errorf("error %q leaks a setting's value", err)
 	}
 }
 
