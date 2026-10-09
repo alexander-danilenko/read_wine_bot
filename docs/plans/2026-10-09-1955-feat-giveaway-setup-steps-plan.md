@@ -14,7 +14,7 @@ execution: code
 
 - **Objective:** A channel admin creates a giveaway from a menu button by entering the post, end date and time, winner count and button text step by step, reviews a summary, and the join button appears on the post only after they confirm.
 - **Product authority:** the owner, in the 2026-10-09 brainstorm. Winner selection and result handling are not active scope; this work only stores winners and the finished state.
-- **Means:** step state in the existing pending-command column, inputs in a per-user draft table, menu labels matched in every locale (KTD1, KTD2, KTD5).
+- **Means:** step state in the existing pending-command column, inputs in an unpublished giveaways row, menu labels matched in every locale (KTD1, KTD2, KTD5).
 - **Open blockers:** none.
 - **Stop conditions:** stop and report if a Telegram API call the plan relies on (`getChatMember` for the bot, `editMessageReplyMarkup`) cannot do what KTD6 assumes, or if SQLite refuses the KTD3 columns on a table with rows.
 - **Execution:** `ce-work` implements on `main`, commits per unit, no pull request.
@@ -137,12 +137,13 @@ flowchart TB
 ### Key Technical Decisions
 
 - KTD1. **The step lives in `users.pending_command` as `giveaway:<step>`.** Steps are `post`, `end_date`, `end_time`, `winners`, `button_text`, `confirm`. A new user-store method moves the column from one exact value to the next in one conditional update and reports whether it did. A duplicate update, an old button, or a race between two messages therefore advances the setup at most once, the same guarantee `TakePendingCommand` gives today. The 32-character column already fits. Each step claims its transition before any side effect. The forward moves `post` to `end_date` before the post check and the draft upsert. Confirm moves `confirm` to `""` before the recheck and the attach. A value step writes its draft field, then advances. A failed check after a claim clears the step and deletes the draft. Governs R6, R13, R17.
-- KTD2. **Inputs live in a new `giveaway_drafts` table, one row per user.** Its primary key is `user_id`, a foreign key to `users.telegram_id` named as `Participant.UserID` is. Columns: channel chat and message IDs, end date text, end time, winners, button text, language. The forward step upserts the row and resets every field, so a stale row from an abandoned setup never leaks into a new one. Confirm and Cancel delete the row. Rejected: fields on `users`, which would mix giveaway inputs into the user record; a draft row in `giveaways`, which `Find` and the unique post index would treat as a live giveaway.
+- KTD2. **A draft is an unpublished `giveaways` row.** The forward step deletes the user's earlier drafts and upserts an unpublished row on the post, taking over another admin's unpublished row on the same post. Each step writes its field to that row, and Confirm sets `published` once the button is on the post. `Find` and the join flow see only published giveaways. A draft taken over by another admin answers the first admin with the "already exists" text. Rejected: a separate `giveaway_drafts` table, which duplicates the giveaway's columns. (session-settled: user-directed — chosen over a separate drafts table: one table, one boolean)
 - KTD3. **New columns on existing tables are nullable or defaulted, because `AutoMigrate` adds them to tables with rows.**
   - `giveaways.ends_at`: nullable, UTC. Rows created before this work have none.
   - `giveaways.winners`: not null, default 1.
   - `giveaways.button_text`: not null, default `''`. Old rows keep it empty; their posts already carry a button.
   - `giveaways.finished_at`: nullable.
+  - `giveaways.published`: not null, default true, so existing giveaways count as published. GORM swaps a false zero value for that default on struct inserts, so drafts are inserted from a column map.
   - `giveaway_participants.winner`: bool, not null, default false.
 
   A `State(now)` method on `Giveaway` returns active, due or finished (R20). A row without `ends_at` is active until finished. Governs R15, R18, R19, R20.
@@ -179,7 +180,7 @@ An invalid value, or the wrong kind of input (text at `post`, a forward at a lat
 
 - The keyboard shows both buttons in one row, side by side, as in the owner's screenshot.
 - Unrecognized text and typed `/giveaway` or `/language` get no reply, the same as unrecognized text today (R1).
-- The summary shows the end as `2026-10-25 19:00 (Київ)`, or `(Kyiv)` in English.
+- The summary shows the end as `2026-10-25 19:00 (Київ)`, or `(Kyiv)` in English, and the post as a `https://t.me/c/<channel>/<post>` link instead of the channel title, which would need its own column.
 - The setup's prompts follow the user's language, like every other reply. The giveaway stores that language for its popups, as today.
 - `ButtonText` up to 64 characters is measured in runes, not bytes, so Cyrillic text gets the full length.
 

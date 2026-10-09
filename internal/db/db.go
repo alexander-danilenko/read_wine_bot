@@ -38,7 +38,7 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 	}
 
 	if err := conn.WithContext(ctx).
-		AutoMigrate(&user.User{}, &giveaway.Giveaway{}, &giveaway.Participant{}, &giveaway.Draft{}); err != nil {
+		AutoMigrate(&user.User{}, &giveaway.Giveaway{}, &giveaway.Participant{}); err != nil {
 		_ = sqlDB.Close()
 
 		return nil, fmt.Errorf("migrate database: %w", err)

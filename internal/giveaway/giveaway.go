@@ -10,7 +10,8 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
-// Giveaway is one row of the giveaways table: a channel post that carries the join button.
+// Giveaway is one row of the giveaways table: a channel post that carries, or during the
+// setup will carry, the join button. An unpublished row is the admin's unfinished setup.
 type Giveaway struct {
 	ID        uint  `gorm:"primaryKey"`
 	ChatID    int64 `gorm:"not null;uniqueIndex:idx_giveaways_post"` // the channel
@@ -26,8 +27,13 @@ type Giveaway struct {
 	ButtonText string     `gorm:"not null;default:''"`
 	// FinishedAt is set together with the participants' winner marks; nil until then.
 	FinishedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Published is set once the join button is on the post. The default is true so that
+	// giveaways older than the setup, which all have their button, count as published.
+	// GORM leaves a false zero value out of an INSERT for a column with a default, so
+	// Store.SaveDraft names the column explicitly.
+	Published bool `gorm:"not null;default:true"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // State is where a giveaway is in its life.
@@ -68,21 +74,3 @@ type Participant struct {
 
 // TableName names the participants table after the giveaways it belongs to.
 func (Participant) TableName() string { return "giveaway_participants" }
-
-// Draft is one row of the giveaway_drafts table: the inputs of a user's unfinished giveaway
-// setup. A user has at most one; a new setup overwrites it, and Confirm or Cancel deletes it.
-type Draft struct {
-	UserID       int64     `gorm:"primaryKey;autoIncrement:false"`          // users.telegram_id of the admin
-	User         user.User `gorm:"foreignKey:UserID;references:TelegramID"` // declares the foreign key; never loaded
-	ChatID       int64     // the channel of the forwarded post
-	MessageID    int64     // the forwarded post
-	ChannelTitle string    // shown in the summary
-	EndDate      string    // YYYY-MM-DD in Kyiv time, as typed
-	EndsAt       time.Time // end date and time in UTC, set at the end time step
-	Winners      int
-	ButtonText   string
-	UpdatedAt    time.Time
-}
-
-// TableName names the drafts table after the giveaways it prepares.
-func (Draft) TableName() string { return "giveaway_drafts" }

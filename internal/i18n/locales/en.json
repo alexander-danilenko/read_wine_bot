@@ -16,7 +16,7 @@
   "giveaway.time_in_past": "That time has already passed. Send a later one.",
   "giveaway.invalid_winners": "Send a whole number from 1 to 100.",
   "giveaway.invalid_button_text": "The button text must be 1 to 64 characters long.",
-  "giveaway.summary": "Check the giveaway:\n\nChannel: %[1]s\nEnds: %[2]s (Kyiv time)\nWinners: %[3]d\nButton: %[4]s",
+  "giveaway.summary": "Check the giveaway:\n\nPost: %[1]s\nEnds: %[2]s (Kyiv time)\nWinners: %[3]d\nButton: %[4]s",
   "giveaway.confirm": "✅ Confirm",
   "giveaway.cancel": "✖️ Cancel",
   "giveaway.cancelled": "Giveaway setup cancelled.",

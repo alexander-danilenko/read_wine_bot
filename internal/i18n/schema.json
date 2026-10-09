@@ -21,7 +21,7 @@
     "giveaway.time_in_past": { "type": "string", "description": "Sent when the end date and time are not in the future." },
     "giveaway.invalid_winners": { "type": "string", "description": "Sent when the number of winners is not a whole number from 1 to 100." },
     "giveaway.invalid_button_text": { "type": "string", "description": "Sent when the join button text is empty or longer than 64 characters." },
-    "giveaway.summary": { "type": "string", "description": "Last setup step, shown above Confirm and Cancel. %[1]s: channel title, %[2]s: end date and time, %[3]d: winners, %[4]s: join button text." },
+    "giveaway.summary": { "type": "string", "description": "Last setup step, shown above Confirm and Cancel. %[1]s: t.me link to the post, %[2]s: end date and time, %[3]d: winners, %[4]s: join button text." },
     "giveaway.confirm": { "type": "string", "description": "Button under the summary that creates the giveaway." },
     "giveaway.cancel": { "type": "string", "description": "Button under every setup step that discards the setup." },
     "giveaway.cancelled": { "type": "string", "description": "Sent after the admin cancels the setup." },

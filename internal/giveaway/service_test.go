@@ -15,11 +15,9 @@ var errBoom = errors.New("boom")
 
 // fakeStore holds at most one giveaway and fails the call named in failOn.
 type fakeStore struct {
-	existing  *giveaway.Giveaway
-	created   *giveaway.Giveaway
-	joined    map[int64]bool
-	createErr error
-	failOn    string
+	existing *giveaway.Giveaway
+	joined   map[int64]bool
+	failOn   string
 }
 
 func (f *fakeStore) Find(_ context.Context, chatID, messageID int64) (giveaway.Giveaway, error) {
@@ -34,20 +32,12 @@ func (f *fakeStore) Find(_ context.Context, chatID, messageID int64) (giveaway.G
 	return *f.existing, nil
 }
 
-func (f *fakeStore) Create(_ context.Context, g *giveaway.Giveaway) error {
-	if f.createErr != nil {
-		return f.createErr
-	}
+func (*fakeStore) Publish(context.Context, uint) error { return nil }
 
-	f.created = g
+func (*fakeStore) SaveDraft(context.Context, *giveaway.Giveaway) error { return nil }
 
-	return nil
-}
-
-func (*fakeStore) SaveDraft(context.Context, *giveaway.Draft) error { return nil }
-
-func (*fakeStore) Draft(context.Context, int64) (giveaway.Draft, error) {
-	return giveaway.Draft{}, giveaway.ErrNotFound
+func (*fakeStore) Draft(context.Context, int64) (giveaway.Giveaway, error) {
+	return giveaway.Giveaway{}, giveaway.ErrNotFound
 }
 
 func (*fakeStore) DeleteDraft(context.Context, int64) error { return nil }

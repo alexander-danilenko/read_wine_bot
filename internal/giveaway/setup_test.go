@@ -69,7 +69,7 @@ func (s *setup) reachSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if r := s.svc.Forward(ctx, s.tg, adminID, channelID, 42, "Read Wine"); r.Next != giveaway.StepEndDate {
+	if r := s.svc.Forward(ctx, s.tg, adminID, channelID, 42, "uk"); r.Next != giveaway.StepEndDate {
 		t.Fatalf("Forward = %+v, want next end date", r)
 	}
 
@@ -94,7 +94,7 @@ func TestSetupSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := "Check the giveaway:\n\nChannel: Read Wine\nEnds: 2026-10-25 19:00 (Kyiv time)\nWinners: 3\nButton: Беру участь"
+	want := "Check the giveaway:\n\nPost: https://t.me/c/1234567890/42\nEnds: 2026-10-25 19:00 (Kyiv time)\nWinners: 3\nButton: Беру участь"
 	if summary != want {
 		t.Errorf("Summary = %q, want %q", summary, want)
 	}
@@ -105,7 +105,7 @@ func TestSetupConfirmCreates(t *testing.T) {
 	s.reachSummary(t)
 	ctx := t.Context()
 
-	if r := s.svc.Confirm(ctx, s.tg, adminID, "uk"); r != (giveaway.Reply{Notice: i18n.GiveawayCreated}) {
+	if r := s.svc.Confirm(ctx, s.tg, adminID); r != (giveaway.Reply{Notice: i18n.GiveawayCreated}) {
 		t.Fatalf("Confirm = %+v, want created", r)
 	}
 
@@ -130,13 +130,13 @@ func TestSetupConfirmTwice(t *testing.T) {
 	s.reachSummary(t)
 	ctx := t.Context()
 
-	s.svc.Confirm(ctx, s.tg, adminID, "uk")
+	s.svc.Confirm(ctx, s.tg, adminID)
 
 	if _, err := s.store.Draft(ctx, adminID); !errors.Is(err, giveaway.ErrNotFound) {
 		t.Errorf("draft after Confirm: err = %v, want ErrNotFound", err)
 	}
 
-	if r := s.svc.Confirm(ctx, s.tg, adminID, "uk"); !r.Stale || s.tg.attached != 1 {
+	if r := s.svc.Confirm(ctx, s.tg, adminID); !r.Stale || s.tg.attached != 1 {
 		t.Errorf("second Confirm = %+v, attached %d; want stale and one attach in total", r, s.tg.attached)
 	}
 }
@@ -159,10 +159,7 @@ func TestSetupForwardChecks(t *testing.T) {
 			ctx := t.Context()
 
 			if tt.existing {
-				err := s.store.Create(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
-				if err != nil {
-					t.Fatal(err)
-				}
+				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
 			}
 
 			if err := s.svc.Begin(ctx, adminID); err != nil {
@@ -175,7 +172,7 @@ func TestSetupForwardChecks(t *testing.T) {
 				adminID,
 				channelID,
 				42,
-				"Read Wine",
+				"uk",
 			); r.Notice != tt.want ||
 				r.Next != "" {
 				t.Errorf("Forward = %+v, want notice %q and the setup ended", r, tt.want)
@@ -200,9 +197,9 @@ func TestSetupForwardTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s.svc.Forward(ctx, s.tg, adminID, channelID, 42, "Read Wine")
+	s.svc.Forward(ctx, s.tg, adminID, channelID, 42, "uk")
 
-	if r := s.svc.Forward(ctx, s.tg, adminID, channelID, 43, "Read Wine"); !r.Stale {
+	if r := s.svc.Forward(ctx, s.tg, adminID, channelID, 43, "uk"); !r.Stale {
 		t.Errorf("second Forward = %+v, want stale", r)
 	}
 
@@ -223,7 +220,7 @@ func TestSetupApplyInvalidKeepsStep(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s.svc.Forward(ctx, s.tg, adminID, channelID, 42, "Read Wine")
+	s.svc.Forward(ctx, s.tg, adminID, channelID, 42, "uk")
 
 	r := s.svc.Apply(ctx, adminID, giveaway.StepEndDate, "25.10.2026")
 	if r.Notice != i18n.GiveawayInvalidDate || r.Next != giveaway.StepEndDate {
@@ -235,7 +232,7 @@ func TestSetupApplyInvalidKeepsStep(t *testing.T) {
 		t.Errorf("Apply at a step the admin is not at = %+v, want stale", r)
 	}
 
-	if d, err := s.store.Draft(ctx, adminID); err != nil || !d.EndsAt.IsZero() {
+	if d, err := s.store.Draft(ctx, adminID); err != nil || d.EndsAt != nil {
 		t.Errorf("draft = %+v, %v; want no end time", d, err)
 	}
 }
@@ -248,17 +245,12 @@ func TestSetupConfirmRechecks(t *testing.T) {
 		wantStep string
 	}{
 		{
+			// Another admin forwards the same post, takes the draft over and publishes it.
 			name: "giveaway created meanwhile",
 			change: func(t *testing.T, s *setup) {
 				t.Helper()
 
-				err := s.store.Create(
-					t.Context(),
-					&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID},
-				)
-				if err != nil {
-					t.Fatal(err)
-				}
+				publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
 			},
 			want: i18n.GiveawayExists,
 		},
@@ -288,7 +280,7 @@ func TestSetupConfirmRechecks(t *testing.T) {
 			s.reachSummary(t)
 			tt.change(t, s)
 
-			if r := s.svc.Confirm(t.Context(), s.tg, adminID, "uk"); r.Notice != tt.want || r.Next != tt.wantStep {
+			if r := s.svc.Confirm(t.Context(), s.tg, adminID); r.Notice != tt.want || r.Next != tt.wantStep {
 				t.Errorf("Confirm = %+v, want notice %q and next %q", r, tt.want, tt.wantStep)
 			}
 
@@ -364,7 +356,7 @@ func TestSetupConfirmKeepsDraftOnFailure(t *testing.T) {
 	s.tg.attachErr = errBoom
 
 	want := giveaway.Reply{Notice: i18n.GiveawayNoRights, Next: giveaway.StepConfirm}
-	if r := s.svc.Confirm(ctx, s.tg, adminID, "uk"); r != want {
+	if r := s.svc.Confirm(ctx, s.tg, adminID); r != want {
 		t.Errorf("Confirm = %+v, want %+v", r, want)
 	}
 
@@ -377,7 +369,7 @@ func TestSetupConfirmKeepsDraftOnFailure(t *testing.T) {
 	}
 
 	s.tg.attachErr = nil
-	if r := s.svc.Confirm(ctx, s.tg, adminID, "uk"); r.Notice != i18n.GiveawayCreated {
+	if r := s.svc.Confirm(ctx, s.tg, adminID); r.Notice != i18n.GiveawayCreated {
 		t.Errorf("retried Confirm = %+v, want created", r)
 	}
 }
