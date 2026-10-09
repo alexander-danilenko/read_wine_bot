@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
+	"github.com/alexander-danilenko/read_wine_bot/internal/db"
 	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
@@ -38,6 +39,18 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load translations: %w", err)
 	}
+
+	// An unreachable database or a failed migration stops the bot here.
+	conn, err := db.Open(ctx, cfg.DBDriver, cfg.DBDSN)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+
+	sqlDB, err := conn.DB()
+	if err != nil {
+		return fmt.Errorf("get database connection pool: %w", err)
+	}
+	defer sqlDB.Close()
 
 	log := slog.Default()
 
