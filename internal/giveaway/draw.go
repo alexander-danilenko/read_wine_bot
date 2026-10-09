@@ -60,23 +60,10 @@ func NewDrawer(
 	return &Drawer{store: store, filter: filter, shuffle: shuffle, texts: texts, now: now, log: log}
 }
 
-// Run draws the due giveaways at once and then once a minute, until ctx is cancelled.
-func (d *Drawer) Run(ctx context.Context, b *bot.Bot) {
-	d.run(ctx, telegramAPI{b}, time.Minute)
-}
-
-func (d *Drawer) run(ctx context.Context, tg Announcer, every time.Duration) {
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-
-	for ctx.Err() == nil {
-		d.drawDue(ctx, tg)
-
-		select {
-		case <-ctx.Done():
-		case <-ticker.C:
-		}
-	}
+// DrawDue draws every giveaway that is due now, announcing the results through b. main runs
+// it once a minute with internal/cron.
+func (d *Drawer) DrawDue(ctx context.Context, b *bot.Bot) {
+	d.drawDue(ctx, telegramAPI{b})
 }
 
 // drawDue draws every giveaway that is due now. A failure in one giveaway is logged and the

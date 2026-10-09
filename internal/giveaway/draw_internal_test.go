@@ -27,15 +27,12 @@ var errDraw = errors.New("boom")
 type fakeDrawStore struct {
 	due        []Giveaway
 	dueErr     error
-	dueCalls   int
 	candidates map[uint][]user.User
 	finishErr  error
 	finished   map[uint][]int64
 }
 
 func (f *fakeDrawStore) Due(context.Context, time.Time) ([]Giveaway, error) {
-	f.dueCalls++
-
 	return f.due, f.dueErr
 }
 
@@ -415,33 +412,5 @@ func TestResultMessagesSplitLongResults(t *testing.T) {
 
 	if links != maxWinners {
 		t.Errorf("messages link %d winners, want %d", links, maxWinners)
-	}
-}
-
-func TestRunStopsOnCancel(t *testing.T) {
-	store := &fakeDrawStore{}
-	d, _ := newDrawer(t, store, AcceptAll, noShuffle)
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	d.run(ctx, &fakeAnnouncer{}, time.Hour)
-
-	if store.dueCalls != 0 {
-		t.Errorf("drew %d times on a cancelled context, want 0", store.dueCalls)
-	}
-}
-
-func TestRunDrawsAtOnceThenEveryTick(t *testing.T) {
-	store := &fakeDrawStore{}
-	d, _ := newDrawer(t, store, AcceptAll, noShuffle)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-
-	d.run(ctx, &fakeAnnouncer{}, 20*time.Millisecond)
-
-	if store.dueCalls < 2 {
-		t.Errorf("drew %d times in 50ms with a 20ms tick, want a pass at once and at least one tick", store.dueCalls)
 	}
 }
