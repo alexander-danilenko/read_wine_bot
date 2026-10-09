@@ -83,7 +83,6 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 
 ## Gotchas
 
-- A placeholder file blank-imports libraries no code uses yet, so `go mod tidy` keeps them in `go.mod`. Delete each import as soon as real code imports that library.
 - `github.com/glebarez/sqlite`'s last tag bundles SQLite 3.41. Keep `modernc.org/sqlite` and `github.com/glebarez/go-sqlite` explicitly upgraded in `go.mod`.
 - Hooks (`.claude/hooks/`, loaded when a session starts): after every `.go` edit, `go-lint-fix.sh` formats and autofixes that package and shows remaining findings. Before your turn ends, `go-lint-gate.sh` runs the full lint and blocks the stop until it passes, at most three times in a row before it hands the findings to the owner. Fix the finding; do not work around the hook.
 - Write an import and its first use in the same edit. An unused import stops the package compiling, and the per-edit hook cannot autofix a package that does not compile.
