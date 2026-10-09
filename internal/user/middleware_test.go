@@ -20,8 +20,8 @@ type fakeRecorder struct {
 	err   error
 }
 
-func (f *fakeRecorder) SaveNames(_ context.Context, id int64, firstName, lastName string) error {
-	f.calls = append(f.calls, fmt.Sprintf("names %s %s %d", firstName, lastName, id))
+func (f *fakeRecorder) Record(_ context.Context, p user.Profile) error {
+	f.calls = append(f.calls, fmt.Sprintf("names %s %s %d", p.FirstName, p.LastName, p.TelegramID))
 
 	return f.err
 }
