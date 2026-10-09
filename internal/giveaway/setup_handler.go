@@ -74,10 +74,11 @@ func StartHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logg
 }
 
 // MessageHandler returns the handler for private messages no other handler matched. It acts
-// only while the sender is in a giveaway setup: the post step takes a forwarded channel post,
-// the value steps take text, and any other input asks the current step again.
-func MessageHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
+// only while the sender is in a giveaway setup or edit: the post step takes a forwarded
+// channel post, the value steps take text, and any other input asks the current step again.
+func MessageHandler(svc *Service, ed *Editor, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
 	h := setupHandler{svc: svc, texts: texts, log: log}
+	edit := editHandler{ed: ed, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
@@ -92,11 +93,12 @@ func MessageHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Lo
 			return
 		}
 
-		if !inSetup(step) {
-			return
+		switch {
+		case inSetup(step):
+			h.step(ctx, b, msg, step, language.UserLanguage(ctx, users, log, msg.From))
+		case inEdit(step):
+			edit.message(ctx, b, msg, step, language.UserLanguage(ctx, users, log, msg.From))
 		}
-
-		h.step(ctx, b, msg, step, language.UserLanguage(ctx, users, log, msg.From))
 	}
 }
 
@@ -159,7 +161,7 @@ func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *s
 		}
 
 		if r.Stale {
-			h.removeButtons(ctx, b, query.Message)
+			removeButtons(ctx, b, log, query.Message)
 
 			return
 		}
@@ -230,7 +232,7 @@ func (h setupHandler) send(ctx context.Context, b *bot.Bot, params *bot.SendMess
 }
 
 // removeButtons removes the inline buttons from the message an outdated button belongs to.
-func (h setupHandler) removeButtons(ctx context.Context, b *bot.Bot, m models.MaybeInaccessibleMessage) {
+func removeButtons(ctx context.Context, b *bot.Bot, log *slog.Logger, m models.MaybeInaccessibleMessage) {
 	if m.Message == nil {
 		return
 	}
@@ -240,6 +242,6 @@ func (h setupHandler) removeButtons(ctx context.Context, b *bot.Bot, m models.Ma
 		&bot.EditMessageReplyMarkupParams{ChatID: m.Message.Chat.ID, MessageID: m.Message.ID},
 	)
 	if err = ignoreNotModified(err); err != nil {
-		h.log.WarnContext(ctx, "remove outdated setup buttons", "chat_id", m.Message.Chat.ID, "error", err)
+		log.WarnContext(ctx, "remove outdated buttons", "chat_id", m.Message.Chat.ID, "error", err)
 	}
 }

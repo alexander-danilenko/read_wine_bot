@@ -1,10 +1,13 @@
 package giveaway_test
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -47,8 +50,13 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 
 	result := `{"message_id":1,"date":0,"chat":{"id":1,"type":"private"}}`
-	if strings.HasSuffix(r.URL.Path, "answerCallbackQuery") {
+
+	switch {
+	case strings.HasSuffix(r.URL.Path, "answerCallbackQuery"):
 		result = "true"
+	case strings.HasSuffix(r.URL.Path, "getChatMember"):
+		// Everyone, the bot included, is a channel admin who may edit posts.
+		result = `{"status":"administrator","user":{"id":1,"is_bot":false,"first_name":"A"},"can_edit_messages":true}`
 	}
 
 	if _, err := io.WriteString(w, `{"ok":true,"result":`+result+`}`); err != nil {
@@ -115,7 +123,7 @@ func (h *handlerSetup) message(text string, forward bool) *models.Update {
 }
 
 func (h *handlerSetup) messageHandler() bot.HandlerFunc {
-	return giveaway.MessageHandler(h.svc, h.texts, h.users, slog.New(slog.DiscardHandler))
+	return giveaway.MessageHandler(h.svc, h.ed, h.texts, h.users, slog.New(slog.DiscardHandler))
 }
 
 func TestMessageHandlerWithoutSetup(t *testing.T) {
@@ -222,5 +230,220 @@ func TestSetupCallbackData(t *testing.T) {
 		if data := giveaway.SetupCallbackPrefix + "default:" + step; len(data) > 64 {
 			t.Errorf("callback data %q is %d bytes, over 64", data, len(data))
 		}
+	}
+}
+
+// callback builds a tap by the admin on a button with data under a private chat message.
+func (*handlerSetup) callback(data string) *models.Update {
+	return &models.Update{CallbackQuery: &models.CallbackQuery{
+		ID:      "q1",
+		From:    models.User{ID: adminID, LanguageCode: "en"},
+		Data:    data,
+		Message: models.MaybeInaccessibleMessage{Message: &models.Message{ID: 5, Chat: models.Chat{ID: adminID}}},
+	}}
+}
+
+func (h *handlerSetup) tap(t *testing.T, data string) {
+	t.Helper()
+
+	giveaway.EditCallbackHandler(
+		h.ed,
+		h.texts,
+		h.users,
+		slog.New(slog.DiscardHandler),
+	)(
+		t.Context(),
+		h.bot,
+		h.callback(data),
+	)
+}
+
+// keyboard returns the inline buttons of the last sendMessage request.
+func (h *handlerSetup) keyboard(t *testing.T) [][]models.InlineKeyboardButton {
+	t.Helper()
+
+	for _, v := range slices.Backward(h.api.calls) {
+		if v.method != "sendMessage" {
+			continue
+		}
+
+		var markup models.InlineKeyboardMarkup
+		if err := json.Unmarshal([]byte(v.form["reply_markup"]), &markup); err != nil {
+			t.Fatal(err)
+		}
+
+		return markup.InlineKeyboard
+	}
+
+	t.Fatal("no sendMessage request")
+
+	return nil
+}
+
+// openMenu publishes a giveaway for the admin and forwards its post through the edit button.
+func (h *handlerSetup) openMenu(t *testing.T) giveaway.Giveaway {
+	t.Helper()
+
+	g := publish(t, h.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
+	if err := h.ed.BeginEdit(t.Context(), adminID); err != nil {
+		t.Fatal(err)
+	}
+
+	h.messageHandler()(t.Context(), h.bot, h.message("", true))
+
+	return g
+}
+
+func TestEditForwardSendsMenu(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+	id := strconv.FormatUint(uint64(g.ID), 10)
+
+	rows := h.keyboard(t)
+
+	got := make([]string, 0, len(rows))
+	for _, row := range rows {
+		got = append(got, row[0].CallbackData)
+	}
+
+	want := []string{
+		"giveaway-edit:field:end_date:" + id,
+		"giveaway-edit:field:end_time:" + id,
+		"giveaway-edit:field:winners:" + id,
+		"giveaway-edit:field:button_text:" + id,
+		"giveaway-edit:ask:" + id,
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("menu buttons = %q, want %q", got, want)
+	}
+
+	if rows[0][0].Text != "📝 Edit end date" {
+		t.Errorf("first button = %q, want the end date label", rows[0][0].Text)
+	}
+}
+
+func TestEditMenuOfCancelled(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+
+	if err := h.store.Cancel(t.Context(), g.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	h.tap(t, "giveaway-edit:no:"+strconv.FormatUint(uint64(g.ID), 10))
+
+	rows := h.keyboard(t)
+	if last := rows[len(rows)-1][0]; last.Text != "✅ Publish giveaway" ||
+		last.CallbackData != "giveaway-edit:publish:"+strconv.FormatUint(uint64(g.ID), 10) {
+		t.Errorf("last button = %+v, want Publish", last)
+	}
+}
+
+func TestEditTextAtField(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+
+	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10))
+
+	if sent := h.sent(); sent[len(sent)-1] != h.texts.Text("en", i18n.GiveawayAskWinners) {
+		t.Errorf("last message = %q, want the winners question", sent[len(sent)-1])
+	}
+
+	h.messageHandler()(t.Context(), h.bot, h.message("3", false))
+
+	if got := h.read(t, g.ID); got.Winners != 3 {
+		t.Errorf("winners = %d, want 3", got.Winners)
+	}
+
+	if rows := h.keyboard(t); len(rows) != 5 {
+		t.Errorf("reply has %d button rows, want the menu's 5", len(rows))
+	}
+}
+
+func TestEditCancelButtons(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+	id := strconv.FormatUint(uint64(g.ID), 10)
+
+	h.tap(t, "giveaway-edit:ask:"+id)
+
+	if sent := h.sent(); sent[len(sent)-1] != h.texts.Text("en", i18n.EditAskCancel) {
+		t.Errorf("last message = %q, want the confirmation", sent[len(sent)-1])
+	}
+
+	h.api.calls = nil
+	h.tap(t, "giveaway-edit:yes:"+id)
+
+	var edit *call
+	for i := range h.api.calls {
+		if h.api.calls[i].method == "editMessageReplyMarkup" {
+			edit = &h.api.calls[i]
+		}
+	}
+
+	if edit == nil || edit.form["chat_id"] != strconv.FormatInt(channelID, 10) || edit.form["reply_markup"] != "" {
+		t.Errorf("edit call = %+v, want the channel post with no reply_markup", edit)
+	}
+
+	if got := h.read(t, g.ID); got.Published {
+		t.Error("giveaway still published after Yes")
+	}
+}
+
+func TestEditStaleDefault(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+
+	h.api.calls = nil
+	h.tap(t, "giveaway-edit:default:winners:"+strconv.FormatUint(uint64(g.ID), 10))
+
+	methods := make([]string, 0, len(h.api.calls))
+	for _, c := range h.api.calls {
+		methods = append(methods, c.method)
+	}
+
+	if strings.Join(methods, ",") != "answerCallbackQuery,editMessageReplyMarkup" ||
+		h.api.calls[0].form["text"] != h.texts.Text("en", i18n.GiveawayOutdated) {
+		t.Errorf("calls = %+v; want the outdated popup, then the buttons removed", h.api.calls)
+	}
+}
+
+func TestEditCallbackData(t *testing.T) {
+	edit := giveaway.EditCallbackPrefix
+	for _, other := range []string{giveaway.SetupCallbackPrefix, giveaway.JoinCallback} {
+		if strings.HasPrefix(other, edit) || strings.HasPrefix(edit, other) {
+			t.Errorf("edit prefix %q and %q overlap", edit, other)
+		}
+	}
+
+	// Telegram limits callback data to 64 bytes; the longest edit data has the longest
+	// field and the largest giveaway ID.
+	if data := giveaway.EditCallbackPrefix + "default:button_text:4294967295"; len(data) > 64 {
+		t.Errorf("callback data %q is %d bytes, over 64", data, len(data))
+	}
+}
+
+func TestListHandler(t *testing.T) {
+	h := newHandlerSetup(t)
+	publish(
+		t,
+		h.store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: h.kyivTime(25, 19, 0)},
+	)
+
+	giveaway.ListHandler(
+		h.ed,
+		h.texts,
+		h.users,
+		slog.New(slog.DiscardHandler),
+	)(
+		t.Context(),
+		h.bot,
+		h.message("", false),
+	)
+
+	want := "Your running giveaways:\n\nhttps://t.me/c/1234567890/42 — ends 2026-10-25 19:00"
+	if sent := h.sent(); len(sent) != 1 || sent[0] != want {
+		t.Errorf("sent %q, want only %q", sent, want)
 	}
 }

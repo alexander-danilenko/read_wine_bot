@@ -127,6 +127,17 @@ func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, 
 	return ignoreNotModified(err)
 }
 
+// RemoveButton takes every inline button off the channel post. A post without buttons
+// counts as success.
+func (t telegramAPI) RemoveButton(ctx context.Context, chatID, messageID int64) error {
+	_, err := t.b.EditMessageReplyMarkup(
+		ctx,
+		&bot.EditMessageReplyMarkupParams{ChatID: chatID, MessageID: int(messageID)},
+	)
+
+	return ignoreNotModified(err)
+}
+
 // ignoreNotModified treats Telegram's "message is not modified" answer as success: it means
 // the post already carries this exact button, for example after a retry.
 func ignoreNotModified(err error) error {
