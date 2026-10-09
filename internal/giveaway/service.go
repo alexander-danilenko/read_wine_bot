@@ -48,22 +48,21 @@ type Telegram interface {
 
 // Service holds the giveaway rules: who may start one, and what a tap records.
 type Service struct {
-	store    Storage
-	telegram Telegram
-	texts    *i18n.Catalog
-	log      *slog.Logger
+	store Storage
+	texts *i18n.Catalog
+	log   *slog.Logger
 }
 
 // NewService returns a Service.
-func NewService(store Storage, telegram Telegram, texts *i18n.Catalog, log *slog.Logger) *Service {
-	return &Service{store: store, telegram: telegram, texts: texts, log: log}
+func NewService(store Storage, texts *i18n.Catalog, log *slog.Logger) *Service {
+	return &Service{store: store, texts: texts, log: log}
 }
 
 // Start starts a giveaway on the channel post for the admin, with the button and popups in
-// lang. It checks, in order: no giveaway runs on the post yet, the admin is a channel admin,
+// lang. tg is passed per call because handlers get the bot only when an update arrives. It checks, in order: no giveaway runs on the post yet, the admin is a channel admin,
 // the bot can attach the button. Only then does it save the giveaway, so a saved giveaway
 // always has its button.
-func (s *Service) Start(ctx context.Context, adminID, chatID, messageID int64, lang string) StartResult {
+func (s *Service) Start(ctx context.Context, tg Telegram, adminID, chatID, messageID int64, lang string) StartResult {
 	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", adminID)
 
 	_, err := s.store.Find(ctx, chatID, messageID)
@@ -77,7 +76,7 @@ func (s *Service) Start(ctx context.Context, adminID, chatID, messageID int64, l
 		return Failed
 	}
 
-	isAdmin, err := s.telegram.IsChannelAdmin(ctx, chatID, adminID)
+	isAdmin, err := tg.IsChannelAdmin(ctx, chatID, adminID)
 	if err != nil {
 		log.WarnContext(ctx, "check channel admin", "error", err)
 
@@ -88,7 +87,7 @@ func (s *Service) Start(ctx context.Context, adminID, chatID, messageID int64, l
 		return NotAdmin
 	}
 
-	err = s.telegram.AttachButton(ctx, chatID, messageID, s.texts.Text(lang, i18n.GiveawayButton))
+	err = tg.AttachButton(ctx, chatID, messageID, s.texts.Text(lang, i18n.GiveawayButton))
 	if err != nil {
 		log.WarnContext(ctx, "attach join button", "error", err)
 

@@ -10,9 +10,11 @@ import (
 	"syscall"
 
 	"github.com/go-telegram/bot"
+	"gorm.io/gorm"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 	"github.com/alexander-danilenko/read_wine_bot/internal/db"
+	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
@@ -54,11 +56,28 @@ func run() error {
 	defer sqlDB.Close()
 
 	log := slog.Default()
-	users := user.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	b, err := bot.New(
-		cfg.TelegramBotToken,
+	b, err := bot.New(cfg.TelegramBotToken, handlers(conn, texts, log)...)
+	if err != nil {
+		return fmt.Errorf("connect to telegram: %w", err)
+	}
+
+	slog.InfoContext(ctx, "bot started")
+	b.Start(ctx)
+	slog.InfoContext(ctx, "bot stopped")
+
+	return nil
+}
+
+// handlers wires every update the bot handles to the package that handles it.
+func handlers(conn *gorm.DB, texts *i18n.Catalog, log *slog.Logger) []bot.Option {
+	users := user.NewStore(conn)
+	giveaways := giveaway.NewService(giveaway.NewStore(conn), texts, log)
+
+	return []bot.Option{
+		// Runs before every handler: keeps users' names current and tracks /giveaway.
+		bot.WithMiddlewares(user.Middleware(users, log)),
 		bot.WithMessageTextHandler(
 			greeting.Command,
 			bot.MatchTypeCommandStartOnly,
@@ -74,14 +93,17 @@ func run() error {
 			bot.MatchTypePrefix,
 			language.ButtonHandler(texts, users, log),
 		),
-	)
-	if err != nil {
-		return fmt.Errorf("connect to telegram: %w", err)
+		bot.WithMessageTextHandler(
+			giveaway.Command,
+			bot.MatchTypeCommandStartOnly,
+			giveaway.CommandHandler(texts, users, log),
+		),
+		bot.WithCallbackQueryDataHandler(
+			giveaway.JoinCallback,
+			bot.MatchTypeExact,
+			giveaway.JoinHandler(giveaways, texts, users, log),
+		),
+		// A forwarded post matches no handler above, so it lands here.
+		bot.WithDefaultHandler(giveaway.ForwardHandler(giveaways, texts, users, log)),
 	}
-
-	slog.InfoContext(ctx, "bot started")
-	b.Start(ctx)
-	slog.InfoContext(ctx, "bot stopped")
-
-	return nil
 }
