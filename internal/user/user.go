@@ -16,9 +16,8 @@ type User struct {
 	TelegramID int64  `gorm:"primaryKey;autoIncrement:false"`
 	FirstName  string `gorm:"not null;default:''"` // from Telegram, refreshed on every interaction
 	LastName   string `gorm:"not null;default:''"` // "" when the user has none
-	Language   string `gorm:"size:16;not null"`    // a locale code from internal/i18n, set with /language
-	// PendingCommand is the command waiting for the user's next message: "giveaway" after
-	// /giveaway, "" otherwise. Columns added to a table with rows need a default in SQLite.
+	Language   string `gorm:"size:16;not null"`    // a locale code from internal/i18n, chosen from the menu
+	// PendingCommand is the command waiting for the user's next message, "" when none. Columns added to a table with rows need a default in SQLite.
 	PendingCommand string `gorm:"size:32;not null;default:''"`
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -34,7 +33,7 @@ func NewStore(db *gorm.DB) *Store {
 	return &Store{db: db}
 }
 
-// Language returns the language the user chose with /language, or "" if they never chose one.
+// Language returns the language the user chose from the menu, or "" if they never chose one.
 func (s *Store) Language(ctx context.Context, telegramID int64) (string, error) {
 	u, err := s.read(ctx, telegramID, "language")
 	if err != nil {
