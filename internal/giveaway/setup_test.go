@@ -263,9 +263,10 @@ func TestSetupConfirmRechecks(t *testing.T) {
 			want: i18n.GiveawayExists,
 		},
 		{
-			name:   "bot lost the edit right",
-			change: func(_ *testing.T, s *setup) { s.tg.attachErr = errBoom },
-			want:   i18n.GiveawayNoRights,
+			name:     "bot lost the edit right",
+			change:   func(_ *testing.T, s *setup) { s.tg.attachErr = errBoom },
+			want:     i18n.GiveawayNoRights,
+			wantStep: giveaway.StepConfirm,
 		},
 		{
 			name:     "end time passed today",
@@ -337,5 +338,46 @@ func TestDefault(t *testing.T) {
 		if got := s.svc.Default(tt.step, tt.lang); got != tt.want {
 			t.Errorf("Default(%s, %s) = %q, want %q", tt.step, tt.lang, got, tt.want)
 		}
+	}
+}
+
+// A crafted default button for a step that takes no value changes nothing.
+func TestSetupApplyStepWithoutValue(t *testing.T) {
+	s := newSetup(t)
+	s.reachSummary(t)
+
+	if r := s.svc.Apply(t.Context(), adminID, giveaway.StepConfirm, "x"); !r.Stale {
+		t.Errorf("Apply at the confirm step = %+v, want stale", r)
+	}
+
+	if d, err := s.store.Draft(t.Context(), adminID); err != nil || d.ButtonText != "Беру участь" {
+		t.Errorf("draft = %+v, %v; want the button text unchanged", d, err)
+	}
+}
+
+// A failed attach can be a passing Telegram error, so Confirm keeps the draft and offers
+// the summary again instead of making the admin start over.
+func TestSetupConfirmKeepsDraftOnFailure(t *testing.T) {
+	s := newSetup(t)
+	s.reachSummary(t)
+	ctx := t.Context()
+	s.tg.attachErr = errBoom
+
+	want := giveaway.Reply{Notice: i18n.GiveawayNoRights, Next: giveaway.StepConfirm}
+	if r := s.svc.Confirm(ctx, s.tg, adminID, "uk"); r != want {
+		t.Errorf("Confirm = %+v, want %+v", r, want)
+	}
+
+	if step := s.step(t); step != giveaway.StepConfirm {
+		t.Errorf("step = %q, want confirm", step)
+	}
+
+	if _, err := s.store.Draft(ctx, adminID); err != nil {
+		t.Errorf("draft after failed Confirm: %v, want it kept", err)
+	}
+
+	s.tg.attachErr = nil
+	if r := s.svc.Confirm(ctx, s.tg, adminID, "uk"); r.Notice != i18n.GiveawayCreated {
+		t.Errorf("retried Confirm = %+v, want created", r)
 	}
 }

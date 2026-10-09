@@ -12,15 +12,21 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
 
+// stepPrefix starts every setup step, so a pending command with it means a setup is running.
+const stepPrefix = "giveaway:"
+
 // Setup steps, saved as the user's pending command. Each names what the bot waits for next.
 const (
-	StepPost       = "giveaway:post"
-	StepEndDate    = "giveaway:end_date"
-	StepEndTime    = "giveaway:end_time"
-	StepWinners    = "giveaway:winners"
-	StepButtonText = "giveaway:button_text"
-	StepConfirm    = "giveaway:confirm"
+	StepPost       = stepPrefix + "post"
+	StepEndDate    = stepPrefix + "end_date"
+	StepEndTime    = stepPrefix + "end_time"
+	StepWinners    = stepPrefix + "winners"
+	StepButtonText = stepPrefix + "button_text"
+	StepConfirm    = stepPrefix + "confirm"
 )
+
+// inSetup reports whether a pending command is a giveaway setup step.
+func inSetup(pending string) bool { return strings.HasPrefix(pending, stepPrefix) }
 
 // Limits and defaults of the setup inputs.
 const (
@@ -99,6 +105,10 @@ func (s *Service) Apply(ctx context.Context, userID int64, step, value string) R
 	}
 
 	next, errKey := s.fill(&d, step, value)
+	if next == "" {
+		return Reply{Stale: true}
+	}
+
 	if errKey != "" {
 		return Reply{Notice: errKey, Next: step}
 	}
@@ -115,7 +125,7 @@ func (s *Service) Apply(ctx context.Context, userID int64, step, value string) R
 }
 
 // fill parses value as the input of step into d and returns the next step, or the error
-// text for an invalid value.
+// text for an invalid value. It returns no next step for a step that takes no value.
 func (s *Service) fill(d *Draft, step, value string) (string, i18n.Key) {
 	var errKey i18n.Key
 
@@ -132,17 +142,19 @@ func (s *Service) fill(d *Draft, step, value string) (string, i18n.Key) {
 		d.Winners, errKey = parseWinners(value)
 
 		return StepButtonText, errKey
-	default:
+	case StepButtonText:
 		d.ButtonText, errKey = parseButtonText(value)
 
 		return StepConfirm, errKey
+	default:
+		return "", ""
 	}
 }
 
 // Confirm creates the giveaway from the user's draft. It claims the step first, so a double
 // tap attaches one button, then repeats the post check and the end time check, because both
 // can change while the summary waits. A passed end time sends the user back to the date or
-// time step.
+// time step; missing rights or a failure keep the draft at the confirm step.
 func (s *Service) Confirm(ctx context.Context, tg Telegram, userID int64, lang string) Reply {
 	log := s.log.With("user_id", userID)
 
@@ -162,6 +174,19 @@ func (s *Service) Confirm(ctx context.Context, tg Telegram, userID int64, lang s
 	}
 
 	result := s.create(ctx, tg, userID, d, lang)
+
+	// Missing rights and failures can be a passing Telegram or database error, so the
+	// admin keeps the draft and can confirm again or cancel.
+	if result == NoRights || result == Failed {
+		if err := s.steps.SetPendingCommand(ctx, userID, StepConfirm); err != nil {
+			log.ErrorContext(ctx, "return to setup step", "error", err)
+
+			return Reply{Notice: startText(result)}
+		}
+
+		return Reply{Notice: startText(result), Next: StepConfirm}
+	}
+
 	if err := s.drafts.DeleteDraft(ctx, userID); err != nil {
 		log.ErrorContext(ctx, "delete giveaway draft", "error", err)
 	}
@@ -235,7 +260,7 @@ func (s *Service) Cancel(ctx context.Context, userID int64) Reply {
 		return Reply{Notice: i18n.GiveawayFailed}
 	}
 
-	if !strings.HasPrefix(current, "giveaway:") {
+	if !inSetup(current) {
 		return Reply{Stale: true}
 	}
 
