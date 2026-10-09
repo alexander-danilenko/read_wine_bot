@@ -117,9 +117,9 @@ func (s *Service) Join(ctx context.Context, chatID, messageID, userID int64) (Jo
 	return Joined, g.Language
 }
 
-// checkPost checks, in order, that the post carries no published or cancelled giveaway, that
-// the admin is an admin of its channel and that the bot may edit its posts. It returns the failed outcome
-// and false, or true when every check passes.
+// checkPost checks, in order, that the post carries no published or cancelled giveaway,
+// that the admin is an admin of its channel and that the bot may edit its posts. It returns
+// the failed outcome and false, or true when every check passes.
 func (s *Service) checkPost(ctx context.Context, tg Telegram, adminID, chatID, messageID int64) (StartResult, bool) {
 	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", adminID)
 

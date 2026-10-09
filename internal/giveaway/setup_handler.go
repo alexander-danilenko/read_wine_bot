@@ -58,8 +58,8 @@ func StartHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logg
 	h := setupHandler{svc: svc, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+		msg := privateMessage(update)
+		if msg == nil {
 			return
 		}
 
@@ -81,8 +81,8 @@ func MessageHandler(svc *Service, ed *Editor, texts *i18n.Catalog, users Users, 
 	edit := editHandler{ed: ed, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+		msg := privateMessage(update)
+		if msg == nil {
 			return
 		}
 
@@ -93,21 +93,22 @@ func MessageHandler(svc *Service, ed *Editor, texts *i18n.Catalog, users Users, 
 			return
 		}
 
-		switch {
-		case inSetup(step):
-			h.step(ctx, b, msg, step, language.UserLanguage(ctx, users, log, msg.From))
-		case inEdit(step):
-			edit.message(ctx, b, msg, step, language.UserLanguage(ctx, users, log, msg.From))
+		if !inSetup(step) && !inEdit(step) {
+			return
+		}
+
+		lang := language.UserLanguage(ctx, users, log, msg.From)
+		if inSetup(step) {
+			h.step(ctx, b, msg, step, lang)
+		} else {
+			edit.message(ctx, b, msg, step, lang)
 		}
 	}
 }
 
 // step hands the message to the setup step the user is at.
 func (h setupHandler) step(ctx context.Context, b *bot.Bot, msg *models.Message, step, lang string) {
-	var origin *models.MessageOriginChannel
-	if msg.ForwardOrigin != nil {
-		origin = msg.ForwardOrigin.MessageOriginChannel
-	}
+	origin := channelOrigin(msg)
 
 	switch {
 	case step == StepPost && origin != nil:
@@ -174,7 +175,7 @@ func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *s
 // reply sends the notice of r, then the prompt of its next step.
 func (h setupHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang string, r Reply) {
 	if r.Notice != "" {
-		h.send(ctx, b, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
+		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
 	}
 
 	if r.Next != "" {
@@ -191,7 +192,7 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 		summary, err := h.svc.Summary(ctx, userID, lang)
 		if err != nil {
 			h.log.ErrorContext(ctx, "build giveaway summary", "user_id", userID, "error", err)
-			h.send(ctx, b, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, i18n.GiveawayFailed)})
+			send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, i18n.GiveawayFailed)})
 
 			return
 		}
@@ -200,7 +201,7 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 			Text:         h.texts.Text(lang, i18n.GiveawayConfirm),
 			CallbackData: confirmData,
 		}
-		h.send(ctx, b, &bot.SendMessageParams{
+		send(ctx, b, h.log, &bot.SendMessageParams{
 			ChatID: userID,
 			Text:   summary,
 			ReplyMarkup: &models.InlineKeyboardMarkup{
@@ -218,17 +219,39 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 
 	rows = append(rows, []models.InlineKeyboardButton{cancel})
 
-	h.send(ctx, b, &bot.SendMessageParams{
+	send(ctx, b, h.log, &bot.SendMessageParams{
 		ChatID:      userID,
 		Text:        h.texts.Text(lang, promptKey(step)),
 		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
 	})
 }
 
-func (h setupHandler) send(ctx context.Context, b *bot.Bot, params *bot.SendMessageParams) {
+// send sends a message and logs a failure; the user then sees no reply and can try again.
+func send(ctx context.Context, b *bot.Bot, log *slog.Logger, params *bot.SendMessageParams) {
 	if _, err := b.SendMessage(ctx, params); err != nil {
-		h.log.ErrorContext(ctx, "send giveaway setup message", "chat_id", params.ChatID, "error", err)
+		log.ErrorContext(ctx, "send giveaway message", "chat_id", params.ChatID, "error", err)
 	}
+}
+
+// privateMessage returns the update's message when a user sent it in a private chat, and nil
+// for anything else.
+func privateMessage(update *models.Update) *models.Message {
+	msg := update.Message
+	if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+		return nil
+	}
+
+	return msg
+}
+
+// channelOrigin returns the channel a message was forwarded from, or nil when it was not
+// forwarded from a channel.
+func channelOrigin(msg *models.Message) *models.MessageOriginChannel {
+	if msg.ForwardOrigin == nil {
+		return nil
+	}
+
+	return msg.ForwardOrigin.MessageOriginChannel
 }
 
 // removeButtons removes the inline buttons from the message an outdated button belongs to.

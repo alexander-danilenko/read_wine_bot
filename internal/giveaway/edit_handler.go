@@ -87,8 +87,8 @@ func EditStartHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, lo
 	h := editHandler{ed: ed, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+		msg := privateMessage(update)
+		if msg == nil {
 			return
 		}
 
@@ -108,8 +108,8 @@ func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *sl
 	h := editHandler{ed: ed, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+		msg := privateMessage(update)
+		if msg == nil {
 			return
 		}
 
@@ -121,17 +121,14 @@ func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *sl
 			text = texts.Text(lang, i18n.EditFailed)
 		}
 
-		h.send(ctx, b, &bot.SendMessageParams{ChatID: msg.From.ID, Text: text})
+		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: msg.From.ID, Text: text})
 	}
 }
 
 // message hands a private message to the edit step the user is at: the post step takes a
 // forwarded channel post, a field step takes text, and any other input asks again.
 func (h editHandler) message(ctx context.Context, b *bot.Bot, msg *models.Message, step, lang string) {
-	var origin *models.MessageOriginChannel
-	if msg.ForwardOrigin != nil {
-		origin = msg.ForwardOrigin.MessageOriginChannel
-	}
+	origin := channelOrigin(msg)
 
 	tg := telegramAPI{b: b}
 
@@ -206,7 +203,7 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 	case editYes:
 		return h.ed.Cancel(ctx, tg, tg, userID, a.id)
 	case editNo:
-		return Reply{Next: editStep(menuStep, a.id)}
+		return h.ed.ShowMenu(ctx, tg, userID, a.id)
 	case editPublish:
 		return h.ed.Restore(ctx, tg, userID, a.id)
 	case editStop:
@@ -219,7 +216,7 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 // reply sends the notice of r, then the prompt of its next step.
 func (h editHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang string, r Reply) {
 	if r.Notice != "" {
-		h.send(ctx, b, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
+		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
 	}
 
 	if r.Next != "" {
@@ -271,7 +268,7 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 	text, published, err := h.ed.Menu(ctx, id, lang)
 	if err != nil {
 		h.log.ErrorContext(ctx, "build giveaway edit menu", "user_id", userID, "giveaway_id", id, "error", err)
-		h.send(ctx, b, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, i18n.EditFailed)})
+		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, i18n.EditFailed)})
 
 		return
 	}
@@ -308,6 +305,7 @@ var menuFields = []struct { //nolint:gochecknoglobals // read-only table of the 
 	{FieldButtonText, i18n.EditFieldButtonText},
 }
 
+// ask sends text with an inline keyboard of rows.
 func (h editHandler) ask(
 	ctx context.Context,
 	b *bot.Bot,
@@ -315,15 +313,9 @@ func (h editHandler) ask(
 	text string,
 	rows [][]models.InlineKeyboardButton,
 ) {
-	h.send(ctx, b, &bot.SendMessageParams{
+	send(ctx, b, h.log, &bot.SendMessageParams{
 		ChatID:      userID,
 		Text:        text,
 		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
 	})
-}
-
-func (h editHandler) send(ctx context.Context, b *bot.Bot, params *bot.SendMessageParams) {
-	if _, err := b.SendMessage(ctx, params); err != nil {
-		h.log.ErrorContext(ctx, "send giveaway edit message", "chat_id", params.ChatID, "error", err)
-	}
 }

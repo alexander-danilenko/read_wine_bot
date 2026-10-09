@@ -204,6 +204,15 @@ func (e *Editor) Value(ctx context.Context, tg Telegram, userID int64, step, val
 	return e.save(ctx, tg, log, g, changed)
 }
 
+// ShowMenu shows the field menu of giveaway id again when the user may still change it.
+func (e *Editor) ShowMenu(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
+	if _, r, ok := e.load(ctx, tg, userID, id); !ok {
+		return r
+	}
+
+	return Reply{Next: editStep(menuStep, id)}
+}
+
 // AskCancel asks the creator to confirm cancelling the published giveaway id.
 func (e *Editor) AskCancel(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
 	g, r, ok := e.load(ctx, tg, userID, id)

@@ -430,3 +430,16 @@ func TestEditList(t *testing.T) {
 		t.Errorf("List = %q, want %q", got, want)
 	}
 }
+
+func TestEditShowMenuOfAnotherCreator(t *testing.T) {
+	s := newSetup(t)
+	g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
+
+	if r := s.ed.ShowMenu(t.Context(), s.tg, adminID, g.ID); r != (giveaway.Reply{Notice: i18n.EditNotYours}) {
+		t.Errorf("ShowMenu of another creator's giveaway = %+v, want the not-yours notice", r)
+	}
+
+	if r := s.ed.ShowMenu(t.Context(), s.tg, fanID, g.ID); r.Next != menu(g.ID) {
+		t.Errorf("ShowMenu by the creator = %+v, want the menu", r)
+	}
+}
