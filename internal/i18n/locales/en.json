@@ -33,6 +33,7 @@
   "giveaway.joined": "You're in the giveaway!",
   "giveaway.already_joined": "You're already in this giveaway.",
   "giveaway.join_failed": "Couldn't sign you up. Please try again.",
+  "giveaway.ended": "This giveaway has ended.",
   "edit.prompt": "Forward me the channel post your giveaway is on.",
   "edit.not_found": "There is no giveaway on this post.",
   "edit.not_yours": "Another admin created this giveaway, so only they can change it.",
