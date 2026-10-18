@@ -42,16 +42,16 @@ func menu() []entry {
 	}
 }
 
-// StartHandler returns a handler that answers /start with the greeting and the command menu
-// as tappable commands.
-func StartHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
+// StartHandler returns a handler that answers /start with the greeting, the command menu as
+// tappable commands and the bot's version, so the owner can see which build is deployed.
+func StartHandler(texts *i18n.Catalog, langs language.Reader, version string, log *slog.Logger) bot.HandlerFunc {
 	return reply(langs, log, func(lang string) string {
 		lines := make([]string, 0, len(menu()))
 		for _, e := range menu() {
 			lines = append(lines, "/"+e.command+" — "+texts.Text(lang, e.description))
 		}
 
-		return texts.Text(lang, i18n.Greeting) + "\n\n" + strings.Join(lines, "\n")
+		return texts.Text(lang, i18n.Greeting) + "\n\n" + strings.Join(lines, "\n") + "\n\nv" + version
 	})
 }
 

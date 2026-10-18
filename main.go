@@ -29,6 +29,11 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
+// version is the bot's semantic version (semver.org), bumped by every commit that changes the
+// bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
+// can be checked.
+const version = "0.1.0"
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("bot failed", "error", err)
@@ -95,7 +100,7 @@ func run() error {
 	var wg sync.WaitGroup
 	wg.Go(func() { cron.Every(ctx, time.Minute, func(ctx context.Context) { drawer.DrawDue(ctx, b) }) })
 
-	slog.InfoContext(ctx, "bot started")
+	slog.InfoContext(ctx, "bot started", "version", version)
 	b.Start(ctx)
 	wg.Wait()
 	slog.InfoContext(ctx, "bot stopped")
@@ -154,7 +159,7 @@ func handlers(
 		bot.WithMessageTextHandler(
 			command.Start,
 			bot.MatchTypeCommandStartOnly,
-			command.StartHandler(texts, users, log),
+			command.StartHandler(texts, users, version, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,

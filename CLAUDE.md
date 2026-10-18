@@ -138,6 +138,14 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 - Mark a breaking change with `!` after the type or a `BREAKING CHANGE:` footer.
 - Never open a pull request without the owner's explicit permission in the current conversation. This includes `/lfg` and every other Compound Engineering pipeline: stop after the local commits, report, and ask. A pipeline's default shipping step is not permission.
 
+## Version
+
+`const version` in `main.go` holds the bot's [semver](https://semver.org) version. The startup log (`bot started version=…`) and the `/start` reply show it, so the owner can check which build is deployed.
+
+- Every commit that changes the bot bumps it, in that same commit. Commits of only Markdown, `docs/`, `_test.go` files or `.claude/` leave it alone.
+- `feat` -> minor (`0.1.1` -> `0.2.0`), patch reset to 0. Every other type -> patch (`0.1.0` -> `0.1.1`). A breaking change (`!`) -> major once at `1.0.0` or later; before `1.0.0` it bumps minor.
+- The `version-bump-gate.sh` hook (PreToolUse on Bash) blocks a `git commit` that breaks this rule. Bump, stage `main.go` and commit again; do not work around the hook.
+
 ## Compound Engineering
 
 After a solved, verified problem, offer once to invoke the `ce-compound` skill at the completion checkpoint only when the work produced durable project reasoning that is not readily recoverable from the final code, tests, types, comments, or existing documentation, and losing it would plausibly cause recurrence, material risk, or substantial rediscovery. Apply this counterfactual: if the learning document disappeared, would a future engineer reading the final implementation still be likely to repeat the mistake or redo substantial investigation? If not, do not offer. Completion, effort, and diff size alone are not enough. Offer at the checkpoint so a qualifying learning can ship in the PR that produced it, and only where the repository treats captured learnings as tracked, committed knowledge.
