@@ -59,8 +59,8 @@ const changedProfile = "is_bot <> ? OR first_name <> ? OR last_name <> ? OR user
 // command as they are.
 func (s *Store) Record(ctx context.Context, p Profile) error {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Every branch starts with a write: SQLite fails a transaction that reads first and
-		// then writes while another one writes, and busy_timeout does not retry that case.
+		// Every branch starts with a write, so concurrent updates of one user queue on its row
+		// lock instead of both reading the same revision number.
 		u := User{
 			TelegramID: p.TelegramID, IsBot: p.IsBot, FirstName: p.FirstName, LastName: p.LastName,
 			Username: p.Username, LanguageCode: p.LanguageCode, IsPremium: p.IsPremium, Revision: 1,
@@ -101,28 +101,6 @@ func (s *Store) Record(ctx context.Context, p Profile) error {
 	})
 	if err != nil {
 		return fmt.Errorf("record user %d: %w", p.TelegramID, err)
-	}
-
-	return nil
-}
-
-// BackfillRevisions gives every user without a revision their first one, copied from their
-// row and dated now: the names a row holds are only the latest ones the bot saw. Running it
-// again changes nothing.
-func BackfillRevisions(ctx context.Context, db *gorm.DB) error {
-	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Exec(`INSERT INTO user_revisions
-			(user_id, number, is_bot, first_name, last_name, username, language_code, is_premium, created_at)
-			SELECT telegram_id, 1, is_bot, first_name, last_name, username, language_code, is_premium, ?
-			FROM users WHERE revision = 0`, time.Now()).Error
-		if err != nil {
-			return err
-		}
-
-		return tx.Model(&User{}).Where("revision = 0").UpdateColumn("revision", 1).Error
-	})
-	if err != nil {
-		return fmt.Errorf("backfill user revisions: %w", err)
 	}
 
 	return nil

@@ -224,10 +224,8 @@ func (s *Store) Cancel(ctx context.Context, id uint) error {
 func (s *Store) Due(ctx context.Context, now time.Time) ([]Giveaway, error) {
 	var gs []Giveaway
 
-	// The driver binds a time as text with its zone offset and ends_at holds UTC text, so the
-	// comparison is only right for a UTC now.
 	err := s.db.WithContext(ctx).
-		Where("published = ? AND finished_at IS NULL AND ends_at IS NOT NULL AND ends_at <= ?", true, now.UTC()).
+		Where("published = ? AND finished_at IS NULL AND ends_at IS NOT NULL AND ends_at <= ?", true, now).
 		Order(colEndsAt).Order("id").Find(&gs).Error
 	if err != nil {
 		return nil, fmt.Errorf("list due giveaways: %w", err)
@@ -236,14 +234,15 @@ func (s *Store) Due(ctx context.Context, now time.Time) ([]Giveaway, error) {
 	return gs, nil
 }
 
-// Candidates returns the users who participate in the giveaway, in the order they joined.
+// Candidates returns the users who participate in the giveaway, in the order they joined; users
+// who joined in the same microsecond come by Telegram ID.
 func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, error) {
 	var us []user.User
 
 	err := s.db.WithContext(ctx).
 		Joins("JOIN giveaway_participants p ON p.user_id = users.telegram_id").
 		Where("p.giveaway_id = ?", giveawayID).
-		Order("p.created_at").Order("p.rowid").Find(&us).Error
+		Order("p.created_at").Order("p.user_id").Find(&us).Error
 	if err != nil {
 		return nil, fmt.Errorf("list participants of giveaway %d: %w", giveawayID, err)
 	}
@@ -255,11 +254,9 @@ func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, e
 // It returns ErrNotFound when the giveaway is no longer due at now: cancelled, finished, or
 // given a later end time since it was found due.
 func (s *Store) Finish(ctx context.Context, id uint, winnerIDs []int64, now time.Time) error {
-	now = now.UTC() // see Due
-
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// The guarded write comes first: SQLite fails a transaction that reads before it writes
-		// while another writer holds the lock.
+		// The guarded update re-checks the row after any concurrent writer commits, so only
+		// one pass finishes the giveaway.
 		res := tx.Model(&Giveaway{}).
 			Where("id = ? AND published = ? AND finished_at IS NULL AND ends_at <= ?", id, true, now).
 			Update(colFinished, now)

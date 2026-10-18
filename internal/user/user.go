@@ -12,7 +12,7 @@ import (
 )
 
 // User is one row of the users table: the user's latest profile plus the bot's own state.
-// Columns added to a table with rows need a default in SQLite.
+// Columns added to a table with rows need a default.
 type User struct {
 	TelegramID int64  `gorm:"primaryKey;autoIncrement:false"`
 	IsBot      bool   `gorm:"not null;default:false"`
