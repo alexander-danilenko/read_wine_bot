@@ -14,12 +14,6 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
-const (
-	channelID int64 = -1_001_234_567_890 // channel IDs are negative and larger than int32
-	adminID   int64 = 7_000_000_001
-	fanID     int64 = 7_000_000_002
-)
-
 // newStore opens a fresh database file the way the bot does, so foreign keys are on, and
 // saves the admin and the fan as users.
 func newStore(t *testing.T) (*giveaway.Store, *gorm.DB) {
@@ -48,7 +42,7 @@ func newStore(t *testing.T) (*giveaway.Store, *gorm.DB) {
 }
 
 // publish saves g as the admin's draft and publishes it, the way Confirm does.
-func publish(t *testing.T, store *giveaway.Store, g *giveaway.Giveaway) giveaway.Giveaway {
+func publishStored(t *testing.T, store *giveaway.Store, g *giveaway.Giveaway) giveaway.Giveaway {
 	t.Helper()
 
 	ctx := t.Context()
@@ -85,7 +79,7 @@ func TestPostSkipsDrafts(t *testing.T) {
 		t.Errorf("Post of a draft: err = %v, want ErrNotFound", err)
 	}
 
-	published := publish(
+	published := publishStored(
 		t,
 		store,
 		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "uk"},
@@ -105,7 +99,7 @@ func TestPublish(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
-	g := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	g := publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
 
 	if err := store.Publish(ctx, g.ID); !errors.Is(err, giveaway.ErrNotFound) {
 		t.Errorf("second Publish: err = %v, want ErrNotFound", err)
@@ -153,7 +147,7 @@ func TestSaveDraftOnPublishedPost(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
-	publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
+	publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"})
 
 	err := store.SaveDraft(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID})
 	if !errors.Is(err, giveaway.ErrExists) {
@@ -177,7 +171,7 @@ func TestDeleteDraftKeepsPublished(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
-	publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
 
 	if err := store.SaveDraft(
 		ctx,
@@ -207,7 +201,7 @@ func TestStoreJoin(t *testing.T) {
 	store, conn := newStore(t)
 	ctx := t.Context()
 
-	g := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	g := publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
 
 	for i, want := range []bool{true, false} {
 		added, err := store.Join(ctx, g.ID, fanID)
@@ -234,7 +228,7 @@ func TestStoreJoin(t *testing.T) {
 func cancelled(t *testing.T, store *giveaway.Store, g *giveaway.Giveaway) giveaway.Giveaway {
 	t.Helper()
 
-	p := publish(t, store, g)
+	p := publishStored(t, store, g)
 
 	if _, err := store.Join(t.Context(), p.ID, fanID); err != nil {
 		t.Fatal(err)
@@ -311,7 +305,7 @@ func TestLookupSeesPublishedAndCancelled(t *testing.T) {
 	store, _ := newStore(t)
 	ctx := t.Context()
 
-	published := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID})
+	published := publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID})
 	gone := cancelled(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
 
 	if err := store.SaveDraft(ctx, &giveaway.Giveaway{ChatID: channelID, MessageID: 43, CreatedBy: fanID}); err != nil {
@@ -395,7 +389,7 @@ func TestFinishedGiveawayIsLocked(t *testing.T) {
 	store, conn := newStore(t)
 	ctx := t.Context()
 
-	g := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 1})
+	g := publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 1})
 	if err := conn.Model(&giveaway.Giveaway{}).
 		Where("id = ?", g.ID).
 		Update("finished_at", time.Now()).
@@ -422,7 +416,7 @@ func TestSaveFields(t *testing.T) {
 	ends := time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC)
 
 	for _, g := range []giveaway.Giveaway{
-		publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID}),
+		publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID}),
 		cancelled(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID}),
 	} {
 		if err := store.SaveFields(ctx, g.ID, &ends, 3, "Беру участь"); err != nil {
@@ -467,11 +461,19 @@ func TestRunning(t *testing.T) {
 		return &t
 	}
 
-	later := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID, EndsAt: at(25)})
-	sooner := publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: at(1)})
+	later := publishStored(
+		t,
+		store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID, EndsAt: at(25)},
+	)
+	sooner := publishStored(
+		t,
+		store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: at(1)},
+	)
 	cancelled(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 43, CreatedBy: adminID, EndsAt: at(20)})
 
-	finished := publish(
+	finished := publishStored(
 		t,
 		store,
 		&giveaway.Giveaway{ChatID: channelID, MessageID: 44, CreatedBy: adminID, EndsAt: at(2)},
@@ -483,7 +485,7 @@ func TestRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	publish(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 45, CreatedBy: fanID, EndsAt: at(3)})
+	publishStored(t, store, &giveaway.Giveaway{ChatID: channelID, MessageID: 45, CreatedBy: fanID, EndsAt: at(3)})
 
 	if err := store.SaveDraft(
 		ctx,
@@ -511,7 +513,7 @@ func publishEnding(t *testing.T, store *giveaway.Store, post int64, ends time.Ti
 		g.EndsAt = &ends
 	}
 
-	return publish(t, store, g)
+	return publishStored(t, store, g)
 }
 
 func dueIDs(t *testing.T, store *giveaway.Store, now time.Time) []uint {
