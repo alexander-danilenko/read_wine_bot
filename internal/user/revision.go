@@ -24,20 +24,20 @@ type Profile struct {
 // Revision is one row of the user_revisions table: a snapshot of a user's profile. Revisions
 // are only ever added, never changed or deleted.
 type Revision struct {
-	ID uint `gorm:"primaryKey"`
+	ID uint `gorm:"primaryKey;comment:Row ID"`
 	// UserID (column user_id) holds the user's users.telegram_id. It must not be named
 	// TelegramID: with the same name, GORM reads the link backwards and puts the foreign key
 	// on the users table.
-	UserID       int64     `gorm:"not null;uniqueIndex:idx_user_revisions_number"`
-	User         User      `gorm:"foreignKey:UserID;references:TelegramID"`        // declares the foreign key; never loaded
-	Number       int       `gorm:"not null;uniqueIndex:idx_user_revisions_number"` // counts per user from 1
-	IsBot        bool      `gorm:"not null;default:false"`
-	FirstName    string    `gorm:"not null;default:''"`
-	LastName     string    `gorm:"not null;default:''"`
-	Username     string    `gorm:"not null;default:''"`
-	LanguageCode string    `gorm:"not null;default:''"`
-	IsPremium    bool      `gorm:"not null;default:false"`
-	CreatedAt    time.Time // when the bot recorded this profile
+	UserID       int64     `gorm:"not null;uniqueIndex:idx_user_revisions_number;comment:Telegram user ID (users.telegram_id) this snapshot belongs to"`
+	User         User      `gorm:"foreignKey:UserID;references:TelegramID"` // declares the foreign key; never loaded
+	Number       int       `gorm:"not null;uniqueIndex:idx_user_revisions_number;comment:Revision number, counting per user from 1"`
+	IsBot        bool      `gorm:"not null;default:false;comment:Whether the account was a Telegram bot"`
+	FirstName    string    `gorm:"not null;default:'';comment:First name at this revision"`
+	LastName     string    `gorm:"not null;default:'';comment:Last name at this revision, empty when the user had none"`
+	Username     string    `gorm:"not null;default:'';comment:Username without the @ at this revision, empty when the user had none"`
+	LanguageCode string    `gorm:"not null;default:'';comment:Telegram app language at this revision (IETF tag)"`
+	IsPremium    bool      `gorm:"not null;default:false;comment:Whether the user had Telegram Premium"`
+	CreatedAt    time.Time `gorm:"comment:When the bot recorded this profile"`
 }
 
 // TableName names the table user_revisions; GORM would call it revisions.

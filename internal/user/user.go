@@ -12,24 +12,25 @@ import (
 )
 
 // User is one row of the users table: the user's latest profile plus the bot's own state.
-// Columns added to a table with rows need a default.
+// Columns added to a table with rows need a default. Every column carries a comment: tag,
+// which AutoMigrate stores as the column's description in the database.
 type User struct {
-	TelegramID int64  `gorm:"primaryKey;autoIncrement:false"`
-	IsBot      bool   `gorm:"not null;default:false"`
-	FirstName  string `gorm:"not null;default:''"` // from Telegram, refreshed on every interaction
-	LastName   string `gorm:"not null;default:''"` // "" when the user has none
-	Username   string `gorm:"not null;default:''"` // without the @, "" when the user has none
+	TelegramID int64  `gorm:"primaryKey;autoIncrement:false;comment:Telegram user ID"`
+	IsBot      bool   `gorm:"not null;default:false;comment:Whether the account is a Telegram bot"`
+	FirstName  string `gorm:"not null;default:'';comment:First name from Telegram, refreshed on every interaction"`
+	LastName   string `gorm:"not null;default:'';comment:Last name from Telegram, empty when the user has none"`
+	Username   string `gorm:"not null;default:'';comment:Telegram username without the @, empty when the user has none"`
 	// LanguageCode is the Telegram app's language as Telegram reports it, not the bot's menu
 	// choice, which is Language.
-	LanguageCode string `gorm:"not null;default:''"`
-	IsPremium    bool   `gorm:"not null;default:false"`
-	Revision     int    `gorm:"not null;default:0"` // number of the latest revision, 0 before the first
-	Language     string `gorm:"size:16;not null"`   // a locale code from internal/i18n, chosen from the menu
+	LanguageCode string `gorm:"not null;default:'';comment:Language of the user's Telegram app as Telegram reports it (IETF tag), not the bot language"`
+	IsPremium    bool   `gorm:"not null;default:false;comment:Whether the user has Telegram Premium"`
+	Revision     int    `gorm:"not null;default:0;comment:Number of the latest row in user_revisions for this user, 0 before the first"`
+	Language     string `gorm:"size:16;not null;comment:Bot language the user chose from the menu (locale code from internal/i18n), empty if never chosen"`
 	// PendingCommand is what the bot waits for in the user's next message, such as a giveaway
 	// setup step, or "" for nothing.
-	PendingCommand string `gorm:"size:32;not null;default:''"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	PendingCommand string    `gorm:"size:32;not null;default:'';comment:What the bot waits for in the user's next private message, such as a giveaway setup step, empty for nothing"`
+	CreatedAt      time.Time `gorm:"comment:When the bot first saw the user"`
+	UpdatedAt      time.Time `gorm:"comment:When the row last changed"`
 }
 
 // Store reads and writes users.
