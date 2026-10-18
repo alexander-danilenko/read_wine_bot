@@ -333,6 +333,27 @@ func TestEditCancel(t *testing.T) {
 	}
 }
 
+func TestEditFinishNow(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+	g := s.open(t, &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 2, EndsAt: s.kyivTime(20, 19, 0),
+	})
+
+	wantAsk := "edit:finish:" + strconv.FormatUint(uint64(g.ID), 10)
+	if r := s.ed.AskFinish(ctx, s.tg, adminID, g.ID); r.Next != wantAsk {
+		t.Errorf("AskFinish = %+v, want the confirmation", r)
+	}
+
+	if r := s.ed.FinishNow(ctx, s.tg, adminID, g.ID); r != (giveaway.Reply{Notice: i18n.EditFinishing}) {
+		t.Errorf("FinishNow = %+v, want finishing", r)
+	}
+
+	if got := s.read(t, g.ID); got.State(s.now) != giveaway.Due || got.Winners != 2 {
+		t.Errorf("giveaway = %+v, want due now with its winner count kept", got)
+	}
+}
+
 func TestEditRestore(t *testing.T) {
 	s := newSetup(t)
 	ctx := t.Context()

@@ -33,6 +33,7 @@ const (
 const (
 	menuStep      = "menu"   // the field menu of a giveaway
 	askCancelStep = "cancel" // the cancel confirmation of a giveaway
+	askFinishStep = "finish" // the finish now confirmation of a giveaway
 )
 
 // inEdit reports whether a pending command is an edit step.
@@ -223,6 +224,17 @@ func (e *Editor) ShowMenu(ctx context.Context, tg Telegram, userID int64, id uin
 
 // AskCancel asks the creator to confirm cancelling the published giveaway id.
 func (e *Editor) AskCancel(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
+	return e.askPublished(ctx, tg, userID, id, askCancelStep)
+}
+
+// AskFinish asks the creator to confirm finishing the published giveaway id now.
+func (e *Editor) AskFinish(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
+	return e.askPublished(ctx, tg, userID, id, askFinishStep)
+}
+
+// FinishNow moves the end time of the published giveaway id to now, so the next winner draw,
+// within a minute, finishes it.
+func (e *Editor) FinishNow(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
 	g, r, ok := e.load(ctx, tg, userID, id)
 	if !ok {
 		return r
@@ -232,7 +244,18 @@ func (e *Editor) AskCancel(ctx context.Context, tg Telegram, userID int64, id ui
 		return Reply{Stale: true}
 	}
 
-	return Reply{Next: editStep(askCancelStep, id)}
+	err := e.writer.SaveFields(ctx, id, utcPtr(e.svc.now()), g.Winners, g.ButtonText)
+	if errors.Is(err, ErrNotFound) {
+		return Reply{Notice: i18n.EditFinished}
+	}
+
+	if err != nil {
+		e.svc.log.ErrorContext(ctx, "finish giveaway now", "user_id", userID, "giveaway_id", id, "error", err)
+
+		return Reply{Notice: i18n.EditFailed, Next: editStep(menuStep, id)}
+	}
+
+	return Reply{Notice: i18n.EditFinishing}
 }
 
 // Cancel takes the join button off the post of the published giveaway id and marks it
@@ -393,6 +416,20 @@ func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername strin
 // Default returns the value a field's default button stands for, or "" if it has none.
 func (e *Editor) Default(field, lang string) string {
 	return e.svc.Default(stepPrefix+field, lang)
+}
+
+// askPublished returns the confirmation step of the published giveaway id.
+func (e *Editor) askPublished(ctx context.Context, tg Telegram, userID int64, id uint, step string) Reply {
+	g, r, ok := e.load(ctx, tg, userID, id)
+	if !ok {
+		return r
+	}
+
+	if !g.Published {
+		return Reply{Stale: true}
+	}
+
+	return Reply{Next: editStep(step, id)}
 }
 
 // save writes the changed fields of g, the post first when its button text changed.

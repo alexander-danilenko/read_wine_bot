@@ -320,6 +320,7 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		"giveaway-edit:field:end_time:" + id,
 		"giveaway-edit:field:winners:" + id,
 		"giveaway-edit:field:button_text:" + id,
+		"giveaway-edit:ask_finish:" + id,
 		"giveaway-edit:ask:" + id,
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -388,8 +389,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 5 {
-		t.Errorf("reply has %d button rows, want the menu's 5", len(rows))
+	if rows := h.keyboard(t); len(rows) != 6 {
+		t.Errorf("reply has %d button rows, want the menu's 6", len(rows))
 	}
 }
 

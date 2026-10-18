@@ -28,13 +28,15 @@ const EditCallbackPrefix = "giveaway-edit:"
 // Edit button actions. Every action but stop carries the giveaway ID, and the field and
 // default actions also the field: giveaway-edit:<action>[:<field>]:<giveaway ID>.
 const (
-	editField   = "field"   // asks for a field value
-	editDefault = "default" // saves a field's default value
-	editAsk     = "ask"     // asks to confirm the cancel
-	editYes     = "yes"     // cancels the giveaway
-	editNo      = "no"      // declines the cancel and shows the menu
-	editPublish = "publish" // publishes a cancelled giveaway again
-	editStop    = "stop"    // stops waiting for a forward or a value
+	editField     = "field"      // asks for a field value
+	editDefault   = "default"    // saves a field's default value
+	editAsk       = "ask"        // asks to confirm the cancel
+	editYes       = "yes"        // cancels the giveaway
+	editAskFinish = "ask_finish" // asks to confirm finishing now
+	editYesFinish = "yes_finish" // finishes the giveaway now
+	editNo        = "no"         // declines the cancel or finish and shows the menu
+	editPublish   = "publish"    // publishes a cancelled giveaway again
+	editStop      = "stop"       // stops waiting for a forward or a value
 )
 
 // editData returns the callback data of an edit button; parts follow the action.
@@ -259,18 +261,30 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 		return h.ed.Field(ctx, tg, userID, a.id, a.field)
 	case editDefault:
 		return h.ed.Value(ctx, tg, userID, editStep(a.field, a.id), h.ed.Default(a.field, lang))
-	case editAsk:
-		return h.ed.AskCancel(ctx, tg, userID, a.id)
-	case editYes:
-		return h.ed.Cancel(ctx, tg, tg, userID, a.id)
-	case editNo:
-		return h.ed.ShowMenu(ctx, tg, userID, a.id)
+	case editAsk, editYes, editAskFinish, editYesFinish, editNo:
+		return h.confirm(ctx, tg, userID, a)
 	case editPublish:
 		return h.ed.Restore(ctx, tg, userID, a.id)
 	case editStop:
 		return h.ed.Stop(ctx, userID)
 	default:
 		return Reply{Stale: true}
+	}
+}
+
+// confirm runs the Editor call of a tap that asks for, accepts or declines a cancel or finish.
+func (h editHandler) confirm(ctx context.Context, tg telegramAPI, userID int64, a editAction) Reply {
+	switch a.name {
+	case editAsk:
+		return h.ed.AskCancel(ctx, tg, userID, a.id)
+	case editYes:
+		return h.ed.Cancel(ctx, tg, tg, userID, a.id)
+	case editAskFinish:
+		return h.ed.AskFinish(ctx, tg, userID, a.id)
+	case editYesFinish:
+		return h.ed.FinishNow(ctx, tg, userID, a.id)
+	default:
+		return h.ed.ShowMenu(ctx, tg, userID, a.id)
 	}
 }
 
@@ -285,7 +299,7 @@ func (h editHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang s
 	}
 }
 
-// prompt shows step: the forward request, the field menu, the cancel confirmation, or the
+// prompt shows step: the forward request, the field menu, a cancel or finish confirmation, or the
 // question for a field with its default button. Waiting steps get a Cancel button.
 func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang, step string) {
 	button := func(key i18n.Key, data string) models.InlineKeyboardButton {
@@ -310,6 +324,11 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 			button(i18n.EditYes, editData(editYes, rawID)),
 			button(i18n.EditNo, editData(editNo, rawID)),
 		}})
+	case askFinishStep:
+		h.ask(ctx, b, userID, h.texts.Text(lang, i18n.EditAskFinish), [][]models.InlineKeyboardButton{{
+			button(i18n.EditYesFinish, editData(editYesFinish, rawID)),
+			button(i18n.EditNo, editData(editNo, rawID)),
+		}})
 	default:
 		var rows [][]models.InlineKeyboardButton
 		if value := h.ed.Default(what, lang); value != "" {
@@ -323,8 +342,8 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 	}
 }
 
-// menu sends the field menu of giveaway id: a button per field, then Cancel for a published
-// giveaway or Publish for a cancelled one.
+// menu sends the field menu of giveaway id: a button per field, then Finish now and Cancel for
+// a published giveaway or Publish for a cancelled one.
 func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang string, id uint) {
 	text, published, err := h.ed.Menu(ctx, id, lang)
 	if err != nil {
@@ -345,7 +364,19 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 	}
 
 	rawID := strconv.FormatUint(uint64(id), 10)
-	rows := make([][]models.InlineKeyboardButton, 0, len(menuFields)+1)
+	row := func(key i18n.Key, action string) []models.InlineKeyboardButton {
+		return []models.InlineKeyboardButton{{Text: h.texts.Text(lang, key), CallbackData: editData(action, rawID)}}
+	}
+
+	tail := [][]models.InlineKeyboardButton{row(i18n.EditPublishGiveaway, editPublish)}
+	if published {
+		tail = [][]models.InlineKeyboardButton{
+			row(i18n.EditFinishGiveaway, editAskFinish),
+			row(i18n.EditCancelGiveaway, editAsk),
+		}
+	}
+
+	rows := make([][]models.InlineKeyboardButton, 0, len(menuFields)+len(tail))
 
 	for _, f := range menuFields {
 		rows = append(rows, []models.InlineKeyboardButton{{
@@ -353,16 +384,7 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 		}})
 	}
 
-	last := models.InlineKeyboardButton{
-		Text: h.texts.Text(lang, i18n.EditPublishGiveaway), CallbackData: editData(editPublish, rawID),
-	}
-	if published {
-		last = models.InlineKeyboardButton{
-			Text: h.texts.Text(lang, i18n.EditCancelGiveaway), CallbackData: editData(editAsk, rawID),
-		}
-	}
-
-	h.ask(ctx, b, userID, text, append(rows, []models.InlineKeyboardButton{last}))
+	h.ask(ctx, b, userID, text, append(rows, tail...))
 }
 
 // ask sends text with an inline keyboard of rows.
