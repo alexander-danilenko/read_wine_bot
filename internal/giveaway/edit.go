@@ -503,17 +503,19 @@ func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername strin
 	lines := make([]string, 0, len(gs))
 
 	for i, g := range gs {
-		ends := e.ends(g)
+		ends, mark := e.ends(g), i18n.EditListMarkPublished
 
 		switch {
 		case !g.Published:
 			ends += e.svc.texts.Text(lang, i18n.EditListDraft)
+			mark = i18n.EditListMarkDraft
 		case g.State(now) == Due:
 			ends += e.svc.texts.Text(lang, i18n.EditListDue)
 		}
 
 		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListItem,
-			i+1, postLink(g.ChatID, g.MessageID), ends, editLink(botUsername, g.ChatID, g.MessageID)))
+			i+1, postLink(g.ChatID, g.MessageID), ends, editLink(botUsername, g.ChatID, g.MessageID),
+			e.svc.texts.Text(lang, mark)))
 	}
 
 	return e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n"), nil

@@ -488,11 +488,11 @@ func TestEditList(t *testing.T) {
 	}
 
 	want := "Your active giveaways:\n\n" +
-		`1. <a href="https://t.me/c/1234567890/42">📌 Post</a> · ends 2026-10-08 19:00, awaiting results · ` +
+		`🟢 1. <a href="https://t.me/c/1234567890/42">📌 Post</a> · ends 2026-10-08 19:00, awaiting results · ` +
 		`<a href="https://t.me/test_bot?start=edit_1234567890_42">✏️ Edit</a>` + "\n" +
-		`2. <a href="https://t.me/c/1234567890/41">📌 Post</a> · ends 2026-10-25 19:00 · ` +
+		`🟢 2. <a href="https://t.me/c/1234567890/41">📌 Post</a> · ends 2026-10-25 19:00 · ` +
 		`<a href="https://t.me/test_bot?start=edit_1234567890_41">✏️ Edit</a>` + "\n" +
-		`3. <a href="https://t.me/c/1234567890/44">📌 Post</a> · ends —, draft, not published · ` +
+		`📝 3. <a href="https://t.me/c/1234567890/44">📌 Post</a> · ends —, draft, not published · ` +
 		`<a href="https://t.me/test_bot?start=edit_1234567890_44">✏️ Edit</a>`
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)
