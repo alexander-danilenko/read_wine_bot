@@ -228,6 +228,18 @@ func TestPostHandler(t *testing.T) {
 	h(t.Context(), nil, post(models.ChatTypeChannel))
 	h(t.Context(), nil, post(models.ChatTypeSupergroup))
 
+	// Service messages in a channel are not posts: they would take the leaves of the post
+	// before them.
+	pin := post(models.ChatTypeChannel)
+	pin.ChannelPost.ID = 43
+	pin.ChannelPost.PinnedMessage = &models.MaybeInaccessibleMessage{}
+	h(t.Context(), nil, pin)
+
+	retitle := post(models.ChatTypeChannel)
+	retitle.ChannelPost.ID = 44
+	retitle.ChannelPost.NewChatTitle = "read wine"
+	h(t.Context(), nil, retitle)
+
 	want := []channel.Post{{ChatID: channelID, MessageID: 42, PostedAt: time.Unix(date, 0)}}
 	if !slices.EqualFunc(store.posts, want, func(a, b channel.Post) bool {
 		return a.ChatID == b.ChatID && a.MessageID == b.MessageID && a.PostedAt.Equal(b.PostedAt)

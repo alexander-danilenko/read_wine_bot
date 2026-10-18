@@ -13,6 +13,8 @@ Run the queries in any PostgreSQL client connected to the bot's `DATABASE_URL`. 
 - Give every ad its own invite link with a unique name. Telegram hides the second half of links created by other admins, so the queries group by the name.
 - Telegram keeps undelivered updates for 24 hours. If the bot is down longer, the changes in that gap are lost. An event whose database write fails is lost too (the bot logs the error). A lost leave makes a subscriber look subscribed.
 - A subscription ends with `left` or `removed`. The post query counts only `left`: a removal is an admin's action, not a reaction to a post.
+- Events carry Telegram's time to the second. When a join and a leave of one user share a second, the queries put the join first; the bot can save them in either order.
+- Each photo of an album is saved as its own post with the same time. The post query folds posts of one second into the first of them.
 
 ## Ad links: joins and 30-day retention
 
@@ -24,7 +26,7 @@ WITH events AS (
          LEAD(kind)        OVER w AS next_kind,
          LEAD(happened_at) OVER w AS next_at
   FROM channel_member_events e
-  WINDOW w AS (PARTITION BY chat_id, user_id ORDER BY happened_at, id)
+  WINDOW w AS (PARTITION BY chat_id, user_id ORDER BY happened_at, kind = 'joined' DESC, id)
 )
 SELECT COALESCE(NULLIF(invite_link_name, ''), '(no link name)') AS link,
        COUNT(*) AS joins,
@@ -48,10 +50,16 @@ ORDER BY joins DESC;
 Each unsubscribe counts against the latest post before it, if that post is at most 24 hours older. One unsubscribe never counts against two posts.
 
 ```sql
-WITH leaves AS (
+WITH posts AS (
+  -- An album arrives as one post per photo, all with the same time: keep the first.
+  SELECT DISTINCT ON (chat_id, posted_at) chat_id, message_id, posted_at
+  FROM channel_posts
+  ORDER BY chat_id, posted_at, message_id
+),
+leaves AS (
   SELECT e.chat_id,
          (SELECT p.message_id
-          FROM channel_posts p
+          FROM posts p
           WHERE p.chat_id = e.chat_id
             AND p.posted_at <= e.happened_at
             AND p.posted_at > e.happened_at - interval '24 hours'
@@ -63,7 +71,7 @@ WITH leaves AS (
 SELECT 'https://t.me/read_wine/' || p.message_id AS post,
        p.posted_at,
        COUNT(l.message_id) AS leaves_within_24h
-FROM channel_posts p
+FROM posts p
 LEFT JOIN leaves l ON l.chat_id = p.chat_id AND l.message_id = p.message_id
 GROUP BY p.chat_id, p.message_id, p.posted_at
 ORDER BY leaves_within_24h DESC, p.posted_at DESC
@@ -80,7 +88,7 @@ WITH events AS (
          LEAD(kind)        OVER w AS next_kind,
          LEAD(happened_at) OVER w AS next_at
   FROM channel_member_events e
-  WINDOW w AS (PARTITION BY chat_id, user_id ORDER BY happened_at, id)
+  WINDOW w AS (PARTITION BY chat_id, user_id ORDER BY happened_at, kind = 'joined' DESC, id)
 ),
 lifetimes AS (
   SELECT CASE
@@ -111,7 +119,7 @@ WITH events AS (
          LEAD(kind)        OVER w AS next_kind,
          LEAD(happened_at) OVER w AS next_at
   FROM channel_member_events e
-  WINDOW w AS (PARTITION BY chat_id, user_id ORDER BY happened_at, id)
+  WINDOW w AS (PARTITION BY chat_id, user_id ORDER BY happened_at, kind = 'joined' DESC, id)
 )
 SELECT COUNT(*) AS ended,
        percentile_cont(0.5) WITHIN GROUP (ORDER BY next_at - happened_at) AS median_lifetime

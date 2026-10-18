@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -65,11 +66,12 @@ func MemberHandler(events Events, profiles Profiles, log *slog.Logger) bot.Handl
 }
 
 // PostHandler returns a handler for channel_post updates. It records when each channel post
-// was published; posts in other chats are ignored.
+// was published; posts in other chats and service messages are ignored. Each photo of an album
+// arrives as its own post; docs/channel-analytics.md folds them into one.
 func PostHandler(posts Posts, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, _ *bot.Bot, update *models.Update) {
 		msg := update.ChannelPost
-		if msg == nil || msg.Chat.Type != models.ChatTypeChannel {
+		if msg == nil || msg.Chat.Type != models.ChatTypeChannel || isService(msg) {
 			return
 		}
 
@@ -78,6 +80,27 @@ func PostHandler(posts Posts, log *slog.Logger) bot.HandlerFunc {
 			log.ErrorContext(ctx, "record channel post", "message_id", msg.ID, "error", err)
 		}
 	}
+}
+
+// isService reports whether msg is a service message Telegram posts in a channel by itself.
+// ponytail: covers the service messages a channel gets; Bot API adds new kinds over time, add
+// them here when one shows up in channel_posts.
+func isService(msg *models.Message) bool {
+	return slices.Contains([]bool{
+		msg.PinnedMessage != nil,
+		msg.NewChatTitle != "",
+		msg.NewChatPhoto != nil,
+		msg.DeleteChatPhoto,
+		msg.ChannelChatCreated,
+		msg.MessageAutoDeleteTimerChanged != nil,
+		msg.ChatBackgroundSet != nil,
+		msg.VideoChatScheduled != nil,
+		msg.VideoChatStarted != nil,
+		msg.VideoChatEnded != nil,
+		msg.VideoChatParticipantsInvited != nil,
+		msg.GiveawayCreated != nil,
+		msg.GiveawayCompleted != nil,
+	}, true)
 }
 
 // classify returns what a status change means for the subscription, and false when it moves
