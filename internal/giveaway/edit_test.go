@@ -99,9 +99,7 @@ func TestEditForwardChecks(t *testing.T) {
 				t.Helper()
 
 				g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
-				if err := s.db.Model(&g).Update("finished_at", time.Now()).Error; err != nil {
-					t.Fatal(err)
-				}
+				s.store.finish(t, g.ID)
 			},
 			want: i18n.EditFinished,
 		},
