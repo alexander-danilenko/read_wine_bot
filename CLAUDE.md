@@ -82,6 +82,19 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
 - Store Telegram user and chat IDs as `int64`.
 
+## Telegram UX
+
+The chat is the bot's only UI. Keep it clean and keep every button working.
+
+- One live message with buttons per private chat. Send buttons only through `sendKeyboard`: it deletes the previous one and saves the new ID in `users.keyboard_message_id`. A tapped message is deleted. Notices without buttons stay as the history of what happened.
+- Answer every callback query, even when nothing changes, or Telegram keeps a spinner on the button. A button whose action no longer applies gets the `GiveawayOutdated` popup.
+- Every step that waits for input has a Cancel button. An action that cannot be undone asks for confirmation first, and a second tap on the same confirmation is stale, not a repeat.
+- Offer the likely value as a button. A typed value that does not parse keeps the step and names the expected format.
+- Every text the user sees comes from `internal/i18n` in every locale. Error texts say what to do next and never show internals.
+- Callback data fits Telegram's 64 bytes and starts with its handler's prefix, which overlaps no other prefix. Tests enforce both.
+- Messages with links use HTML parse mode and disable link previews.
+- Main actions live on the persistent menu keyboard (`internal/menu`), not in commands the user has to remember.
+
 ## Gotchas
 
 - Store SQL has no automated tests. After changing a query in a `Store`, run the bot against a real `DATABASE_URL` and exercise the flow by hand.
