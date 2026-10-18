@@ -10,7 +10,7 @@ applies_when:
   - Adding a read, write or delete method to internal/giveaway/store.go
   - Adding a new giveaway state or a column that changes which state a row is in
   - Writing a boolean or nullable column that has a GORM default
-tags: [gorm, sqlite, giveaway, published, soft-cancel, state-machine, idempotency]
+tags: [gorm, postgres, giveaway, published, soft-cancel, state-machine, idempotency]
 ---
 
 # Giveaway CRUD around the published flag
@@ -84,7 +84,7 @@ The winner draw (`Drawer` in `internal/giveaway/draw.go`) reverses this order on
 Wrong: inserting the struct saves a published row, and a lookup without a scope returns drafts.
 
 ```go
-s.db.WithContext(ctx).Create(&Giveaway{ChatID: c, MessageID: m, Published: false}) // published = true in SQLite
+s.db.WithContext(ctx).Create(&Giveaway{ChatID: c, MessageID: m, Published: false}) // saved as published = true
 s.db.WithContext(ctx).Where("id = ?", id).Take(&g)                                 // a draft id matches too
 ```
 
@@ -104,4 +104,4 @@ if res.RowsAffected == 0 {
 
 ## Related
 
-- [Document columns with Go comments, not GORM comment tags](document-columns-with-go-comments-not-gorm-comment-tags.md): the other GORM and SQLite schema convention in this repo.
+- [Document columns with Go comments, not GORM comment tags](document-columns-with-go-comments-not-gorm-comment-tags.md): the other GORM schema convention in this repo.

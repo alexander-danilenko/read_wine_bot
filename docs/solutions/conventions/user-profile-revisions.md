@@ -9,9 +9,9 @@ severity: medium
 applies_when:
   - Adding, removing or renaming a Telegram profile field on user.Profile, user.User or user.Revision
   - Adding a users column that holds bot state, such as a new menu setting
-  - Changing user.Store.Record, user.BackfillRevisions or the user middleware's list of senders
+  - Changing user.Store.Record or the user middleware's list of senders
   - Writing code that reads a user's history, such as a giveaway or spam check
-tags: [user-revision, profile, history, gorm, sqlite, conditional-update, backfill, telegram]
+tags: [user-revision, profile, history, gorm, postgres, conditional-update, telegram]
 ---
 
 # User profile revisions — what is tracked, how, and why
@@ -42,23 +42,23 @@ Alternatives rejected while designing it (session history): diff-only revision r
 
 Why this shape:
 
-- **Write first.** SQLite fails a transaction that reads and then tries to write while another connection writes, and `busy_timeout` does not retry that case. See [SQLite runs on one connection; transactions use only tx and start with a write](sqlite-one-connection-and-write-first-transactions.md), which also covers the one-connection pool that a burst of `Record` calls forced.
+- **Write first.** The conditional `UPDATE` takes the row lock before anything is read, so two concurrent `Record` calls for one user queue on it, and the second re-checks the changed-profile condition against the first one's committed row. Neither can read a stale revision number.
 - **Empty language code keeps the saved one.** Telegram leaves `language_code` out of some updates. `keptLanguageCode` (`COALESCE(NULLIF(?, ''), language_code)`, `internal/user/revision.go:50`) is used in both the comparison and the update, so a missing code is neither a change nor an overwrite. Every other field is taken as sent: a removed last name or username **is** a change.
 
 ### Where profiles come from
 
 The middleware (`internal/user/middleware.go:56`) records the sender of `Message` (any chat type), `EditedMessage`, `CallbackQuery`, `MyChatMember` and `ChatJoinRequest`. It skips a message with `SenderChat` set: posts made as the channel, anonymous group admins and the channel's automatic forwards into the discussion chat carry a placeholder `From` account, which would otherwise collect a revision history of its own. `chat_member` updates are out of scope. A `Record` error is logged and the handler still runs. Group messages only reach the bot when it is a group admin or has privacy mode off in BotFather; that is an operational step, not code.
 
-### Users saved before revisions existed
+### Users without a revision
 
-`BackfillRevisions` (`internal/user/revision.go:112`) runs in `db.Open` right after `AutoMigrate` (`internal/db/db.go:53`) and fails startup on error. It copies every `revision = 0` row into `user_revisions` as number 1 and sets `revision = 1`; running it again changes nothing. A backfilled revision is dated **now**, not `users.created_at`, because the names in the row are only the latest ones the bot saw, not the ones it had at creation. A row created by `SetLanguage` or `SetPendingCommand` (revision 0, empty profile) needs no backfill to recover: Telegram always sends a first name, so its next `Record` differs and lands as revision 1 through step 2.
+A row created by `SetLanguage` or `SetPendingCommand` has revision 0 and an empty profile. Telegram always sends a first name, so its next `Record` differs and lands as revision 1 through step 2. The SQLite-era `BackfillRevisions` was dropped with the move to PostgreSQL, which started empty.
 
 ## Why This Matters
 
 - A field added to `Profile` but missed in `changedProfile` is silently not tracked: a change to only that field matches no row, so the `users` row keeps the old value and no revision is written. Existing tests name only the current fields, so they are unlikely to catch it.
 - A bot-state column added to `changedProfile` floods the history with a revision per setup step.
 - Building the snapshot from the incoming `Profile` instead of the saved row stores an empty language code whenever Telegram omits it.
-- Swapping the conditional `UPDATE` for "read the row, compare in Go, then write" makes the transaction read first, which SQLite fails while another writer, such as an `sqlite3` shell, holds the lock.
+- Swapping the conditional `UPDATE` for "read the row, compare in Go, then write" makes the transaction read first, which lets two concurrent calls read the same revision number and collide on the unique `(user_id, number)` index.
 
 ## When to Apply
 
@@ -66,20 +66,18 @@ Read this before touching the user profile, its tables, the user middleware, or 
 
 ## Examples
 
-Adding a profile field (say Telegram starts sending `emoji_status` for other users) means one edit in each of these places, and a new test in `internal/user/revision_test.go` that renames only that field and expects a new revision:
+Adding a profile field (say Telegram starts sending `emoji_status` for other users) means one edit in each of these places, then a manual check against a real database that a change to only that field writes a new revision (store SQL has no automated tests):
 
 1. `Profile` and the middleware's `recordSender` mapping (`internal/user/middleware.go:85`).
 2. `User` and `Revision`: a `not null` column with a default, because both tables already have rows.
 3. `changedProfile` and its argument list in `Record`: the `?` placeholders are positional, so the order of arguments must match the order in the SQL string.
 4. The `Updates` map in `Record` and the `Revision` literal at the end of it.
-5. The column lists in `BackfillRevisions`.
-6. The test fixtures that list every field: `profileOf` in `internal/user/revision_test.go` and the full profile in `TestMiddlewareRecordsFullProfile` (`internal/user/middleware_test.go`).
+5. The test fixture that lists every field: the full profile in `TestMiddlewareRecordsFullProfile` (`internal/user/middleware_test.go`).
 
-Adding a bot-state column (say a notification setting) touches `User` and its own setter only. It stays out of `Profile`, `Revision`, `changedProfile` and the backfill.
+Adding a bot-state column (say a notification setting) touches `User` and its own setter only. It stays out of `Profile`, `Revision` and `changedProfile`.
 
 ## Related
 
-- [SQLite runs on one connection; transactions use only tx and start with a write](sqlite-one-connection-and-write-first-transactions.md)
 - [Document columns with Go comments, not GORM comment tags](document-columns-with-go-comments-not-gorm-comment-tags.md): why `Revision.UserID` is not named `TelegramID`, and how the `users` columns are documented.
 - [Telegram buttons and the pending command](telegram-buttons-and-the-pending-command.md): the pending command that revisions deliberately ignore.
 - Plan: `docs/plans/2026-10-09-2205-feat-user-profile-revisions-plan.md`.
