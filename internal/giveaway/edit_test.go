@@ -74,11 +74,11 @@ func TestEditForwardChecks(t *testing.T) {
 	}{
 		{name: "no giveaway", prepare: func(*testing.T, *setup) {}, want: i18n.EditNotFound},
 		{
-			name: "only a draft",
+			name: "another admin's draft",
 			prepare: func(t *testing.T, s *setup) {
 				t.Helper()
 
-				g := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 1}
+				g := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: fanID, Winners: 1}
 				if err := s.store.SaveDraft(t.Context(), g); err != nil {
 					t.Fatal(err)
 				}
@@ -398,6 +398,37 @@ func TestEditRestoreAfterEnd(t *testing.T) {
 	}
 }
 
+func TestEditDraft(t *testing.T) {
+	s := newSetup(t)
+	ctx := t.Context()
+
+	d := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 1}
+	if err := s.store.SaveDraft(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+
+	draft, err := s.store.Draft(ctx, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.forwardEdit(t, draft.ID)
+
+	if r := s.change(t, draft.ID, giveaway.FieldEndDate, "2026-10-25"); r != (giveaway.Reply{Next: menu(draft.ID)}) {
+		t.Fatalf("change end date = %+v, want the menu", r)
+	}
+
+	want := giveaway.Reply{Notice: i18n.GiveawayCreated, Next: menu(draft.ID)}
+	if r := s.ed.Restore(ctx, s.tg, adminID, draft.ID); r != want {
+		t.Errorf("Restore of a draft = %+v, want created and the menu", r)
+	}
+
+	if got := s.read(t, draft.ID); !got.Published || got.EndsAt == nil || s.tg.label == "" {
+		t.Errorf("published %v, ends %v, label %q; want published with the new end and a button",
+			got.Published, got.EndsAt, s.tg.label)
+	}
+}
+
 func TestEditStop(t *testing.T) {
 	s := newSetup(t)
 	ctx := t.Context()
@@ -446,6 +477,11 @@ func TestEditList(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	draft := &giveaway.Giveaway{ChatID: channelID, MessageID: 44, CreatedBy: adminID, Winners: 1}
+	if err := s.store.SaveDraft(ctx, draft); err != nil {
+		t.Fatal(err)
+	}
+
 	got, err := s.ed.List(ctx, adminID, "en", "test_bot")
 	if err != nil {
 		t.Fatal(err)
@@ -455,7 +491,9 @@ func TestEditList(t *testing.T) {
 		`1. <a href="https://t.me/c/1234567890/42">📌 Post</a> · ends 2026-10-08 19:00, awaiting results · ` +
 		`<a href="https://t.me/test_bot?start=edit_1234567890_42">✏️ Edit</a>` + "\n" +
 		`2. <a href="https://t.me/c/1234567890/41">📌 Post</a> · ends 2026-10-25 19:00 · ` +
-		`<a href="https://t.me/test_bot?start=edit_1234567890_41">✏️ Edit</a>`
+		`<a href="https://t.me/test_bot?start=edit_1234567890_41">✏️ Edit</a>` + "\n" +
+		`3. <a href="https://t.me/c/1234567890/44">📌 Post</a> · ends —, draft, not published · ` +
+		`<a href="https://t.me/test_bot?start=edit_1234567890_44">✏️ Edit</a>`
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)
 	}

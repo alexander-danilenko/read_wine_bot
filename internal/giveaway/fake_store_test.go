@@ -147,7 +147,7 @@ func (f *memStore) ByID(_ context.Context, id uint) (giveaway.Giveaway, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if g, ok := f.rows[id]; ok && isManaged(g) {
+	if g, ok := f.rows[id]; ok {
 		return *g, nil
 	}
 
@@ -188,7 +188,7 @@ func (f *memStore) SaveFields(_ context.Context, id uint, endsAt *time.Time, win
 	defer f.mu.Unlock()
 
 	g, ok := f.rows[id]
-	if !ok || g.FinishedAt != nil || !isManaged(g) {
+	if !ok || g.FinishedAt != nil {
 		return giveaway.ErrNotFound
 	}
 
@@ -217,7 +217,7 @@ func (f *memStore) Move(_ context.Context, id uint, messageID int64) error {
 	defer f.mu.Unlock()
 
 	g, ok := f.rows[id]
-	if !ok || g.FinishedAt != nil || !isManaged(g) {
+	if !ok || g.FinishedAt != nil {
 		return giveaway.ErrNotFound
 	}
 

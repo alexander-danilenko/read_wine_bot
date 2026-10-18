@@ -154,12 +154,11 @@ func (s *Store) Post(ctx context.Context, chatID, messageID int64) (Giveaway, er
 	return g, nil
 }
 
-// ByID returns the published or cancelled giveaway id, or ErrNotFound; a setup draft counts
-// as none.
+// ByID returns giveaway id, a setup draft included, or ErrNotFound.
 func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 	var g Giveaway
 
-	err := s.db.WithContext(ctx).Where("id = ? AND "+managed, id).Take(&g).Error
+	err := s.db.WithContext(ctx).Where("id = ?", id).Take(&g).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return Giveaway{}, ErrNotFound
 	}
@@ -185,11 +184,11 @@ func (s *Store) Running(ctx context.Context, userID int64) ([]Giveaway, error) {
 	return gs, nil
 }
 
-// SaveFields saves the end time, winner count and button text of the published or cancelled
-// giveaway id. It returns ErrNotFound for a draft, a finished or a missing giveaway.
+// SaveFields saves the end time, winner count and button text of the unfinished giveaway id.
+// It returns ErrNotFound for a finished or a missing giveaway.
 func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
-		Where("id = ? AND finished_at IS NULL AND "+managed, id).
+		Where("id = ? AND finished_at IS NULL", id).
 		Updates(map[string]any{colEndsAt: endsAt, colWinners: winners, colButtonText: buttonText})
 	if res.Error != nil {
 		return fmt.Errorf("save fields of giveaway %d: %w", id, res.Error)
@@ -202,12 +201,11 @@ func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winn
 	return nil
 }
 
-// Move puts the published or cancelled, unfinished giveaway id on post messageID of its
-// channel, keeping its participants. It returns ErrNotFound when no such giveaway exists and
+// Move puts the unfinished giveaway id on post messageID of its channel, keeping its participants. It returns ErrNotFound when no such giveaway exists and
 // ErrExists when another giveaway, a setup draft included, is on that post.
 func (s *Store) Move(ctx context.Context, id uint, messageID int64) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
-		Where("id = ? AND finished_at IS NULL AND "+managed, id).
+		Where("id = ? AND finished_at IS NULL", id).
 		Update(colMessageID, messageID)
 	if errors.Is(res.Error, gorm.ErrDuplicatedKey) {
 		return ErrExists

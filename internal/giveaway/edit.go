@@ -19,7 +19,7 @@ const editPrefix = "edit:"
 // edit. A field step names the field and the giveaway: edit:<field>:<giveaway ID>.
 const EditStepPost = editPrefix + "post"
 
-// Fields of a published or cancelled giveaway that the creator can change. Each is the
+// Fields of a giveaway that the creator can change. Each is the
 // suffix of the setup step that asks for the same value.
 const (
 	FieldEndDate    = "end_date"
@@ -136,11 +136,20 @@ func (e *Editor) ForwardEdit(ctx context.Context, tg Telegram, userID, chatID, m
 	return e.OpenPost(ctx, tg, userID, chatID, messageID)
 }
 
-// OpenPost opens the field menu of the giveaway on the post when the user may change it.
+// OpenPost opens the field menu of the giveaway on the post, or of the user's own draft on
+// it, when the user may change it.
 func (e *Editor) OpenPost(ctx context.Context, tg Telegram, userID, chatID, messageID int64) Reply {
 	log := e.svc.log.With("user_id", userID, "chat_id", chatID, "message_id", messageID)
 
 	g, err := e.giveaways.Post(ctx, chatID, messageID)
+	if errors.Is(err, ErrNotFound) {
+		// Store.Post skips drafts, so the setup can take a post over from another admin's draft.
+		g, err = e.svc.drafts.Draft(ctx, userID)
+		if err == nil && (g.ChatID != chatID || g.MessageID != messageID) {
+			err = ErrNotFound
+		}
+	}
+
 	if errors.Is(err, ErrNotFound) {
 		return Reply{Notice: i18n.EditNotFound}
 	}
@@ -306,8 +315,8 @@ func (e *Editor) Cancel(ctx context.Context, tg Telegram, rm ButtonRemover, user
 	return Reply{Notice: i18n.EditCancelled, Next: menu}
 }
 
-// Restore puts the join button back on the post of the cancelled giveaway id and publishes
-// it again. Its end time must still be ahead.
+// Restore puts the join button on the post of the cancelled giveaway or draft id and
+// publishes it. Its end time must still be ahead.
 func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
 	log := e.svc.log.With("user_id", userID, "giveaway_id", id)
 
@@ -341,6 +350,10 @@ func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint
 		log.ErrorContext(ctx, "publish giveaway again", "error", err)
 
 		return Reply{Notice: i18n.EditFailed, Next: menu}
+	}
+
+	if g.CancelledAt == nil {
+		return Reply{Notice: i18n.GiveawayCreated, Next: menu}
 	}
 
 	return Reply{Notice: i18n.EditRestored, Next: menu}
@@ -450,22 +463,35 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, 
 		return "", false, err //nolint:wrapcheck // Store already names the giveaway
 	}
 
-	status := i18n.EditStatusCancelled
-	if g.Published {
+	status := i18n.EditStatusDraft
+
+	switch {
+	case g.Published:
 		status = i18n.EditStatusPublished
+	case g.CancelledAt != nil:
+		status = i18n.EditStatusCancelled
 	}
 
 	text := e.svc.texts.Text(lang, i18n.EditMenu,
-		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), e.ends(g), g.Winners, g.ButtonText)
+		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), e.ends(g), g.Winners, e.label(g))
 
 	return text, g.Published, nil
 }
 
-// List returns the HTML text that lists the user's running giveaways as a numbered list, each
-// with a link to its post and a link that opens its field menu in the bot named botUsername.
+// List returns the HTML text that lists the user's running giveaways and then their draft as a
+// numbered list, each with a link to its post and a link that opens its field menu in the bot
+// named botUsername.
 func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername string) (string, error) {
 	gs, err := e.giveaways.Running(ctx, userID)
 	if err != nil {
+		return "", err //nolint:wrapcheck // Store already names the user
+	}
+
+	d, err := e.svc.drafts.Draft(ctx, userID)
+	switch {
+	case err == nil:
+		gs = append(gs, d)
+	case !errors.Is(err, ErrNotFound):
 		return "", err //nolint:wrapcheck // Store already names the user
 	}
 
@@ -478,7 +504,11 @@ func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername strin
 
 	for i, g := range gs {
 		ends := e.ends(g)
-		if g.State(now) == Due {
+
+		switch {
+		case !g.Published:
+			ends += e.svc.texts.Text(lang, i18n.EditListDraft)
+		case g.State(now) == Due:
 			ends += e.svc.texts.Text(lang, i18n.EditListDue)
 		}
 
