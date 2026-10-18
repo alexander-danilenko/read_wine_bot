@@ -87,14 +87,17 @@ func parseEditData(data string) (editAction, bool) {
 // editHandler translates edit updates into Editor calls and their replies into messages.
 type editHandler struct {
 	ed    *Editor
+	kbs   Keyboards
 	texts *i18n.Catalog
 	log   *slog.Logger
 }
 
 // EditStartHandler returns the handler for the edit menu button in a private chat: it asks
 // for the post of the giveaway to change.
-func EditStartHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
-	h := editHandler{ed: ed, texts: texts, log: log}
+func EditStartHandler(
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kbs Keyboards, log *slog.Logger,
+) bot.HandlerFunc {
+	h := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -153,8 +156,10 @@ func list(ctx context.Context, b *bot.Bot, ed *Editor, userID int64, lang string
 
 // EditLinkHandler returns the handler for the edit links of the giveaway list: it opens the
 // field menu of the giveaway on the post the link names.
-func EditLinkHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
-	h := editHandler{ed: ed, texts: texts, log: log}
+func EditLinkHandler(
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kbs Keyboards, log *slog.Logger,
+) bot.HandlerFunc {
+	h := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -211,10 +216,12 @@ func (h editHandler) message(ctx context.Context, b *bot.Bot, msg *models.Messag
 	}
 }
 
-// EditCallbackHandler returns the handler for the edit buttons. A button whose action no
-// longer applies gets an "outdated" popup and loses its buttons.
-func EditCallbackHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
-	h := editHandler{ed: ed, texts: texts, log: log}
+// EditCallbackHandler returns the handler for the edit buttons. The tapped message is deleted;
+// a button whose action no longer applies also gets an "outdated" popup.
+func EditCallbackHandler(
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kbs Keyboards, log *slog.Logger,
+) bot.HandlerFunc {
+	h := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
@@ -241,9 +248,9 @@ func EditCallbackHandler(ed *Editor, texts *i18n.Catalog, users language.Reader,
 			log.ErrorContext(ctx, "answer edit button", "user_id", userID, "error", err)
 		}
 
-		if r.Stale {
-			removeButtons(ctx, b, log, query.Message)
+		discardTapped(ctx, b, log, query.Message)
 
+		if r.Stale {
 			return
 		}
 
@@ -288,8 +295,15 @@ func (h editHandler) confirm(ctx context.Context, tg telegramAPI, userID int64, 
 	}
 }
 
-// reply sends the notice of r, then the prompt of its next step.
+// reply deletes the previous message with buttons, then sends the notice of r and the prompt
+// of its next step. A stale r sends nothing and keeps the message with buttons.
 func (h editHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang string, r Reply) {
+	if r.Stale {
+		return
+	}
+
+	clearKeyboard(ctx, b, h.kbs, h.log, userID)
+
 	if r.Notice != "" {
 		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
 	}
@@ -387,7 +401,7 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 	h.ask(ctx, b, userID, text, append(rows, tail...))
 }
 
-// ask sends text with an inline keyboard of rows.
+// ask sends text with an inline keyboard of rows in place of the previous one.
 func (h editHandler) ask(
 	ctx context.Context,
 	b *bot.Bot,
@@ -395,9 +409,5 @@ func (h editHandler) ask(
 	text string,
 	rows [][]models.InlineKeyboardButton,
 ) {
-	send(ctx, b, h.log, &bot.SendMessageParams{
-		ChatID:      userID,
-		Text:        text,
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
-	})
+	sendKeyboard(ctx, b, h.kbs, h.log, userID, text, rows)
 }

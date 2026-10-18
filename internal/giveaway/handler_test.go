@@ -30,6 +30,7 @@ type call struct {
 type fakeAPI struct {
 	mu    sync.Mutex
 	calls []call
+	sends int // sendMessage requests so far; each sent message gets the next ID
 }
 
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -49,27 +50,39 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	method := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+
 	f.mu.Lock()
-	f.calls = append(f.calls, call{method: r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:], form: form})
-	f.mu.Unlock()
+	f.calls = append(f.calls, call{method: method, form: form})
 
-	result := `{"message_id":1,"date":0,"chat":{"id":1,"type":"private"}}`
-
-	switch {
-	case strings.HasSuffix(r.URL.Path, "answerCallbackQuery"):
-		result = "true"
-	case strings.HasSuffix(r.URL.Path, "getChatMember"):
-		// Everyone, the bot included, is a channel admin who may edit posts.
-		result = `{"status":"administrator","user":{"id":1,"is_bot":false,"first_name":"A"},"can_edit_messages":true}`
-	case strings.HasSuffix(r.URL.Path, "getMe"):
-		result = `{"id":123,"is_bot":true,"first_name":"Bot","username":"test_bot"}`
-	case strings.HasSuffix(r.URL.Path, "getChat"):
-		// Every post link resolves to the test channel.
-		result = `{"id":-1001234567890,"type":"channel"}`
+	if method == "sendMessage" {
+		f.sends++
 	}
+
+	result := fakeResult(method, f.sends)
+	f.mu.Unlock()
 
 	if _, err := io.WriteString(w, `{"ok":true,"result":`+result+`}`); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// fakeResult returns the result of a successful request to method; a sent message gets the
+// ID sends.
+func fakeResult(method string, sends int) string {
+	switch method {
+	case "answerCallbackQuery", "deleteMessage":
+		return "true"
+	case "getChatMember":
+		// Everyone, the bot included, is a channel admin who may edit posts.
+		return `{"status":"administrator","user":{"id":1,"is_bot":false,"first_name":"A"},"can_edit_messages":true}`
+	case "getMe":
+		return `{"id":123,"is_bot":true,"first_name":"Bot","username":"test_bot"}`
+	case "getChat":
+		// Every post link resolves to the test channel.
+		return `{"id":-1001234567890,"type":"channel"}`
+	default:
+		return `{"message_id":` + strconv.Itoa(sends) + `,"date":0,"chat":{"id":1,"type":"private"}}`
 	}
 }
 
@@ -132,7 +145,7 @@ func (h *handlerSetup) message(text string, forward bool) *models.Update {
 }
 
 func (h *handlerSetup) messageHandler() bot.HandlerFunc {
-	return giveaway.MessageHandler(h.svc, h.ed, h.texts, h.users, slog.New(slog.DiscardHandler))
+	return giveaway.MessageHandler(h.svc, h.ed, h.texts, h.users, h.users, slog.New(slog.DiscardHandler))
 }
 
 func TestMessageHandlerWithoutSetup(t *testing.T) {
@@ -208,16 +221,16 @@ func TestSetupCallbackStaleDefault(t *testing.T) {
 		Data:    giveaway.SetupCallbackPrefix + "default:" + giveaway.StepEndTime,
 		Message: models.MaybeInaccessibleMessage{Message: &models.Message{ID: 5, Chat: models.Chat{ID: adminID}}},
 	}}
-	giveaway.SetupCallbackHandler(h.svc, h.texts, h.users, slog.New(slog.DiscardHandler))(ctx, h.bot, update)
+	giveaway.SetupCallbackHandler(h.svc, h.texts, h.users, h.users, slog.New(slog.DiscardHandler))(ctx, h.bot, update)
 
 	methods := make([]string, 0, len(h.api.calls))
 	for _, c := range h.api.calls {
 		methods = append(methods, c.method)
 	}
 
-	if strings.Join(methods, ",") != "answerCallbackQuery,editMessageReplyMarkup" ||
+	if strings.Join(methods, ",") != "answerCallbackQuery,deleteMessage" ||
 		h.api.calls[0].form["text"] != h.texts.Text("en", i18n.GiveawayOutdated) {
-		t.Errorf("calls = %+v; want the outdated popup, then the buttons removed", h.api.calls)
+		t.Errorf("calls = %+v; want the outdated popup, then the message deleted", h.api.calls)
 	}
 
 	if step := h.step(t); step != giveaway.StepConfirm {
@@ -258,6 +271,7 @@ func (h *handlerSetup) tap(t *testing.T, data string) {
 	giveaway.EditCallbackHandler(
 		h.ed,
 		h.texts,
+		h.users,
 		h.users,
 		slog.New(slog.DiscardHandler),
 	)(
@@ -394,6 +408,39 @@ func TestEditTextAtField(t *testing.T) {
 	}
 }
 
+// deleted returns the message_id of every deleteMessage request.
+func (h *handlerSetup) deleted() []string {
+	var ids []string
+
+	for _, c := range h.api.calls {
+		if c.method == "deleteMessage" {
+			ids = append(ids, c.form["message_id"])
+		}
+	}
+
+	return ids
+}
+
+func TestEditKeepsOneKeyboard(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t) // the menu is message 1
+
+	h.api.calls = nil
+	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10)) // the question is message 2
+
+	// The tapped message, 5 in the fake update, and the stored menu both go.
+	if got := strings.Join(h.deleted(), ","); got != "5,1" {
+		t.Errorf("deleted after the tap = %q, want the tapped message and the menu", got)
+	}
+
+	h.api.calls = nil
+	h.messageHandler()(t.Context(), h.bot, h.message("3", false))
+
+	if got := strings.Join(h.deleted(), ","); got != "2" {
+		t.Errorf("deleted after the typed value = %q, want the question", got)
+	}
+}
+
 func TestEditCancelButtons(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
@@ -436,9 +483,9 @@ func TestEditStaleDefault(t *testing.T) {
 		methods = append(methods, c.method)
 	}
 
-	if strings.Join(methods, ",") != "answerCallbackQuery,editMessageReplyMarkup" ||
+	if strings.Join(methods, ",") != "answerCallbackQuery,deleteMessage" ||
 		h.api.calls[0].form["text"] != h.texts.Text("en", i18n.GiveawayOutdated) {
-		t.Errorf("calls = %+v; want the outdated popup, then the buttons removed", h.api.calls)
+		t.Errorf("calls = %+v; want the outdated popup, then the message deleted", h.api.calls)
 	}
 }
 
@@ -504,7 +551,7 @@ func TestEditLinkHandler(t *testing.T) {
 				&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"},
 			)
 
-			giveaway.EditLinkHandler(h.ed, h.texts, h.users, slog.New(slog.DiscardHandler))(
+			giveaway.EditLinkHandler(h.ed, h.texts, h.users, h.users, slog.New(slog.DiscardHandler))(
 				t.Context(), h.bot, h.message(tt.text, false),
 			)
 

@@ -233,18 +233,20 @@ func (e *Editor) AskFinish(ctx context.Context, tg Telegram, userID int64, id ui
 }
 
 // FinishNow moves the end time of the published giveaway id to now, so the next winner draw,
-// within a minute, finishes it.
+// within a minute, finishes it. A giveaway already due is stale, so a second tap on the same
+// confirmation changes nothing.
 func (e *Editor) FinishNow(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
 	g, r, ok := e.load(ctx, tg, userID, id)
 	if !ok {
 		return r
 	}
 
-	if !g.Published {
+	now := e.svc.now()
+	if !g.Published || g.State(now) == Due {
 		return Reply{Stale: true}
 	}
 
-	err := e.writer.SaveFields(ctx, id, utcPtr(e.svc.now()), g.Winners, g.ButtonText)
+	err := e.writer.SaveFields(ctx, id, utcPtr(now), g.Winners, g.ButtonText)
 	if errors.Is(err, ErrNotFound) {
 		return Reply{Notice: i18n.EditFinished}
 	}

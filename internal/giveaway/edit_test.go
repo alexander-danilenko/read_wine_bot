@@ -352,6 +352,10 @@ func TestEditFinishNow(t *testing.T) {
 	if got := s.read(t, g.ID); got.State(s.now) != giveaway.Due || got.Winners != 2 {
 		t.Errorf("giveaway = %+v, want due now with its winner count kept", got)
 	}
+
+	if r := s.ed.FinishNow(ctx, s.tg, adminID, g.ID); !r.Stale {
+		t.Errorf("second FinishNow = %+v, want stale", r)
+	}
 }
 
 func TestEditRestore(t *testing.T) {

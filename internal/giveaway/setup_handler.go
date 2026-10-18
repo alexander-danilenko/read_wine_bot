@@ -2,6 +2,7 @@ package giveaway
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/url"
 	"strconv"
@@ -31,6 +32,13 @@ type Users interface {
 	PendingCommand(ctx context.Context, telegramID int64) (string, error)
 }
 
+// Keyboards saves the bot's latest message with buttons in each user's private chat, so the
+// bot can delete it before it sends the next one. *user.Store implements it.
+type Keyboards interface {
+	KeyboardMessage(ctx context.Context, telegramID int64) (int64, error)
+	SetKeyboardMessage(ctx context.Context, telegramID, messageID int64) error
+}
+
 // promptKey returns the question a setup step asks; the confirm step shows the summary instead.
 func promptKey(step string) i18n.Key {
 	switch step {
@@ -50,14 +58,15 @@ func promptKey(step string) i18n.Key {
 // setupHandler translates setup updates into Service calls and their replies into messages.
 type setupHandler struct {
 	svc   *Service
+	kbs   Keyboards
 	texts *i18n.Catalog
 	log   *slog.Logger
 }
 
 // StartHandler returns the handler for the giveaway menu button in a private chat: it starts
 // a new setup and asks for the post.
-func StartHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, texts: texts, log: log}
+func StartHandler(svc *Service, texts *i18n.Catalog, users Users, kbs Keyboards, log *slog.Logger) bot.HandlerFunc {
+	h := setupHandler{svc: svc, kbs: kbs, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -78,9 +87,11 @@ func StartHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logg
 // MessageHandler returns the handler for private messages no other handler matched. It acts
 // only while the sender is in a giveaway setup or edit: the post step takes a forwarded
 // channel post, the value steps take text, and any other input asks the current step again.
-func MessageHandler(svc *Service, ed *Editor, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, texts: texts, log: log}
-	edit := editHandler{ed: ed, texts: texts, log: log}
+func MessageHandler(
+	svc *Service, ed *Editor, texts *i18n.Catalog, users Users, kbs Keyboards, log *slog.Logger,
+) bot.HandlerFunc {
+	h := setupHandler{svc: svc, kbs: kbs, texts: texts, log: log}
+	edit := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -124,10 +135,12 @@ func (h setupHandler) step(ctx context.Context, b *bot.Bot, msg *models.Message,
 	}
 }
 
-// SetupCallbackHandler returns the handler for the default, Cancel and Confirm buttons. A
-// button whose step has passed gets an "outdated" popup and loses its buttons.
-func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, texts: texts, log: log}
+// SetupCallbackHandler returns the handler for the default, Cancel and Confirm buttons. The
+// tapped message is deleted; a button whose step has passed also gets an "outdated" popup.
+func SetupCallbackHandler(
+	svc *Service, texts *i18n.Catalog, users Users, kbs Keyboards, log *slog.Logger,
+) bot.HandlerFunc {
+	h := setupHandler{svc: svc, kbs: kbs, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
@@ -163,9 +176,9 @@ func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *s
 			log.ErrorContext(ctx, "answer setup button", "user_id", userID, "error", err)
 		}
 
-		if r.Stale {
-			removeButtons(ctx, b, log, query.Message)
+		discardTapped(ctx, b, log, query.Message)
 
+		if r.Stale {
 			return
 		}
 
@@ -174,8 +187,15 @@ func SetupCallbackHandler(svc *Service, texts *i18n.Catalog, users Users, log *s
 	}
 }
 
-// reply sends the notice of r, then the prompt of its next step.
+// reply deletes the previous message with buttons, then sends the notice of r and the prompt
+// of its next step. A stale r sends nothing and keeps the message with buttons.
 func (h setupHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang string, r Reply) {
+	if r.Stale {
+		return
+	}
+
+	clearKeyboard(ctx, b, h.kbs, h.log, userID)
+
 	if r.Notice != "" {
 		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
 	}
@@ -203,13 +223,7 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 			Text:         h.texts.Text(lang, i18n.GiveawayConfirm),
 			CallbackData: confirmData,
 		}
-		send(ctx, b, h.log, &bot.SendMessageParams{
-			ChatID: userID,
-			Text:   summary,
-			ReplyMarkup: &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{{confirm, cancel}},
-			},
-		})
+		sendKeyboard(ctx, b, h.kbs, h.log, userID, summary, [][]models.InlineKeyboardButton{{confirm, cancel}})
 
 		return
 	}
@@ -221,11 +235,7 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 
 	rows = append(rows, []models.InlineKeyboardButton{cancel})
 
-	send(ctx, b, h.log, &bot.SendMessageParams{
-		ChatID:      userID,
-		Text:        h.texts.Text(lang, promptKey(step)),
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
-	})
+	sendKeyboard(ctx, b, h.kbs, h.log, userID, h.texts.Text(lang, promptKey(step)), rows)
 }
 
 // send sends a message and logs a failure; the user then sees no reply and can try again.
@@ -233,6 +243,82 @@ func send(ctx context.Context, b *bot.Bot, log *slog.Logger, params *bot.SendMes
 	if _, err := b.SendMessage(ctx, params); err != nil {
 		log.ErrorContext(ctx, "send giveaway message", "chat_id", params.ChatID, "error", err)
 	}
+}
+
+// sendKeyboard deletes the previous message with buttons in the user's private chat, sends
+// text with an inline keyboard of rows there, and saves it as the one to delete next.
+func sendKeyboard(
+	ctx context.Context,
+	b *bot.Bot,
+	kbs Keyboards,
+	log *slog.Logger,
+	userID int64,
+	text string,
+	rows [][]models.InlineKeyboardButton,
+) {
+	clearKeyboard(ctx, b, kbs, log, userID)
+
+	m, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      userID,
+		Text:        text,
+		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
+	})
+	if err != nil {
+		log.ErrorContext(ctx, "send giveaway message", "chat_id", userID, "error", err)
+
+		return
+	}
+
+	if err := kbs.SetKeyboardMessage(ctx, userID, int64(m.ID)); err != nil {
+		log.ErrorContext(ctx, "save keyboard message", "user_id", userID, "error", err)
+	}
+}
+
+// clearKeyboard deletes the bot's latest message with buttons in the user's private chat, if
+// there is one.
+func clearKeyboard(ctx context.Context, b *bot.Bot, kbs Keyboards, log *slog.Logger, userID int64) {
+	messageID, err := kbs.KeyboardMessage(ctx, userID)
+	if err != nil {
+		log.ErrorContext(ctx, "read keyboard message", "user_id", userID, "error", err)
+
+		return
+	}
+
+	if messageID == 0 {
+		return
+	}
+
+	discard(ctx, b, log, userID, int(messageID))
+
+	if err := kbs.SetKeyboardMessage(ctx, userID, 0); err != nil {
+		log.ErrorContext(ctx, "clear keyboard message", "user_id", userID, "error", err)
+	}
+}
+
+// discardTapped deletes the message a tapped button belongs to.
+func discardTapped(ctx context.Context, b *bot.Bot, log *slog.Logger, m models.MaybeInaccessibleMessage) {
+	if m.Message != nil {
+		discard(ctx, b, log, m.Message.Chat.ID, m.Message.ID)
+	}
+}
+
+// discard deletes a bot message. When Telegram refuses, as it does 48 hours after sending, it
+// removes the message's buttons instead. A message already deleted counts as success.
+func discard(ctx context.Context, b *bot.Bot, log *slog.Logger, chatID int64, messageID int) {
+	_, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: chatID, MessageID: messageID})
+	if err == nil || isGone(err) {
+		return
+	}
+
+	_, err = b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{ChatID: chatID, MessageID: messageID})
+	if err = ignoreNotModified(err); err != nil && !isGone(err) {
+		log.WarnContext(ctx, "discard message", "chat_id", chatID, "message_id", messageID, "error", err)
+	}
+}
+
+// isGone reports whether err says the message no longer exists.
+func isGone(err error) bool {
+	return errors.Is(err, bot.ErrorBadRequest) && strings.Contains(err.Error(), "not found")
 }
 
 // privateMessage returns the update's message when a user sent it in a private chat, and nil
@@ -328,19 +414,4 @@ func isUsername(s string) bool {
 
 func isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-}
-
-// removeButtons removes the inline buttons from the message an outdated button belongs to.
-func removeButtons(ctx context.Context, b *bot.Bot, log *slog.Logger, m models.MaybeInaccessibleMessage) {
-	if m.Message == nil {
-		return
-	}
-
-	_, err := b.EditMessageReplyMarkup(
-		ctx,
-		&bot.EditMessageReplyMarkupParams{ChatID: m.Message.Chat.ID, MessageID: m.Message.ID},
-	)
-	if err = ignoreNotModified(err); err != nil {
-		log.WarnContext(ctx, "remove outdated buttons", "chat_id", m.Message.Chat.ID, "error", err)
-	}
 }

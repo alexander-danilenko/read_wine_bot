@@ -109,7 +109,7 @@ func handlers(
 		bot.WithMessageTextHandler(
 			giveaway.EditLinkPrefix,
 			bot.MatchTypePrefix,
-			giveaway.EditLinkHandler(editor, texts, users, log),
+			giveaway.EditLinkHandler(editor, texts, users, users, log),
 		),
 		bot.WithMessageTextHandler(
 			greeting.Command,
@@ -129,16 +129,16 @@ func handlers(
 		bot.WithCallbackQueryDataHandler(
 			giveaway.SetupCallbackPrefix,
 			bot.MatchTypePrefix,
-			giveaway.SetupCallbackHandler(giveaways, texts, users, log),
+			giveaway.SetupCallbackHandler(giveaways, texts, users, users, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.EditCallbackPrefix,
 			bot.MatchTypePrefix,
-			giveaway.EditCallbackHandler(editor, texts, users, log),
+			giveaway.EditCallbackHandler(editor, texts, users, users, log),
 		),
 		// Forwarded posts and typed setup and edit values match no handler above, so they
 		// land here.
-		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, log)),
+		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, users, log)),
 	}, menuHandlers(texts, users, giveaways, editor, log))
 }
 
@@ -148,8 +148,8 @@ func menuHandlers(
 	texts *i18n.Catalog, users *user.Store, giveaways *giveaway.Service, editor *giveaway.Editor, log *slog.Logger,
 ) []bot.Option {
 	return slices.Concat(
-		labelHandlers(texts.All(i18n.MenuGiveaway), giveaway.StartHandler(giveaways, texts, users, log)),
-		labelHandlers(texts.All(i18n.MenuEdit), giveaway.EditStartHandler(editor, texts, users, log)),
+		labelHandlers(texts.All(i18n.MenuGiveaway), giveaway.StartHandler(giveaways, texts, users, users, log)),
+		labelHandlers(texts.All(i18n.MenuEdit), giveaway.EditStartHandler(editor, texts, users, users, log)),
 		labelHandlers(texts.All(i18n.MenuList), giveaway.ListHandler(editor, texts, users, log)),
 		labelHandlers(texts.All(i18n.MenuLanguage), language.PromptHandler(texts, users, log)),
 	)

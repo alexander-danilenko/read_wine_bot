@@ -232,15 +232,32 @@ func (f *memStore) finish(t *testing.T, id uint) {
 	g.FinishedAt = &now
 }
 
-// fakeUsers keeps each user's language and pending command in memory.
+// fakeUsers keeps each user's language, pending command and keyboard message in memory.
 type fakeUsers struct {
 	mu       sync.Mutex
 	language map[int64]string
 	pending  map[int64]string
+	keyboard map[int64]int64
 }
 
 func newFakeUsers() *fakeUsers {
-	return &fakeUsers{language: map[int64]string{}, pending: map[int64]string{}}
+	return &fakeUsers{language: map[int64]string{}, pending: map[int64]string{}, keyboard: map[int64]int64{}}
+}
+
+func (f *fakeUsers) KeyboardMessage(_ context.Context, telegramID int64) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.keyboard[telegramID], nil
+}
+
+func (f *fakeUsers) SetKeyboardMessage(_ context.Context, telegramID, messageID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.keyboard[telegramID] = messageID
+
+	return nil
 }
 
 func (f *fakeUsers) Language(_ context.Context, telegramID int64) (string, error) {

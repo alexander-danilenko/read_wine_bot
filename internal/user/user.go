@@ -28,9 +28,12 @@ type User struct {
 	Language     string `gorm:"size:16;not null;comment:Bot language the user chose from the menu (locale code from internal/i18n), empty if never chosen"`
 	// PendingCommand is what the bot waits for in the user's next message, such as a giveaway
 	// setup step, or "" for nothing.
-	PendingCommand string    `gorm:"size:32;not null;default:'';comment:What the bot waits for in the user's next private message, such as a giveaway setup step, empty for nothing"`
-	CreatedAt      time.Time `gorm:"comment:When the bot first saw the user"`
-	UpdatedAt      time.Time `gorm:"comment:When the row last changed"`
+	PendingCommand string `gorm:"size:32;not null;default:'';comment:What the bot waits for in the user's next private message, such as a giveaway setup step, empty for nothing"`
+	// KeyboardMessageID is the bot's latest message with buttons in the user's private chat,
+	// which the bot deletes before it sends the next one.
+	KeyboardMessageID int64     `gorm:"not null;default:0;comment:ID of the bot's latest message with buttons in the user's private chat, deleted before the bot sends the next one, 0 for none"`
+	CreatedAt         time.Time `gorm:"comment:When the bot first saw the user"`
+	UpdatedAt         time.Time `gorm:"comment:When the row last changed"`
 }
 
 // Store reads and writes users.
@@ -90,6 +93,28 @@ func (s *Store) PendingCommand(ctx context.Context, telegramID int64) (string, e
 func (s *Store) SetPendingCommand(ctx context.Context, telegramID int64, command string) error {
 	if err := s.upsert(ctx, &User{TelegramID: telegramID, PendingCommand: command}, "pending_command"); err != nil {
 		return fmt.Errorf("save pending command of user %d: %w", telegramID, err)
+	}
+
+	return nil
+}
+
+// KeyboardMessage returns the ID of the bot's latest message with buttons in the user's
+// private chat, or 0 if there is none.
+func (s *Store) KeyboardMessage(ctx context.Context, telegramID int64) (int64, error) {
+	u, err := s.read(ctx, telegramID, "keyboard_message_id")
+	if err != nil {
+		return 0, fmt.Errorf("read keyboard message of user %d: %w", telegramID, err)
+	}
+
+	return u.KeyboardMessageID, nil
+}
+
+// SetKeyboardMessage saves the bot's latest message with buttons in the user's private chat;
+// 0 clears it.
+func (s *Store) SetKeyboardMessage(ctx context.Context, telegramID, messageID int64) error {
+	u := &User{TelegramID: telegramID, KeyboardMessageID: messageID}
+	if err := s.upsert(ctx, u, "keyboard_message_id"); err != nil {
+		return fmt.Errorf("save keyboard message of user %d: %w", telegramID, err)
 	}
 
 	return nil
