@@ -104,4 +104,4 @@ if res.RowsAffected == 0 {
 
 ## Related
 
-- [Document columns with Go comments, not GORM comment tags](document-columns-with-go-comments-not-gorm-comment-tags.md): the other GORM schema convention in this repo.
+- [Describe every column, table and index in the database](describe-every-column-table-and-index-in-the-database.md): the other GORM schema convention in this repo.

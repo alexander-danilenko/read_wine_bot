@@ -78,6 +78,6 @@ Adding a bot-state column (say a notification setting) touches `User` and its ow
 
 ## Related
 
-- [Document columns with Go comments, not GORM comment tags](document-columns-with-go-comments-not-gorm-comment-tags.md): why `Revision.UserID` is not named `TelegramID`, and how the `users` columns are documented.
+- [Describe every column, table and index in the database](describe-every-column-table-and-index-in-the-database.md): how the `users` columns are described in the database.
 - [Telegram buttons and the pending command](telegram-buttons-and-the-pending-command.md): the pending command that revisions deliberately ignore.
 - Plan: `docs/plans/2026-10-09-2205-feat-user-profile-revisions-plan.md`.
