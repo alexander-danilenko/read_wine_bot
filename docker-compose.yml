@@ -4,18 +4,16 @@ services:
     image: postgres:18
     restart: unless-stopped
     environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      DB_NAME: ${DB_NAME:?set DB_NAME in .env}
-      DB_USER: ${DB_USER:?set DB_USER in .env}
-      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     ports:
       - "127.0.0.1:5432:5432" # reachable from this machine only
     volumes:
       # Postgres 18 images keep data under /var/lib/postgresql/18/docker, so mount the parent.
       - pgdata:/var/lib/postgresql
-      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -27,7 +25,7 @@ services:
   #   env_file: .env
   #   environment:
   #     # Inside compose the database host is the service name, not localhost.
-  #     DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+  #     DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
   #   depends_on:
   #     db:
   #       condition: service_healthy
