@@ -101,6 +101,7 @@ Before writing a GORM model, a `Store` query or anything else that changes the s
    - A row updated more than about once per second, sustained -> reject (row-lock contention), propose insert-only rows aggregated on read.
    - One write that fans out to many rows with no cap on how many -> flag.
    - A change that makes `AutoMigrate` rewrite or lock a large table (type change, new index on a big table: `AutoMigrate` cannot `CREATE INDEX CONCURRENTLY`) -> require an expand/contract plan.
+   - A new `CHECK` or unique constraint -> first query production for rows that break it and fix them, or `AutoMigrate` cannot add the constraint and the bot fails at startup. Mirror the constraint in the store's in-memory fake, or tests pass on data the database rejects.
 3. On a violation, reply with the rule, the concrete failure in production and the alternative. Implement only after the owner explicitly picks one option.
 4. Every accepted rule break gets an ADR in `docs/adr/` (`NNNN-<slug>.md`: context, decision, consequences).
 
