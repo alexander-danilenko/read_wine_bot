@@ -480,8 +480,9 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, 
 
 // List returns the HTML text that lists the user's running giveaways and then their draft as a
 // numbered list, each with a link to its post and a link that opens its field menu in the bot
-// named botUsername.
-func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername string) (string, error) {
+// named botUsername. A running giveaway whose post was deleted gets a warning, and a note
+// under the list says how to move it.
+func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botUsername string) (string, error) {
 	gs, err := e.giveaways.Running(ctx, userID)
 	if err != nil {
 		return "", err //nolint:wrapcheck // Store already names the user
@@ -501,6 +502,7 @@ func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername strin
 
 	now := e.svc.now()
 	lines := make([]string, 0, len(gs))
+	gone := false
 
 	for i, g := range gs {
 		ends, mark := e.ends(g), i18n.EditListMarkPublished
@@ -511,6 +513,9 @@ func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername strin
 			mark = i18n.EditListMarkDraft
 		case g.State(now) == Due:
 			ends += e.svc.texts.Text(lang, i18n.EditListDue)
+		case e.postGone(ctx, tg, g):
+			ends += e.svc.texts.Text(lang, i18n.EditListGone)
+			mark, gone = i18n.EditListMarkGone, true
 		}
 
 		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListItem,
@@ -518,7 +523,12 @@ func (e *Editor) List(ctx context.Context, userID int64, lang, botUsername strin
 			e.svc.texts.Text(lang, mark)))
 	}
 
-	return e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n"), nil
+	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n")
+	if gone {
+		text += "\n\n" + e.svc.texts.Text(lang, i18n.EditListGoneNote)
+	}
+
+	return text, nil
 }
 
 // Default returns the value a field's default button stands for, or "" if it has none.
@@ -786,6 +796,19 @@ func (e *Editor) removeButton(ctx context.Context, rm ButtonRemover, log *slog.L
 	if err := rm.RemoveButton(ctx, g.ChatID, messageID); err != nil {
 		log.WarnContext(ctx, "remove join button", "giveaway_id", g.ID, "post", messageID, "error", err)
 	}
+}
+
+// postGone reports whether the post of the published g was deleted. The Bot API cannot read a
+// channel post, so it puts the same button on the post again: Telegram answers "not modified"
+// for a post that exists. Any other failure counts as not deleted.
+// ponytail: one Telegram call per running giveaway on every /list; fine for a few giveaways.
+func (e *Editor) postGone(ctx context.Context, tg Telegram, g Giveaway) bool {
+	err := tg.AttachButton(ctx, g.ChatID, g.MessageID, e.label(g))
+	if err != nil && !errors.Is(err, ErrPostGone) {
+		e.svc.log.WarnContext(ctx, "check giveaway post", "giveaway_id", g.ID, "error", err)
+	}
+
+	return errors.Is(err, ErrPostGone)
 }
 
 // label returns the join button text of g: its own text, or the default one.

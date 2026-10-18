@@ -155,7 +155,7 @@ func list(ctx context.Context, b *bot.Bot, ed *Editor, userID int64, lang string
 		return "", fmt.Errorf("get bot username: %w", err)
 	}
 
-	return ed.List(ctx, userID, lang, me.Username)
+	return ed.List(ctx, telegramAPI{b: b}, userID, lang, me.Username)
 }
 
 // EditLinkHandler returns the handler for the edit links of the giveaway list: it opens the

@@ -457,7 +457,14 @@ func TestEditList(t *testing.T) {
 	s := newSetup(t)
 	ctx := t.Context()
 
-	if got, err := s.ed.List(ctx, adminID, "en", "test_bot"); err != nil || got != "You have no active giveaways." {
+	if got, err := s.ed.List(
+		ctx,
+		s.tg,
+		adminID,
+		"en",
+		"test_bot",
+	); err != nil ||
+		got != "You have no active giveaways." {
 		t.Errorf("empty List = %q, %v", got, err)
 	}
 
@@ -482,7 +489,7 @@ func TestEditList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.ed.List(ctx, adminID, "en", "test_bot")
+	got, err := s.ed.List(ctx, s.tg, adminID, "en", "test_bot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,5 +567,30 @@ func TestEditValueAfterAdminLoss(t *testing.T) {
 
 	if s.read(t, g.ID).Winners != 1 || s.step(t) != "" {
 		t.Errorf("winners %d, step %q; want 1 and no step", s.read(t, g.ID).Winners, s.step(t))
+	}
+}
+
+func TestEditListPostGone(t *testing.T) {
+	s := newSetup(t)
+	publish(
+		t,
+		s.store,
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: s.kyivTime(25, 19, 0)},
+	)
+
+	s.tg.attachErr = giveaway.ErrPostGone
+
+	got, err := s.ed.List(t.Context(), s.tg, adminID, "en", "test_bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "Your active giveaways:\n\n" +
+		`⚠️ 1. <a href="https://t.me/c/1234567890/42">📌 Post</a> · ends 2026-10-25 19:00, post deleted · ` +
+		`<a href="https://t.me/test_bot?start=edit_1234567890_42">✏️ Edit</a>` + "\n\n" +
+		"⚠️ A post was deleted. Its participants are kept: tap ✏️ Edit, then “🔀 Move to another post”, " +
+		"and send a new post of the same channel."
+	if got != want {
+		t.Errorf("List = %q, want %q", got, want)
 	}
 }
