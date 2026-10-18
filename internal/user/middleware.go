@@ -53,7 +53,8 @@ func leaves(msg *models.Message) bool {
 }
 
 // sender returns the user behind the update, or nil when it has none. Inline queries, poll
-// answers and payments never reach this bot, and chat_member updates are not recorded.
+// answers and payments never reach this bot. A chat_member update's subscriber is recorded by
+// internal/channel instead, because From there is the admin when one removed the subscriber.
 func sender(update *models.Update) *models.User {
 	switch {
 	case update.Message != nil:
@@ -82,18 +83,22 @@ func messageSender(msg *models.Message) *models.User {
 	return msg.From
 }
 
+// ProfileOf returns the profile Telegram sent about u.
+func ProfileOf(u *models.User) Profile {
+	return Profile{
+		TelegramID:   u.ID,
+		IsBot:        u.IsBot,
+		FirstName:    u.FirstName,
+		LastName:     u.LastName,
+		Username:     u.Username,
+		LanguageCode: u.LanguageCode,
+		IsPremium:    u.IsPremium,
+	}
+}
+
 // recordSender saves the profile of the user who sent the update.
 func recordSender(ctx context.Context, store Recorder, log *slog.Logger, from *models.User) {
-	p := Profile{
-		TelegramID:   from.ID,
-		IsBot:        from.IsBot,
-		FirstName:    from.FirstName,
-		LastName:     from.LastName,
-		Username:     from.Username,
-		LanguageCode: from.LanguageCode,
-		IsPremium:    from.IsPremium,
-	}
-	if err := store.Record(ctx, p); err != nil {
+	if err := store.Record(ctx, ProfileOf(from)); err != nil {
 		log.ErrorContext(ctx, "record user", "user_id", from.ID, "error", err)
 	}
 }
