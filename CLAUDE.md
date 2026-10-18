@@ -95,6 +95,7 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 - Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`.
 - Scope is the package or area touched, e.g. `feat(giveaway): pick winners at random`.
 - Mark a breaking change with `!` after the type or a `BREAKING CHANGE:` footer.
+- Never open a pull request without the owner's explicit permission in the current conversation. This includes `/lfg` and every other Compound Engineering pipeline: stop after the local commits, report, and ask. A pipeline's default shipping step is not permission.
 
 ## Compound Engineering
 
