@@ -57,7 +57,7 @@ func run() error {
 	}
 
 	// An unreachable database or a failed migration stops the bot here.
-	conn, err := db.Open(ctx, cfg.DBPath)
+	conn, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
