@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
-	"strings"
 )
 
 var (
@@ -15,10 +15,10 @@ var (
 	ErrMissingToken = errors.New("TELEGRAM_BOT_TOKEN is not set")
 	// ErrInvalidToken means TELEGRAM_BOT_TOKEN does not have the <bot id>:<secret> form @BotFather issues.
 	ErrInvalidToken = errors.New("TELEGRAM_BOT_TOKEN is malformed, want <bot id>:<secret> from @BotFather")
-	// ErrMissingDBPath means DB_PATH is not set.
-	ErrMissingDBPath = errors.New("DB_PATH is not set")
-	// ErrInvalidDBPath means DB_PATH carries a query string; the bot adds its own SQLite pragmas.
-	ErrInvalidDBPath = errors.New("DB_PATH is invalid, want a file path without ?")
+	// ErrMissingDatabaseURL means DATABASE_URL is not set.
+	ErrMissingDatabaseURL = errors.New("DATABASE_URL is not set")
+	// ErrInvalidDatabaseURL means DATABASE_URL is not a postgres:// URL with a host.
+	ErrInvalidDatabaseURL = errors.New("DATABASE_URL is invalid, want postgres://user:password@host:port/database")
 )
 
 // tokenPattern matches a @BotFather token: a numeric bot ID, a colon, then a URL-safe secret.
@@ -27,7 +27,7 @@ var tokenPattern = regexp.MustCompile(`^\d+:[\w-]+$`)
 // Config holds the bot's settings.
 type Config struct {
 	TelegramBotToken string
-	DBPath           string // the SQLite database file
+	DatabaseURL      string // the PostgreSQL connection URL
 }
 
 // Load reads settings and validates them. Each setting comes from its environment variable when
@@ -49,7 +49,7 @@ func Load(ctx context.Context, dir string) (Config, error) {
 
 	cfg := Config{
 		TelegramBotToken: get("TELEGRAM_BOT_TOKEN"),
-		DBPath:           get("DB_PATH"),
+		DatabaseURL:      get("DATABASE_URL"),
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, fmt.Errorf("invalid config: %w", err)
@@ -63,7 +63,7 @@ func Load(ctx context.Context, dir string) (Config, error) {
 func (c Config) validate() error {
 	return errors.Join(
 		validateToken(c.TelegramBotToken),
-		validateDBPath(c.DBPath),
+		validateDatabaseURL(c.DatabaseURL),
 	)
 }
 
@@ -78,13 +78,16 @@ func validateToken(token string) error {
 	}
 }
 
-func validateDBPath(path string) error {
-	switch {
-	case path == "":
-		return ErrMissingDBPath
-	case strings.Contains(path, "?"):
-		return ErrInvalidDBPath
-	default:
-		return nil
+func validateDatabaseURL(raw string) error {
+	if raw == "" {
+		return ErrMissingDatabaseURL
 	}
+
+	// The parse error is dropped: it quotes the URL, password included.
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
+		return ErrInvalidDatabaseURL
+	}
+
+	return nil
 }

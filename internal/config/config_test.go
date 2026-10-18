@@ -76,7 +76,7 @@ func TestLoad(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.env)
-			t.Setenv("DB_PATH", "bot.db")
+			t.Setenv("DATABASE_URL", "postgres://bot@localhost/bot")
 
 			root := t.TempDir()
 			for dir, contents := range tc.files {
@@ -99,30 +99,45 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestLoadDBPath(t *testing.T) {
+func TestLoadDatabaseURL(t *testing.T) {
 	const token = "1:secret"
 
 	tests := []struct {
 		name     string
 		token    string
-		path     string
+		url      string
 		wantErrs []error
 	}{
-		{name: "file path", token: token, path: "data/bot.db"},
-		{name: "missing", token: token, wantErrs: []error{config.ErrMissingDBPath}},
+		//nolint:gosec // G101: a fake password in a test URL
+		{name: "postgres scheme", token: token, url: "postgres://bot:p4ss@db.example:5432/bot?sslmode=disable"},
+		{name: "postgresql scheme", token: token, url: "postgresql://db.example/bot"},
+		{name: "missing", token: token, wantErrs: []error{config.ErrMissingDatabaseURL}},
 		{
-			name:     "query string",
+			name:     "other scheme",
 			token:    token,
-			path:     "bot.db?_pragma=foreign_keys(1)",
-			wantErrs: []error{config.ErrInvalidDBPath},
+			url:      "mysql://db.example/bot",
+			wantErrs: []error{config.ErrInvalidDatabaseURL},
 		},
-		{name: "every problem in one error", wantErrs: []error{config.ErrMissingToken, config.ErrMissingDBPath}},
+		{
+			name:     "key-value DSN",
+			token:    token,
+			url:      "host=db.example password=p4ss dbname=bot",
+			wantErrs: []error{config.ErrInvalidDatabaseURL},
+		},
+		{name: "no host", token: token, url: "postgres:///bot", wantErrs: []error{config.ErrInvalidDatabaseURL}},
+		{
+			name:     "unparsable",
+			token:    token,
+			url:      "postgres://p4ss@db:port/bot",
+			wantErrs: []error{config.ErrInvalidDatabaseURL},
+		},
+		{name: "every problem in one error", wantErrs: []error{config.ErrMissingToken, config.ErrMissingDatabaseURL}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.token)
-			t.Setenv("DB_PATH", tc.path)
+			t.Setenv("DATABASE_URL", tc.url)
 
 			cfg, err := config.Load(t.Context(), t.TempDir())
 			if len(tc.wantErrs) == 0 {
@@ -130,14 +145,18 @@ func TestLoadDBPath(t *testing.T) {
 					t.Fatalf("err = %v, want nil", err)
 				}
 
-				if cfg.DBPath != tc.path {
-					t.Errorf("DBPath = %q, want %q", cfg.DBPath, tc.path)
+				if cfg.DatabaseURL != tc.url {
+					t.Errorf("DatabaseURL = %q, want %q", cfg.DatabaseURL, tc.url)
 				}
 
 				return
 			}
 
 			checkErrs(t, err, tc.wantErrs)
+
+			if strings.Contains(err.Error(), "p4ss") {
+				t.Errorf("error %q leaks the database password", err)
+			}
 		})
 	}
 }
