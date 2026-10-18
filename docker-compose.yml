@@ -43,18 +43,18 @@ services:
         condition: service_healthy
 
   # The bot itself, built from the Dockerfile. Uncomment to run it in Docker instead of `go run .`.
-  # bot:
-  #   build: .
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   environment:
-  #     # Inside compose the database host is the service name, not localhost.
-  #     DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   # A winner draw can spend up to a minute per Telegram call; Docker's 10 s default would cut it off.
-  #   stop_grace_period: 2m
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Inside compose the database host is the service name, not localhost.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    # A winner draw can spend up to a minute per Telegram call; Docker's 10 s default would cut it off.
+    stop_grace_period: 2m
 
 volumes:
   pgdata:
