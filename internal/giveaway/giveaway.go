@@ -21,7 +21,7 @@ type Giveaway struct {
 	// Creator only declares the foreign key from created_by to users; it is never loaded.
 	Creator  user.User `gorm:"foreignKey:CreatedBy;references:TelegramID"`
 	Language string    `gorm:"size:16;not null"` // locale of the button and the popups
-	// Columns added to a table with rows need a default or NULL in SQLite; giveaways created
+	// Columns added to a table with rows need a default or NULL; giveaways created
 	// before the setup steps have no end time and an empty button text.
 	EndsAt     *time.Time // when entry ends, in UTC; nil for giveaways older than the setup steps
 	Winners    int        `gorm:"not null;default:1"`
