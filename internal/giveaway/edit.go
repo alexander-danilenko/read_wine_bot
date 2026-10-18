@@ -516,7 +516,7 @@ func (e *Editor) save(ctx context.Context, tg Telegram, log *slog.Logger, g, cha
 		if err := tg.AttachButton(ctx, g.ChatID, g.MessageID, changed.ButtonText); err != nil {
 			log.WarnContext(ctx, "change join button text", "error", err)
 
-			return Reply{Notice: i18n.EditNoRights, Next: menu}
+			return Reply{Notice: attachFailure(err), Next: menu}
 		}
 	}
 
@@ -647,7 +647,8 @@ func (e *Editor) check(ctx context.Context, tg Telegram, userID int64, g Giveawa
 
 // loadMovable reads giveaway id for the move step and checks that the user may change it and
 // that it is not waiting for its draw. On failure it ends the step and returns the Reply that
-// names the failed check, and false.
+// names the failed check, and false. The step answers a message, which shows no popup, so a
+// giveaway that reached its end time meanwhile gets a notice rather than a stale reply.
 func (e *Editor) loadMovable(
 	ctx context.Context, tg Telegram, log *slog.Logger, userID int64, id uint,
 ) (Giveaway, Reply, bool) {
@@ -661,7 +662,7 @@ func (e *Editor) loadMovable(
 	}
 
 	if ok {
-		return Giveaway{}, Reply{Stale: true}, false
+		return Giveaway{}, Reply{Notice: i18n.EditFinishing}, false
 	}
 
 	return Giveaway{}, r, false
@@ -721,11 +722,14 @@ func (e *Editor) move(
 	menu := editStep(menuStep, g.ID)
 
 	err := e.mover.Move(ctx, g.ID, messageID)
+	if err != nil {
+		// The giveaway stays where it was, so the button just attached must not stay on the new
+		// post.
+		e.removeButton(ctx, rm, log, g, messageID)
+	}
+
 	switch {
 	case errors.Is(err, ErrExists):
-		// A setup draft holds the post; the button just attached must not stay on it.
-		e.removeButton(ctx, rm, log, g, messageID)
-
 		return retry(i18n.EditMoveTaken)
 	case errors.Is(err, ErrNotFound):
 		return Reply{Notice: i18n.EditFinished}

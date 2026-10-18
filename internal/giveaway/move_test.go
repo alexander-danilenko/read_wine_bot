@@ -1,6 +1,7 @@
 package giveaway_test
 
 import (
+	"context"
 	"strconv"
 	"testing"
 
@@ -229,8 +230,12 @@ func TestMoveDue(t *testing.T) {
 	s.askMove(t, g.ID)
 
 	s.now = *s.kyivTime(9, 20, 1)
-	if r := s.ed.Move(ctx, s.tg, s.tg, adminID, channelID, 43); !r.Stale {
-		t.Errorf("Move after the end = %+v, want stale", r)
+	if r := s.ed.Move(ctx, s.tg, s.tg, adminID, channelID, 43); r != (giveaway.Reply{Notice: i18n.EditFinishing}) {
+		t.Errorf("Move after the end = %+v, want the finishing notice", r)
+	}
+
+	if s.step(t) != "" {
+		t.Errorf("step %q, want the move step ended", s.step(t))
 	}
 
 	if got := s.read(t, g.ID); got.MessageID != 42 || s.tg.attached != 0 {
@@ -266,5 +271,65 @@ func TestRestoreDeletedPost(t *testing.T) {
 
 	if s.read(t, g.ID).Published {
 		t.Error("giveaway published although its post is gone")
+	}
+}
+
+// failingMover fails every move with err.
+type failingMover struct{ err error }
+
+func (f failingMover) Move(context.Context, uint, int64) error { return f.err }
+
+func TestMoveStoreFails(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want giveaway.Reply
+	}{
+		{"finished meanwhile", giveaway.ErrNotFound, giveaway.Reply{Notice: i18n.EditFinished}},
+		{"database error", errBoom, giveaway.Reply{Notice: i18n.EditFailed, Next: menu(1)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSetup(t)
+			g := s.joined(t)
+			ed := giveaway.NewEditor(s.svc, s.store, s.store, failingMover{tt.err})
+
+			if r := ed.AskMove(t.Context(), s.tg, adminID, g.ID); r.Next != moveStep(g.ID) {
+				t.Fatalf("AskMove = %+v, want the move step", r)
+			}
+
+			if r := ed.Move(t.Context(), s.tg, s.tg, adminID, channelID, 43); r != tt.want {
+				t.Errorf("Move = %+v, want %+v", r, tt.want)
+			}
+
+			if s.tg.attachedTo != 43 || s.tg.removedFrom != 43 || s.read(t, g.ID).MessageID != 42 {
+				t.Errorf(
+					"attached to %d, removed from %d, post %d; want the new button taken off 43 and the giveaway on 42",
+					s.tg.attachedTo,
+					s.tg.removedFrom,
+					s.read(t, g.ID).MessageID,
+				)
+			}
+		})
+	}
+}
+
+func TestEditButtonTextOnDeletedPost(t *testing.T) {
+	s := newSetup(t)
+	g := s.joined(t)
+	s.tg.attachErr = giveaway.ErrPostGone
+
+	if r := s.change(
+		t,
+		g.ID,
+		giveaway.FieldButtonText,
+		"Join",
+	); r != (giveaway.Reply{Notice: i18n.EditPostGone, Next: menu(g.ID)}) {
+		t.Errorf("button text change = %+v, want post-gone and the menu", r)
+	}
+
+	if s.read(t, g.ID).ButtonText != "Go" {
+		t.Error("button text saved although the post is gone")
 	}
 }
