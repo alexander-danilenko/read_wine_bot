@@ -78,7 +78,7 @@ func TestEditForwardChecks(t *testing.T) {
 			prepare: func(t *testing.T, s *setup) {
 				t.Helper()
 
-				g := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID}
+				g := &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Winners: 1}
 				if err := s.store.SaveDraft(t.Context(), g); err != nil {
 					t.Fatal(err)
 				}

@@ -28,6 +28,7 @@ func descriptions() []string {
 		`COMMENT ON INDEX idx_user_revisions_number IS 'One revision number per user'`,
 		`COMMENT ON TABLE giveaways IS 'Giveaways on channel posts, including unfinished setups (unpublished, not cancelled) and cancelled ones'`,
 		`COMMENT ON INDEX idx_giveaways_post IS 'At most one giveaway per channel post'`,
+		`COMMENT ON INDEX idx_giveaways_draft IS 'At most one unfinished setup (unpublished, not cancelled) per admin'`,
 		`COMMENT ON TABLE giveaway_participants IS 'Users who tapped a giveaway''s join button, with the winners marked after the draw'`,
 	}
 }

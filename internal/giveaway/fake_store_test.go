@@ -2,6 +2,7 @@ package giveaway_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"sync"
 	"testing"
@@ -25,6 +26,9 @@ type memStore struct {
 	participants map[uint]map[int64]bool
 	nextID       uint
 }
+
+// errConstraint stands in for a database constraint violation.
+var errConstraint = errors.New("constraint violated")
 
 func newMemStore() *memStore {
 	return &memStore{rows: map[uint]*giveaway.Giveaway{}, participants: map[uint]map[int64]bool{}}
@@ -51,6 +55,10 @@ func (f *memStore) Publish(_ context.Context, id uint) error {
 func (f *memStore) SaveDraft(_ context.Context, g *giveaway.Giveaway) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	if f.violates(g) {
+		return errConstraint
+	}
 
 	now := time.Now()
 
@@ -205,6 +213,20 @@ func (f *memStore) Cancel(_ context.Context, id uint) error {
 }
 
 // ids returns the row IDs in ascending order, so lookups are deterministic.
+// violates reports whether the database would reject g as a draft: chk_giveaways_winners
+// needs a winner, and idx_giveaways_draft allows one draft per admin.
+func (f *memStore) violates(g *giveaway.Giveaway) bool {
+	if g.Winners < 1 {
+		return true
+	}
+
+	return slices.ContainsFunc(f.ids(), func(id uint) bool {
+		row := f.rows[id]
+
+		return row.CreatedBy == g.CreatedBy && isDraft(row) && (row.ChatID != g.ChatID || row.MessageID != g.MessageID)
+	})
+}
+
 func (f *memStore) ids() []uint {
 	ids := make([]uint, 0, len(f.rows))
 	for id := range f.rows {
@@ -299,6 +321,8 @@ func (f *fakeUsers) MovePendingCommand(_ context.Context, telegramID int64, from
 // publish saves g as its creator's draft and publishes it, the way Confirm does.
 func publish(t *testing.T, store *memStore, g *giveaway.Giveaway) giveaway.Giveaway {
 	t.Helper()
+
+	g.Winners = max(g.Winners, 1) // the database requires a winner; most tests need no count
 
 	ctx := t.Context()
 	if err := store.SaveDraft(ctx, g); err != nil {

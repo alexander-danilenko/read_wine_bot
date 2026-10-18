@@ -78,7 +78,10 @@ func (s *Service) Forward(ctx context.Context, tg Telegram, userID, chatID, mess
 		return Reply{Notice: i18n.GiveawayFailed}
 	}
 
-	err := s.drafts.SaveDraft(ctx, &Giveaway{ChatID: chatID, MessageID: messageID, CreatedBy: userID, Language: lang})
+	// The winner count is a placeholder until the winners step; the database requires one.
+	d := &Giveaway{ChatID: chatID, MessageID: messageID, CreatedBy: userID, Language: lang, Winners: minWinners}
+
+	err := s.drafts.SaveDraft(ctx, d)
 	if errors.Is(err, ErrExists) {
 		s.end(ctx, userID)
 

@@ -17,21 +17,22 @@ type Giveaway struct {
 	ID        uint  `gorm:"primaryKey;comment:Giveaway ID, used in the bot's buttons and commands"`
 	ChatID    int64 `gorm:"not null;uniqueIndex:idx_giveaways_post;comment:Telegram ID of the channel with the post"`
 	MessageID int64 `gorm:"not null;uniqueIndex:idx_giveaways_post;comment:Telegram message ID of the post, numbered per channel"`
-	CreatedBy int64 `gorm:"not null;comment:Telegram user ID (users.telegram_id) of the admin who set the giveaway up"`
+	// The partial unique index allows one setup draft per admin.
+	CreatedBy int64 `gorm:"not null;uniqueIndex:idx_giveaways_draft,where:published = false AND cancelled_at IS NULL;comment:Telegram user ID (users.telegram_id) of the admin who set the giveaway up"`
 	// Creator only declares the foreign key from created_by to users; it is never loaded.
 	Creator  user.User `gorm:"foreignKey:CreatedBy;references:TelegramID"`
 	Language string    `gorm:"size:16;not null;comment:Locale code of the join button popups and the results message"`
 	// Columns added to a table with rows need a default or NULL; giveaways created
 	// before the setup steps have no end time and an empty button text.
 	EndsAt     *time.Time `gorm:"comment:When entry ends and winners are drawn, NULL for no end time"`
-	Winners    int        `gorm:"not null;default:1;comment:Number of winners to draw"`
+	Winners    int        `gorm:"not null;default:1;check:chk_giveaways_winners,winners >= 1;comment:Number of winners to draw"`
 	ButtonText string     `gorm:"not null;default:'';comment:Label of the join button under the post"`
 	// FinishedAt is set together with the participants' winner marks; nil until then.
-	FinishedAt *time.Time `gorm:"comment:When winners were drawn and saved, NULL until then"`
+	FinishedAt *time.Time `gorm:"check:chk_giveaways_finished,finished_at IS NULL OR (published AND cancelled_at IS NULL);comment:When winners were drawn and saved, NULL until then"`
 	// CancelledAt is set when the creator takes a published giveaway off its post: the row is
 	// unpublished again but keeps its participants, so it is no setup draft. Publishing it
 	// clears the mark. Nil for drafts and published giveaways.
-	CancelledAt *time.Time `gorm:"comment:When the creator cancelled the giveaway, NULL unless cancelled. Unpublished without this mark means an unfinished setup"`
+	CancelledAt *time.Time `gorm:"check:chk_giveaways_cancelled,cancelled_at IS NULL OR NOT published;comment:When the creator cancelled the giveaway, NULL unless cancelled. Unpublished without this mark means an unfinished setup"`
 	// Published is set once the join button is on the post. The default is true so that
 	// giveaways older than the setup, which all have their button, count as published.
 	// GORM leaves a false zero value out of an INSERT for a column with a default, so
