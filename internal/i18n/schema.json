@@ -77,7 +77,7 @@
     "edit.date_time_in_past": { "type": "string", "description": "Sent when a new end date is today but the giveaway's end time of day has already passed." },
     "edit.stopped": { "type": "string", "description": "Sent when the user stops an edit at the forward step." },
     "edit.list": { "type": "string", "description": "Header of the user's running giveaways." },
-    "edit.list_item": { "type": "string", "description": "One running giveaway as an HTML line. %[1]d: number in the list, %[2]s: post link, %[3]s: end time in Kyiv with the edit.list_due suffix when due, %[4]s: edit link, %[5]s: edit.list_mark_published, edit.list_mark_draft or edit.list_mark_gone." },
+    "edit.list_item": { "type": "string", "description": "One giveaway as an HTML line. %[1]s: edit.list_mark_published, edit.list_mark_draft or edit.list_mark_gone, %[2]s: post link, %[3]s: edit link, %[4]s: end time in Kyiv with the edit.list_due, edit.list_draft or edit.list_gone suffix." },
     "edit.list_due": { "type": "string", "description": "Appended to a running giveaway past its end time." },
     "edit.list_draft": { "type": "string", "description": "Appended to the end time of the user's unpublished draft in the list." },
     "edit.list_mark_published": { "type": "string", "description": "Emoji at the start of a published giveaway's line in the list." },

@@ -479,7 +479,7 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, 
 }
 
 // List returns the HTML text that lists the user's running giveaways and then their draft as a
-// numbered list, each with a link to its post and a link that opens its field menu in the bot
+// bulleted list, each with a link to its post and a link that opens its field menu in the bot
 // named botUsername. A running giveaway whose post was deleted gets a warning, and a note
 // under the list says how to move it.
 func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botUsername string) (string, error) {
@@ -504,7 +504,7 @@ func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botU
 	lines := make([]string, 0, len(gs))
 	gone := false
 
-	for i, g := range gs {
+	for _, g := range gs {
 		ends, mark := e.ends(g), i18n.EditListMarkPublished
 
 		switch {
@@ -519,8 +519,8 @@ func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botU
 		}
 
 		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListItem,
-			i+1, postLink(g.ChatID, g.MessageID), ends, editLink(botUsername, g.ChatID, g.MessageID),
-			e.svc.texts.Text(lang, mark)))
+			e.svc.texts.Text(lang, mark), postLink(g.ChatID, g.MessageID), editLink(botUsername, g.ChatID, g.MessageID),
+			ends))
 	}
 
 	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n")
