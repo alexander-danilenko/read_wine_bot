@@ -122,3 +122,35 @@ func TestParseButtonText(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePostLink(t *testing.T) {
+	tests := []struct {
+		input     string
+		chat      string
+		messageID int64
+		ok        bool
+	}{
+		{input: "https://t.me/c/4213611049/20", chat: "-1004213611049", messageID: 20, ok: true},
+		{input: " https://t.me/c/4213611049/20?single ", chat: "-1004213611049", messageID: 20, ok: true},
+		{input: "https://t.me/read_wine/1973", chat: "@read_wine", messageID: 1973, ok: true},
+		{input: "https://t.me/c/4213611049"},
+		{input: "https://t.me/c/4213611049/0"},
+		{input: "https://t.me/c/-5/20"},
+		{input: "https://t.me/c/4213611049/20/3"},
+		{input: "https://t.me/read_wine/+5"},
+		{input: "https://t.me/rw/20"},
+		{input: "https://t.me/+AbCdEf/20"},
+		{input: "https://example.com/read_wine/20"},
+		{input: "hello"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			chat, messageID, ok := parsePostLink(tt.input)
+			if chat != tt.chat || messageID != tt.messageID || ok != tt.ok {
+				t.Errorf("parsePostLink(%q) = %q, %d, %v; want %q, %d, %v",
+					tt.input, chat, messageID, ok, tt.chat, tt.messageID, tt.ok)
+			}
+		})
+	}
+}

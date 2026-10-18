@@ -2,6 +2,7 @@ package giveaway
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -12,6 +13,13 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
+
+// editPayload starts the start payload of an edit link from the giveaway list.
+const editPayload = "edit_"
+
+// EditLinkPrefix starts the message Telegram sends when the user taps an edit link from the
+// giveaway list: /start edit_<channel>_<post>.
+const EditLinkPrefix = "/start " + editPayload
 
 // EditCallbackPrefix starts the callback data of every edit button. It is not a prefix of
 // SetupCallbackPrefix or JoinCallback, so each handler gets only its own taps.
@@ -115,33 +123,86 @@ func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *sl
 
 		lang := language.UserLanguage(ctx, users, log, msg.From)
 
-		text, err := ed.List(ctx, msg.From.ID, lang)
+		text, err := list(ctx, b, ed, msg.From.ID, lang)
 		if err != nil {
 			log.ErrorContext(ctx, "list running giveaways", "user_id", msg.From.ID, "error", err)
 			text = texts.Text(lang, i18n.EditFailed)
 		}
 
-		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: msg.From.ID, Text: text})
+		send(ctx, b, h.log, &bot.SendMessageParams{
+			ChatID:             msg.From.ID,
+			Text:               text,
+			ParseMode:          models.ParseModeHTML,
+			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
+		})
 	}
+}
+
+// list returns the user's running giveaways from List. The edit links need the bot's username,
+// which only getMe tells.
+func list(ctx context.Context, b *bot.Bot, ed *Editor, userID int64, lang string) (string, error) {
+	me, err := b.GetMe(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get bot username: %w", err)
+	}
+
+	return ed.List(ctx, userID, lang, me.Username)
+}
+
+// EditLinkHandler returns the handler for the edit links of the giveaway list: it opens the
+// field menu of the giveaway on the post the link names.
+func EditLinkHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
+	h := editHandler{ed: ed, texts: texts, log: log}
+
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		msg := privateMessage(update)
+		if msg == nil {
+			return
+		}
+
+		lang := language.UserLanguage(ctx, users, log, msg.From)
+
+		chatID, messageID, ok := parseEditLink(msg.Text)
+		if !ok {
+			h.reply(ctx, b, msg.From.ID, lang, Reply{Notice: i18n.EditNotFound})
+
+			return
+		}
+
+		h.reply(ctx, b, msg.From.ID, lang, ed.OpenPost(ctx, telegramAPI{b: b}, msg.From.ID, chatID, messageID))
+	}
+}
+
+// parseEditLink parses /start edit_<channel>_<post> into the post's chat and message IDs.
+func parseEditLink(text string) (int64, int64, bool) {
+	channel, post, found := strings.Cut(strings.TrimPrefix(strings.TrimSpace(text), EditLinkPrefix), "_")
+	if !found || !positive(channel) || !positive(post) {
+		return 0, 0, false
+	}
+
+	chatID, errChat := strconv.ParseInt("-100"+channel, 10, 64)
+	messageID, errPost := strconv.ParseInt(post, 10, 64)
+
+	return chatID, messageID, errChat == nil && errPost == nil
 }
 
 // message hands a private message to the edit step the user is at: the post step takes a
 // forwarded channel post, a field step takes text, and any other input asks again.
 func (h editHandler) message(ctx context.Context, b *bot.Bot, msg *models.Message, step, lang string) {
-	origin := channelOrigin(msg)
+	chatID, messageID, isPost := postRef(ctx, b, h.log, msg)
 
 	tg := telegramAPI{b: b}
 
 	switch {
-	case step == EditStepPost && origin != nil:
+	case step == EditStepPost && isPost:
 		h.reply(
 			ctx,
 			b,
 			msg.From.ID,
 			lang,
-			h.ed.ForwardEdit(ctx, tg, msg.From.ID, origin.Chat.ID, int64(origin.MessageID)),
+			h.ed.ForwardEdit(ctx, tg, msg.From.ID, chatID, messageID),
 		)
-	case step == EditStepPost || origin != nil:
+	case step == EditStepPost || isPost:
 		h.prompt(ctx, b, msg.From.ID, lang, step)
 	default:
 		h.reply(ctx, b, msg.From.ID, lang, h.ed.Value(ctx, tg, msg.From.ID, step, msg.Text))

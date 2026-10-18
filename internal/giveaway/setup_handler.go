@@ -3,6 +3,8 @@ package giveaway
 import (
 	"context"
 	"log/slog"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -108,14 +110,14 @@ func MessageHandler(svc *Service, ed *Editor, texts *i18n.Catalog, users Users, 
 
 // step hands the message to the setup step the user is at.
 func (h setupHandler) step(ctx context.Context, b *bot.Bot, msg *models.Message, step, lang string) {
-	origin := channelOrigin(msg)
+	chatID, messageID, isPost := postRef(ctx, b, h.log, msg)
 
 	switch {
-	case step == StepPost && origin != nil:
+	case step == StepPost && isPost:
 		tg := telegramAPI{b: b}
-		r := h.svc.Forward(ctx, tg, msg.From.ID, origin.Chat.ID, int64(origin.MessageID), lang)
+		r := h.svc.Forward(ctx, tg, msg.From.ID, chatID, messageID, lang)
 		h.reply(ctx, b, msg.From.ID, lang, r)
-	case step == StepPost || step == StepConfirm || origin != nil:
+	case step == StepPost || step == StepConfirm || isPost:
 		h.prompt(ctx, b, msg.From.ID, lang, step)
 	default:
 		h.reply(ctx, b, msg.From.ID, lang, h.svc.Apply(ctx, msg.From.ID, step, msg.Text))
@@ -244,14 +246,88 @@ func privateMessage(update *models.Update) *models.Message {
 	return msg
 }
 
-// channelOrigin returns the channel a message was forwarded from, or nil when it was not
-// forwarded from a channel.
-func channelOrigin(msg *models.Message) *models.MessageOriginChannel {
-	if msg.ForwardOrigin == nil {
-		return nil
+// postRef returns the channel post a message points to: the post it was forwarded from, or
+// the post its text links to. A link costs a getChat call, which turns the channel in the link
+// into its chat ID and confirms the chat is a channel.
+func postRef(ctx context.Context, b *bot.Bot, log *slog.Logger, msg *models.Message) (int64, int64, bool) {
+	if msg.ForwardOrigin != nil && msg.ForwardOrigin.MessageOriginChannel != nil {
+		origin := msg.ForwardOrigin.MessageOriginChannel
+
+		return origin.Chat.ID, int64(origin.MessageID), true
 	}
 
-	return msg.ForwardOrigin.MessageOriginChannel
+	chat, messageID, ok := parsePostLink(msg.Text)
+	if !ok {
+		return 0, 0, false
+	}
+
+	info, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: chat})
+	if err != nil {
+		log.WarnContext(ctx, "resolve post link", "user_id", msg.From.ID, "chat", chat, "error", err)
+
+		return 0, 0, false
+	}
+
+	return info.ID, messageID, info.Type == models.ChatTypeChannel
+}
+
+// parsePostLink parses a channel post link and returns the chat in the form getChat takes: a
+// public link https://t.me/<username>/<post> gives "@<username>", a private link
+// https://t.me/c/<channel>/<post> gives the chat ID, which the link writes without its -100.
+func parsePostLink(text string) (string, int64, bool) {
+	u, err := url.Parse(strings.TrimSpace(text))
+	if err != nil || u.Host != "t.me" {
+		return "", 0, false
+	}
+
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+
+	var chat string
+
+	switch {
+	case len(parts) == 3 && parts[0] == "c" && positive(parts[1]):
+		chat = "-100" + parts[1]
+	case len(parts) == 2 && isUsername(parts[0]):
+		chat = "@" + parts[0]
+	default:
+		return "", 0, false
+	}
+
+	post := parts[len(parts)-1]
+	if !positive(post) {
+		return "", 0, false
+	}
+
+	messageID, err := strconv.ParseInt(post, 10, 64)
+
+	return chat, messageID, err == nil
+}
+
+// positive reports whether s is a number above zero written in plain digits, with no sign.
+func positive(s string) bool {
+	n, err := strconv.ParseUint(s, 10, 63)
+
+	return err == nil && n > 0
+}
+
+// isUsername reports whether s can be a Telegram username: 4-32 Latin letters, digits and
+// underscores, starting with a letter.
+func isUsername(s string) bool {
+	if len(s) < 4 || len(s) > 32 || !isLetter(rune(s[0])) {
+		return false
+	}
+
+	for _, r := range s {
+		if !isLetter(r) && (r < '0' || r > '9') && r != '_' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isLetter(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 // removeButtons removes the inline buttons from the message an outdated button belongs to.

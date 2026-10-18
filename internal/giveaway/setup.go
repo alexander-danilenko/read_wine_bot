@@ -325,9 +325,20 @@ func (s *Service) endDate(d Giveaway) string {
 // postLink returns the t.me link to a channel post. Bot API channel IDs are the channel's
 // own ID with a -100 prefix, which the link leaves out.
 func postLink(chatID, messageID int64) string {
-	channel := strings.TrimPrefix(strconv.FormatInt(chatID, 10), "-100")
+	return "https://t.me/c/" + channelPart(chatID) + "/" + strconv.FormatInt(messageID, 10)
+}
 
-	return "https://t.me/c/" + channel + "/" + strconv.FormatInt(messageID, 10)
+// editLink returns the deep link that opens the field menu of the giveaway on the post:
+// https://t.me/<bot>?start=edit_<channel>_<post>. A start payload cannot hold the minus of a
+// chat ID, so the channel is written as in a post link, without its -100.
+func editLink(botUsername string, chatID, messageID int64) string {
+	return "https://t.me/" + botUsername + "?start=" + editPayload +
+		channelPart(chatID) + "_" + strconv.FormatInt(messageID, 10)
+}
+
+// channelPart returns a channel's chat ID as post links write it: without its -100.
+func channelPart(chatID int64) string {
+	return strings.TrimPrefix(strconv.FormatInt(chatID, 10), "-100")
 }
 
 // utcPtr returns t in UTC, or nil for the zero time an invalid value leaves.

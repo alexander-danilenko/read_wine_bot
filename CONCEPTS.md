@@ -10,7 +10,7 @@ A prize draw the bot runs for the audience of the @read_wine Telegram channel. O
 
 ### Giveaway setup
 
-The guided dialogue in the bot's private chat that creates a giveaway: the admin forwards the post, then enters the end date, end time, winner count and join button text, and confirms a summary. Nothing appears on the post until the admin confirms; cancelling discards the setup.
+The guided dialogue in the bot's private chat that creates a giveaway: the admin forwards the post or sends its link, then enters the end date, end time, winner count and join button text, and confirms a summary. Nothing appears on the post until the admin confirms; cancelling discards the setup.
 
 ### Winner draw
 

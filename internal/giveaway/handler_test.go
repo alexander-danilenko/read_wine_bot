@@ -2,6 +2,7 @@ package giveaway_test
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -34,15 +35,18 @@ type fakeAPI struct {
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	//nolint:gosec // G120: test server; MaxBytesReader above caps the body
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
+	// A method without parameters, such as getMe, sends no form.
+	if err := r.ParseMultipartForm(1 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 
 		return
 	}
 
 	form := map[string]string{}
-	for key, values := range r.MultipartForm.Value {
-		form[key] = values[0]
+	if r.MultipartForm != nil {
+		for key, values := range r.MultipartForm.Value {
+			form[key] = values[0]
+		}
 	}
 
 	f.mu.Lock()
@@ -57,6 +61,11 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "getChatMember"):
 		// Everyone, the bot included, is a channel admin who may edit posts.
 		result = `{"status":"administrator","user":{"id":1,"is_bot":false,"first_name":"A"},"can_edit_messages":true}`
+	case strings.HasSuffix(r.URL.Path, "getMe"):
+		result = `{"id":123,"is_bot":true,"first_name":"Bot","username":"test_bot"}`
+	case strings.HasSuffix(r.URL.Path, "getChat"):
+		// Every post link resolves to the test channel.
+		result = `{"id":-1001234567890,"type":"channel"}`
 	}
 
 	if _, err := io.WriteString(w, `{"ok":true,"result":`+result+`}`); err != nil {
@@ -322,6 +331,30 @@ func TestEditForwardSendsMenu(t *testing.T) {
 	}
 }
 
+func TestEditLinkSendsMenu(t *testing.T) {
+	for _, link := range []string{"https://t.me/read_wine/42", "https://t.me/c/1234567890/42"} {
+		t.Run(link, func(t *testing.T) {
+			h := newHandlerSetup(t)
+
+			publish(
+				t,
+				h.store,
+				&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"},
+			)
+
+			if err := h.ed.BeginEdit(t.Context(), adminID); err != nil {
+				t.Fatal(err)
+			}
+
+			h.messageHandler()(t.Context(), h.bot, h.message(link, false))
+
+			if rows := h.keyboard(t); rows[0][0].Text != "📝 Edit end date" {
+				t.Errorf("first button = %q, want the field menu", rows[0][0].Text)
+			}
+		})
+	}
+}
+
 func TestEditMenuOfCancelled(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
@@ -442,8 +475,50 @@ func TestListHandler(t *testing.T) {
 		h.message("", false),
 	)
 
-	want := "Your running giveaways:\n\nhttps://t.me/c/1234567890/42 — ends 2026-10-25 19:00"
+	want := "Your active giveaways:\n\n" +
+		`1. <a href="https://t.me/c/1234567890/42">📌 Post</a> · ends 2026-10-25 19:00 · ` +
+		`<a href="https://t.me/test_bot?start=edit_1234567890_42">✏️ Edit</a>`
 	if sent := h.sent(); len(sent) != 1 || sent[0] != want {
 		t.Errorf("sent %q, want only %q", sent, want)
+	}
+}
+
+func TestEditLinkHandler(t *testing.T) {
+	tests := []struct {
+		text     string
+		wantMenu bool
+	}{
+		{text: "/start edit_1234567890_42", wantMenu: true},
+		{text: "/start edit_1234567890_43"},
+		{text: "/start edit_999_42"},
+		{text: "/start edit_1234567890"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			h := newHandlerSetup(t)
+			publish(
+				t,
+				h.store,
+				&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"},
+			)
+
+			giveaway.EditLinkHandler(h.ed, h.texts, h.users, slog.New(slog.DiscardHandler))(
+				t.Context(), h.bot, h.message(tt.text, false),
+			)
+
+			if tt.wantMenu {
+				if rows := h.keyboard(t); rows[0][0].Text != "📝 Edit end date" {
+					t.Errorf("first button = %q, want the field menu", rows[0][0].Text)
+				}
+
+				return
+			}
+
+			want := h.texts.Text("en", i18n.EditNotFound)
+			if got := h.sent(); len(got) != 1 || got[0] != want {
+				t.Errorf("sent %q, want only %q", got, want)
+			}
+		})
 	}
 }

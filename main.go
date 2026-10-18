@@ -104,6 +104,13 @@ func handlers(
 		// Runs before every handler: records every sender's profile and its revisions, and
 		// leaves any unfinished setup on a command or menu button.
 		bot.WithMiddlewares(user.Middleware(users, menu.IsLabel(texts), log)),
+		// Before the greeting: an edit link sends /start with a payload, which the greeting
+		// would also match, and the first matching handler wins.
+		bot.WithMessageTextHandler(
+			giveaway.EditLinkPrefix,
+			bot.MatchTypePrefix,
+			giveaway.EditLinkHandler(editor, texts, users, log),
+		),
 		bot.WithMessageTextHandler(
 			greeting.Command,
 			bot.MatchTypeCommandStartOnly,

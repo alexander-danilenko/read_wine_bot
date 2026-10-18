@@ -401,7 +401,7 @@ func TestEditList(t *testing.T) {
 	s := newSetup(t)
 	ctx := t.Context()
 
-	if got, err := s.ed.List(ctx, adminID, "en"); err != nil || got != "You have no running giveaways." {
+	if got, err := s.ed.List(ctx, adminID, "en", "test_bot"); err != nil || got != "You have no active giveaways." {
 		t.Errorf("empty List = %q, %v", got, err)
 	}
 
@@ -421,14 +421,16 @@ func TestEditList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.ed.List(ctx, adminID, "en")
+	got, err := s.ed.List(ctx, adminID, "en", "test_bot")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := "Your running giveaways:\n\n" +
-		"https://t.me/c/1234567890/42 — ends 2026-10-08 19:00, awaiting results\n" +
-		"https://t.me/c/1234567890/41 — ends 2026-10-25 19:00"
+	want := "Your active giveaways:\n\n" +
+		`1. <a href="https://t.me/c/1234567890/42">📌 Post</a> · ends 2026-10-08 19:00, awaiting results · ` +
+		`<a href="https://t.me/test_bot?start=edit_1234567890_42">✏️ Edit</a>` + "\n" +
+		`2. <a href="https://t.me/c/1234567890/41">📌 Post</a> · ends 2026-10-25 19:00 · ` +
+		`<a href="https://t.me/test_bot?start=edit_1234567890_41">✏️ Edit</a>`
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)
 	}

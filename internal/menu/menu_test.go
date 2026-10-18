@@ -17,9 +17,15 @@ func TestKeyboard(t *testing.T) {
 		lang string
 		want [4]string
 	}{
-		{lang: "uk", want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Мої розіграші", "🌐 Змінити мову"}},
-		{lang: "en", want: [4]string{"🎁 New giveaway", "✏️ Edit giveaway", "📋 My giveaways", "🌐 Change language"}},
-		{lang: "de", want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Мої розіграші", "🌐 Змінити мову"}},
+		{
+			lang: "uk",
+			want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Активні розіграші", "🌐 Змінити мову"},
+		},
+		{lang: "en", want: [4]string{"🎁 New giveaway", "✏️ Edit giveaway", "📋 Active giveaways", "🌐 Change language"}},
+		{
+			lang: "de",
+			want: [4]string{"🎁 Новий розіграш", "✏️ Змінити розіграш", "📋 Активні розіграші", "🌐 Змінити мову"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -55,13 +61,13 @@ func TestIsLabel(t *testing.T) {
 	isLabel := menu.IsLabel(texts)
 
 	for text, want := range map[string]bool{
-		"🎁 New giveaway":   true,
-		"🎁 Новий розіграш": true,
-		"🌐 Змінити мову":   true,
-		"✏️ Edit giveaway": true,
-		"📋 Мої розіграші":  true,
-		"5":                false,
-		"/start":           false,
+		"🎁 New giveaway":      true,
+		"🎁 Новий розіграш":    true,
+		"🌐 Змінити мову":      true,
+		"✏️ Edit giveaway":    true,
+		"📋 Активні розіграші": true,
+		"5":                   false,
+		"/start":              false,
 	} {
 		if got := isLabel(text); got != want {
 			t.Errorf("IsLabel(%q) = %v, want %v", text, got, want)
