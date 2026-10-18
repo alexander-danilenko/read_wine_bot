@@ -2,7 +2,6 @@ package giveaway
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/url"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
@@ -32,13 +32,6 @@ type Users interface {
 	PendingCommand(ctx context.Context, telegramID int64) (string, error)
 }
 
-// Keyboards saves the bot's latest message with buttons in each user's private chat, so the
-// bot can delete it before it sends the next one. *user.Store implements it.
-type Keyboards interface {
-	KeyboardMessage(ctx context.Context, telegramID int64) (int64, error)
-	SetKeyboardMessage(ctx context.Context, telegramID, messageID int64) error
-}
-
 // promptKey returns the question a setup step asks; the confirm step shows the summary instead.
 func promptKey(step string) i18n.Key {
 	switch step {
@@ -57,16 +50,19 @@ func promptKey(step string) i18n.Key {
 
 // setupHandler translates setup updates into Service calls and their replies into messages.
 type setupHandler struct {
-	svc   *Service
-	kbs   Keyboards
-	texts *i18n.Catalog
-	log   *slog.Logger
+	svc    *Service
+	kb     *keyboard.Tracker
+	texts  *i18n.Catalog
+	log    *slog.Logger
+	tapped int // the message whose button was tapped, replaced in place by the next prompt; 0 for none
 }
 
 // StartHandler returns the handler for the giveaway menu button in a private chat: it starts
 // a new setup and asks for the post.
-func StartHandler(svc *Service, texts *i18n.Catalog, users Users, kbs Keyboards, log *slog.Logger) bot.HandlerFunc {
-	h := setupHandler{svc: svc, kbs: kbs, texts: texts, log: log}
+func StartHandler(
+	svc *Service, texts *i18n.Catalog, users Users, kb *keyboard.Tracker, log *slog.Logger,
+) bot.HandlerFunc {
+	h := setupHandler{svc: svc, kb: kb, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -88,10 +84,10 @@ func StartHandler(svc *Service, texts *i18n.Catalog, users Users, kbs Keyboards,
 // only while the sender is in a giveaway setup or edit: the post step takes a forwarded
 // channel post, the value steps take text, and any other input asks the current step again.
 func MessageHandler(
-	svc *Service, ed *Editor, texts *i18n.Catalog, users Users, kbs Keyboards, log *slog.Logger,
+	svc *Service, ed *Editor, texts *i18n.Catalog, users Users, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
-	h := setupHandler{svc: svc, kbs: kbs, texts: texts, log: log}
-	edit := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
+	h := setupHandler{svc: svc, kb: kb, texts: texts, log: log}
+	edit := editHandler{ed: ed, kb: kb, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -136,11 +132,12 @@ func (h setupHandler) step(ctx context.Context, b *bot.Bot, msg *models.Message,
 }
 
 // SetupCallbackHandler returns the handler for the default, Cancel and Confirm buttons. The
-// tapped message is deleted; a button whose step has passed also gets an "outdated" popup.
+// next prompt replaces the tapped message; a tap that ends in a notice deletes it, and a
+// button whose step has passed also gets an "outdated" popup.
 func SetupCallbackHandler(
-	svc *Service, texts *i18n.Catalog, users Users, kbs Keyboards, log *slog.Logger,
+	svc *Service, texts *i18n.Catalog, users Users, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
-	h := setupHandler{svc: svc, kbs: kbs, texts: texts, log: log}
+	h := setupHandler{svc: svc, kb: kb, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
@@ -176,14 +173,13 @@ func SetupCallbackHandler(
 			log.ErrorContext(ctx, "answer setup button", "user_id", userID, "error", err)
 		}
 
-		discardTapped(ctx, b, log, query.Message)
-
-		if r.Stale {
-			return
+		tapped := inPlace(r, query.Message)
+		if tapped == 0 {
+			kb.Discard(ctx, b, query.Message)
 		}
 
 		// Setup buttons are sent only in private chats, where the chat ID equals the user ID.
-		h.reply(ctx, b, userID, lang, r)
+		h.at(tapped).reply(ctx, b, userID, lang, r)
 	}
 }
 
@@ -194,10 +190,12 @@ func (h setupHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang 
 		return
 	}
 
-	clearKeyboard(ctx, b, h.kbs, h.log, userID)
+	if h.tapped == 0 {
+		h.kb.Clear(ctx, b, userID)
+	}
 
 	if r.Notice != "" {
-		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
+		notify(ctx, b, h.log, userID, h.texts.Text(lang, r.Notice))
 	}
 
 	if r.Next != "" {
@@ -223,7 +221,7 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 			Text:         h.texts.Text(lang, i18n.GiveawayConfirm),
 			CallbackData: confirmData,
 		}
-		sendKeyboard(ctx, b, h.kbs, h.log, userID, summary, [][]models.InlineKeyboardButton{{confirm, cancel}})
+		show(ctx, b, h.kb, h.tapped, userID, summary, [][]models.InlineKeyboardButton{{confirm, cancel}})
 
 		return
 	}
@@ -235,7 +233,7 @@ func (h setupHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang
 
 	rows = append(rows, []models.InlineKeyboardButton{cancel})
 
-	sendKeyboard(ctx, b, h.kbs, h.log, userID, h.texts.Text(lang, promptKey(step)), rows)
+	show(ctx, b, h.kb, h.tapped, userID, h.texts.Text(lang, promptKey(step)), rows)
 }
 
 // send sends a message and logs a failure; the user then sees no reply and can try again.
@@ -245,80 +243,56 @@ func send(ctx context.Context, b *bot.Bot, log *slog.Logger, params *bot.SendMes
 	}
 }
 
-// sendKeyboard deletes the previous message with buttons in the user's private chat, sends
-// text with an inline keyboard of rows there, and saves it as the one to delete next.
-func sendKeyboard(
+// at returns h with the prompt replacing message tapped; 0 sends a new message instead.
+func (h setupHandler) at(tapped int) setupHandler {
+	h.tapped = tapped
+
+	return h
+}
+
+// inPlace returns the tapped message the reply r replaces, or 0 when r is stale or starts with
+// a notice, which then goes below the message instead.
+func inPlace(r Reply, m models.MaybeInaccessibleMessage) int {
+	if r.Stale || r.Notice != "" || r.Next == "" || m.Message == nil {
+		return 0
+	}
+
+	return m.Message.ID
+}
+
+// show replaces message tapped with text and rows, or sends them as a new message when tapped
+// is 0.
+func show(
 	ctx context.Context,
 	b *bot.Bot,
-	kbs Keyboards,
-	log *slog.Logger,
+	kb *keyboard.Tracker,
+	tapped int,
 	userID int64,
 	text string,
 	rows [][]models.InlineKeyboardButton,
 ) {
-	clearKeyboard(ctx, b, kbs, log, userID)
+	if tapped == 0 {
+		kb.Send(ctx, b, userID, text, rows)
 
-	m, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      userID,
-		Text:        text,
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
-	})
+		return
+	}
+
+	kb.Replace(ctx, b, userID, tapped, text, rows)
+}
+
+// notify sends a notice without a sound: it reports on an action the user just took, in a
+// chat the user is looking at.
+func notify(ctx context.Context, b *bot.Bot, log *slog.Logger, userID int64, text string) {
+	send(ctx, b, log, &bot.SendMessageParams{ChatID: userID, Text: text, DisableNotification: true})
+}
+
+// typing shows "typing…" in the chat until the next message, for a reply that waits on
+// Telegram.
+func typing(ctx context.Context, b *bot.Bot, log *slog.Logger, chatID int64) {
+	_, err := b.SendChatAction(ctx, &bot.SendChatActionParams{ChatID: chatID, Action: models.ChatActionTyping})
 	if err != nil {
-		log.ErrorContext(ctx, "send giveaway message", "chat_id", userID, "error", err)
-
-		return
+		log.WarnContext(ctx, "show typing", "chat_id", chatID, "error", err)
 	}
-
-	if err := kbs.SetKeyboardMessage(ctx, userID, int64(m.ID)); err != nil {
-		log.ErrorContext(ctx, "save keyboard message", "user_id", userID, "error", err)
-	}
-}
-
-// clearKeyboard deletes the bot's latest message with buttons in the user's private chat, if
-// there is one.
-func clearKeyboard(ctx context.Context, b *bot.Bot, kbs Keyboards, log *slog.Logger, userID int64) {
-	messageID, err := kbs.KeyboardMessage(ctx, userID)
-	if err != nil {
-		log.ErrorContext(ctx, "read keyboard message", "user_id", userID, "error", err)
-
-		return
-	}
-
-	if messageID == 0 {
-		return
-	}
-
-	discard(ctx, b, log, userID, int(messageID))
-
-	if err := kbs.SetKeyboardMessage(ctx, userID, 0); err != nil {
-		log.ErrorContext(ctx, "clear keyboard message", "user_id", userID, "error", err)
-	}
-}
-
-// discardTapped deletes the message a tapped button belongs to.
-func discardTapped(ctx context.Context, b *bot.Bot, log *slog.Logger, m models.MaybeInaccessibleMessage) {
-	if m.Message != nil {
-		discard(ctx, b, log, m.Message.Chat.ID, m.Message.ID)
-	}
-}
-
-// discard deletes a bot message. When Telegram refuses, as it does 48 hours after sending, it
-// removes the message's buttons instead. A message already deleted counts as success.
-func discard(ctx context.Context, b *bot.Bot, log *slog.Logger, chatID int64, messageID int) {
-	_, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: chatID, MessageID: messageID})
-	if err == nil || isGone(err) {
-		return
-	}
-
-	_, err = b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{ChatID: chatID, MessageID: messageID})
-	if err = ignoreNotModified(err); err != nil && !isGone(err) {
-		log.WarnContext(ctx, "discard message", "chat_id", chatID, "message_id", messageID, "error", err)
-	}
-}
-
-// isGone reports whether err says the message no longer exists.
-func isGone(err error) bool {
-	return errors.Is(err, bot.ErrorBadRequest) && strings.Contains(err.Error(), "not found")
 }
 
 // privateMessage returns the update's message when a user sent it in a private chat, and nil
@@ -338,6 +312,8 @@ func privateMessage(update *models.Update) *models.Message {
 func postRef(ctx context.Context, b *bot.Bot, log *slog.Logger, msg *models.Message) (int64, int64, bool) {
 	if msg.ForwardOrigin != nil && msg.ForwardOrigin.MessageOriginChannel != nil {
 		origin := msg.ForwardOrigin.MessageOriginChannel
+		// Checking the post takes several Telegram calls.
+		typing(ctx, b, log, msg.From.ID)
 
 		return origin.Chat.ID, int64(origin.MessageID), true
 	}
@@ -346,6 +322,8 @@ func postRef(ctx context.Context, b *bot.Bot, log *slog.Logger, msg *models.Mess
 	if !ok {
 		return 0, 0, false
 	}
+
+	typing(ctx, b, log, msg.From.ID)
 
 	info, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: chat})
 	if err != nil {

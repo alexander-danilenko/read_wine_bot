@@ -86,7 +86,10 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 
 The chat is the bot's only UI. Keep it clean and keep every button working.
 
-- One live message with buttons per private chat. Send buttons only through `sendKeyboard`: it deletes the previous one and saves the new ID in `users.keyboard_message_id`. A tapped message is deleted. Notices without buttons stay as the history of what happened.
+- One live message with buttons per private chat. Send inline buttons only through `keyboard.Tracker`: `Send` deletes the previous message with buttons and remembers the new one in `users.keyboard_message_id`. A command or menu button deletes it too (`user.Middleware`). Notices without buttons stay as the history of what happened.
+- A tap whose next step is another prompt edits the tapped message in place (`Tracker.Replace`). A tap that ends in a notice deletes the tapped message, and the notice goes below.
+- Notices about the user's own action go without a sound (`disable_notification`). Before a reply that waits on Telegram, such as checking a forwarded post, show "typing…" (`sendChatAction`).
+- `/cancel` leaves any step, like a menu button does. Register every command with `setMyCommands` in every locale (`command.Register`), at startup.
 - Answer every callback query, even when nothing changes, or Telegram keeps a spinner on the button. A button whose action no longer applies gets the `GiveawayOutdated` popup.
 - Every step that waits for input has a Cancel button. An action that cannot be undone asks for confirmation first, and a second tap on the same confirmation is stale, not a repeat.
 - Offer the likely value as a button. A typed value that does not parse keeps the step and names the expected format.

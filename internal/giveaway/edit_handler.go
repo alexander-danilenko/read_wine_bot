@@ -11,6 +11,7 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
@@ -86,18 +87,19 @@ func parseEditData(data string) (editAction, bool) {
 
 // editHandler translates edit updates into Editor calls and their replies into messages.
 type editHandler struct {
-	ed    *Editor
-	kbs   Keyboards
-	texts *i18n.Catalog
-	log   *slog.Logger
+	ed     *Editor
+	kb     *keyboard.Tracker
+	texts  *i18n.Catalog
+	log    *slog.Logger
+	tapped int // the message whose button was tapped, replaced in place by the next prompt; 0 for none
 }
 
 // EditStartHandler returns the handler for the edit menu button in a private chat: it asks
 // for the post of the giveaway to change.
 func EditStartHandler(
-	ed *Editor, texts *i18n.Catalog, users language.Reader, kbs Keyboards, log *slog.Logger,
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
-	h := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
+	h := editHandler{ed: ed, kb: kb, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -127,6 +129,7 @@ func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *sl
 		}
 
 		lang := language.UserLanguage(ctx, users, log, msg.From)
+		typing(ctx, b, log, msg.From.ID)
 
 		text, err := list(ctx, b, ed, msg.From.ID, lang)
 		if err != nil {
@@ -157,9 +160,9 @@ func list(ctx context.Context, b *bot.Bot, ed *Editor, userID int64, lang string
 // EditLinkHandler returns the handler for the edit links of the giveaway list: it opens the
 // field menu of the giveaway on the post the link names.
 func EditLinkHandler(
-	ed *Editor, texts *i18n.Catalog, users language.Reader, kbs Keyboards, log *slog.Logger,
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
-	h := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
+	h := editHandler{ed: ed, kb: kb, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := privateMessage(update)
@@ -168,6 +171,7 @@ func EditLinkHandler(
 		}
 
 		lang := language.UserLanguage(ctx, users, log, msg.From)
+		typing(ctx, b, log, msg.From.ID)
 
 		chatID, messageID, ok := parseEditLink(msg.Text)
 		if !ok {
@@ -216,12 +220,13 @@ func (h editHandler) message(ctx context.Context, b *bot.Bot, msg *models.Messag
 	}
 }
 
-// EditCallbackHandler returns the handler for the edit buttons. The tapped message is deleted;
-// a button whose action no longer applies also gets an "outdated" popup.
+// EditCallbackHandler returns the handler for the edit buttons. The next prompt replaces the
+// tapped message; a tap that ends in a notice deletes it, and a button whose action no longer
+// applies also gets an "outdated" popup.
 func EditCallbackHandler(
-	ed *Editor, texts *i18n.Catalog, users language.Reader, kbs Keyboards, log *slog.Logger,
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
-	h := editHandler{ed: ed, kbs: kbs, texts: texts, log: log}
+	h := editHandler{ed: ed, kb: kb, texts: texts, log: log}
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
@@ -248,14 +253,13 @@ func EditCallbackHandler(
 			log.ErrorContext(ctx, "answer edit button", "user_id", userID, "error", err)
 		}
 
-		discardTapped(ctx, b, log, query.Message)
-
-		if r.Stale {
-			return
+		tapped := inPlace(r, query.Message)
+		if tapped == 0 {
+			kb.Discard(ctx, b, query.Message)
 		}
 
 		// Edit buttons are sent only in private chats, where the chat ID equals the user ID.
-		h.reply(ctx, b, userID, lang, r)
+		h.at(tapped).reply(ctx, b, userID, lang, r)
 	}
 }
 
@@ -302,10 +306,12 @@ func (h editHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang s
 		return
 	}
 
-	clearKeyboard(ctx, b, h.kbs, h.log, userID)
+	if h.tapped == 0 {
+		h.kb.Clear(ctx, b, userID)
+	}
 
 	if r.Notice != "" {
-		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, r.Notice)})
+		notify(ctx, b, h.log, userID, h.texts.Text(lang, r.Notice))
 	}
 
 	if r.Next != "" {
@@ -401,7 +407,7 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 	h.ask(ctx, b, userID, text, append(rows, tail...))
 }
 
-// ask sends text with an inline keyboard of rows in place of the previous one.
+// ask shows text with an inline keyboard of rows in place of the previous one.
 func (h editHandler) ask(
 	ctx context.Context,
 	b *bot.Bot,
@@ -409,5 +415,12 @@ func (h editHandler) ask(
 	text string,
 	rows [][]models.InlineKeyboardButton,
 ) {
-	sendKeyboard(ctx, b, h.kbs, h.log, userID, text, rows)
+	show(ctx, b, h.kb, h.tapped, userID, text, rows)
+}
+
+// at returns h with the prompt replacing message tapped; 0 sends a new message instead.
+func (h editHandler) at(tapped int) editHandler {
+	h.tapped = tapped
+
+	return h
 }

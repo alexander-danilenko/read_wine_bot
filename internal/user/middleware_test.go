@@ -28,6 +28,10 @@ func (f *fakeRecorder) Record(_ context.Context, p user.Profile) error {
 	return f.err
 }
 
+func (f *fakeRecorder) Clear(_ context.Context, _ *bot.Bot, id int64) {
+	f.calls = append(f.calls, fmt.Sprintf("clear %d", id))
+}
+
 func (f *fakeRecorder) SetPendingCommand(_ context.Context, id int64, command string) error {
 	f.calls = append(f.calls, fmt.Sprintf("pending %s %d", command, id))
 
@@ -74,13 +78,17 @@ func TestMiddleware(t *testing.T) {
 	}{
 		{"plain message", privateMessage("hello"), []string{"record Olena Koval 7"}},
 		{"number keeps the step", privateMessage("5"), []string{"record Olena Koval 7"}},
-		{"start clears", privateMessage("/start"), []string{"record Olena Koval 7", "pending  7"}},
+		{"start clears", privateMessage("/start"), []string{"record Olena Koval 7", "pending  7", "clear 7"}},
 		{
 			"any command clears",
 			privateMessage("/giveaway@read_wine_bot"),
-			[]string{"record Olena Koval 7", "pending  7"},
+			[]string{"record Olena Koval 7", "pending  7", "clear 7"},
 		},
-		{"menu label clears", privateMessage("🌐 Змінити мову"), []string{"record Olena Koval 7", "pending  7"}},
+		{
+			"menu label clears",
+			privateMessage("🌐 Змінити мову"),
+			[]string{"record Olena Koval 7", "pending  7", "clear 7"},
+		},
 		{"group message records only", group, []string{"record Olena Koval 7"}},
 		{"message as a channel", asChannel, nil},
 		{"edited message records only", edited, []string{"record Olena Koval 7"}},
@@ -96,7 +104,7 @@ func TestMiddleware(t *testing.T) {
 			called := false
 			next := func(context.Context, *bot.Bot, *models.Update) { called = true }
 
-			user.Middleware(rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, tt.update)
+			user.Middleware(rec, rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, tt.update)
 
 			if !slices.Equal(rec.calls, tt.want) {
 				t.Errorf("calls = %q, want %q", rec.calls, tt.want)
@@ -114,7 +122,7 @@ func TestMiddlewareStoreError(t *testing.T) {
 	called := false
 	next := func(context.Context, *bot.Bot, *models.Update) { called = true }
 
-	user.Middleware(rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, privateMessage("/start"))
+	user.Middleware(rec, rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, privateMessage("/start"))
 
 	if !called {
 		t.Error("next handler not called after a store error")
@@ -130,7 +138,7 @@ func TestMiddlewareRecordsFullProfile(t *testing.T) {
 	next := func(context.Context, *bot.Bot, *models.Update) {}
 	update := &models.Update{CallbackQuery: &models.CallbackQuery{From: from}}
 
-	user.Middleware(rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, update)
+	user.Middleware(rec, rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, update)
 
 	want := user.Profile{
 		TelegramID: 9, IsBot: true, FirstName: "Taras", LastName: "Shevchenko", Username: "kobzar",

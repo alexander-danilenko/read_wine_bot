@@ -23,6 +23,9 @@ type Key string
 // reorder them.
 const (
 	Greeting         Key = "greeting"
+	CommandStart     Key = "command.start"
+	CommandCancel    Key = "command.cancel"
+	CommandCancelled Key = "command.cancelled"
 	MenuGiveaway     Key = "menu.giveaway"
 	MenuEdit         Key = "menu.edit"
 	MenuList         Key = "menu.list"
@@ -205,6 +208,11 @@ func (c *Catalog) Text(lang string, key Key, args ...any) string {
 	}
 
 	return fmt.Sprintf(text, args...)
+}
+
+// Langs returns the language of every locale file, sorted.
+func (c *Catalog) Langs() []string {
+	return slices.Sorted(maps.Keys(c.texts))
 }
 
 // All returns the text for key in every language, sorted and without duplicates. The bot

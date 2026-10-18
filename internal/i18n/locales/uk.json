@@ -1,6 +1,9 @@
 {
   "$schema": "../schema.json",
   "greeting": "Привіт! Я бот каналу @read_wine.",
+  "command.start": "Головне меню",
+  "command.cancel": "Скасувати поточну дію",
+  "command.cancelled": "Гаразд, скасовано. Оберіть дію в меню.",
   "menu.giveaway": "🎁 Новий розіграш",
   "menu.edit": "✏️ Змінити розіграш",
   "menu.list": "📋 Активні розіграші",

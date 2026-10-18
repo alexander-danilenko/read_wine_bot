@@ -1,6 +1,9 @@
 {
   "$schema": "../schema.json",
   "greeting": "Hi! I'm the @read_wine bot.",
+  "command.start": "Main menu",
+  "command.cancel": "Cancel the current action",
+  "command.cancelled": "OK, cancelled. Pick an action from the menu.",
   "menu.giveaway": "🎁 New giveaway",
   "menu.edit": "✏️ Edit giveaway",
   "menu.list": "📋 Active giveaways",

@@ -18,6 +18,7 @@ import (
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 )
 
 // call is one Bot API request the handlers made.
@@ -92,6 +93,7 @@ type handlerSetup struct {
 
 	api   *fakeAPI
 	bot   *bot.Bot
+	kb    *keyboard.Tracker
 	texts *i18n.Catalog
 }
 
@@ -112,15 +114,19 @@ func newHandlerSetup(t *testing.T) *handlerSetup {
 		t.Fatal(err)
 	}
 
-	return &handlerSetup{setup: newSetup(t), api: api, bot: b, texts: texts}
+	s := newSetup(t)
+
+	return &handlerSetup{
+		setup: s, api: api, bot: b, kb: keyboard.NewTracker(s.users, slog.New(slog.DiscardHandler)), texts: texts,
+	}
 }
 
-// sent returns the text of every sendMessage request.
+// sent returns the text of every sendMessage and editMessageText request.
 func (h *handlerSetup) sent() []string {
 	var texts []string
 
 	for _, c := range h.api.calls {
-		if c.method == "sendMessage" {
+		if c.method == "sendMessage" || c.method == "editMessageText" {
 			texts = append(texts, c.form["text"])
 		}
 	}
@@ -145,7 +151,7 @@ func (h *handlerSetup) message(text string, forward bool) *models.Update {
 }
 
 func (h *handlerSetup) messageHandler() bot.HandlerFunc {
-	return giveaway.MessageHandler(h.svc, h.ed, h.texts, h.users, h.users, slog.New(slog.DiscardHandler))
+	return giveaway.MessageHandler(h.svc, h.ed, h.texts, h.users, h.kb, slog.New(slog.DiscardHandler))
 }
 
 func TestMessageHandlerWithoutSetup(t *testing.T) {
@@ -221,7 +227,7 @@ func TestSetupCallbackStaleDefault(t *testing.T) {
 		Data:    giveaway.SetupCallbackPrefix + "default:" + giveaway.StepEndTime,
 		Message: models.MaybeInaccessibleMessage{Message: &models.Message{ID: 5, Chat: models.Chat{ID: adminID}}},
 	}}
-	giveaway.SetupCallbackHandler(h.svc, h.texts, h.users, h.users, slog.New(slog.DiscardHandler))(ctx, h.bot, update)
+	giveaway.SetupCallbackHandler(h.svc, h.texts, h.users, h.kb, slog.New(slog.DiscardHandler))(ctx, h.bot, update)
 
 	methods := make([]string, 0, len(h.api.calls))
 	for _, c := range h.api.calls {
@@ -272,7 +278,7 @@ func (h *handlerSetup) tap(t *testing.T, data string) {
 		h.ed,
 		h.texts,
 		h.users,
-		h.users,
+		h.kb,
 		slog.New(slog.DiscardHandler),
 	)(
 		t.Context(),
@@ -281,12 +287,12 @@ func (h *handlerSetup) tap(t *testing.T, data string) {
 	)
 }
 
-// keyboard returns the inline buttons of the last sendMessage request.
+// keyboard returns the inline buttons of the last sendMessage or editMessageText request.
 func (h *handlerSetup) keyboard(t *testing.T) [][]models.InlineKeyboardButton {
 	t.Helper()
 
 	for _, v := range slices.Backward(h.api.calls) {
-		if v.method != "sendMessage" {
+		if v.method != "sendMessage" && v.method != "editMessageText" {
 			continue
 		}
 
@@ -425,18 +431,28 @@ func TestEditKeepsOneKeyboard(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t) // the menu is message 1
 
+	// The tap comes from message 5, so the question replaces 5 in place, and the menu, now
+	// another message with buttons, goes.
 	h.api.calls = nil
-	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10)) // the question is message 2
+	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10))
 
-	// The tapped message, 5 in the fake update, and the stored menu both go.
-	if got := strings.Join(h.deleted(), ","); got != "5,1" {
-		t.Errorf("deleted after the tap = %q, want the tapped message and the menu", got)
+	if got := strings.Join(h.deleted(), ","); got != "1" {
+		t.Errorf("deleted after the tap = %q, want the menu", got)
+	}
+
+	edited := false
+	for _, c := range h.api.calls {
+		edited = edited || c.method == "editMessageText" && c.form["message_id"] == "5"
+	}
+
+	if !edited {
+		t.Errorf("calls = %+v; want the tapped message edited into the question", h.api.calls)
 	}
 
 	h.api.calls = nil
 	h.messageHandler()(t.Context(), h.bot, h.message("3", false))
 
-	if got := strings.Join(h.deleted(), ","); got != "2" {
+	if got := strings.Join(h.deleted(), ","); got != "5" {
 		t.Errorf("deleted after the typed value = %q, want the question", got)
 	}
 }
@@ -469,6 +485,25 @@ func TestEditCancelButtons(t *testing.T) {
 	if got := h.read(t, g.ID); got.Published {
 		t.Error("giveaway still published after Yes")
 	}
+
+	h.wantSilent(t, h.texts.Text("en", i18n.EditCancelled))
+}
+
+// wantSilent checks that the message with text was sent without a sound.
+func (h *handlerSetup) wantSilent(t *testing.T, text string) {
+	t.Helper()
+
+	for _, c := range h.api.calls {
+		if c.method == "sendMessage" && c.form["text"] == text {
+			if c.form["disable_notification"] != "true" {
+				t.Errorf("notice %q sent with a sound", text)
+			}
+
+			return
+		}
+	}
+
+	t.Errorf("notice %q not sent", text)
 }
 
 func TestEditStaleDefault(t *testing.T) {
@@ -551,7 +586,7 @@ func TestEditLinkHandler(t *testing.T) {
 				&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"},
 			)
 
-			giveaway.EditLinkHandler(h.ed, h.texts, h.users, h.users, slog.New(slog.DiscardHandler))(
+			giveaway.EditLinkHandler(h.ed, h.texts, h.users, h.kb, slog.New(slog.DiscardHandler))(
 				t.Context(), h.bot, h.message(tt.text, false),
 			)
 

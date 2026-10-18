@@ -16,12 +16,13 @@ import (
 
 	"github.com/go-telegram/bot"
 
+	"github.com/alexander-danilenko/read_wine_bot/internal/command"
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 	"github.com/alexander-danilenko/read_wine_bot/internal/cron"
 	"github.com/alexander-danilenko/read_wine_bot/internal/db"
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
-	"github.com/alexander-danilenko/read_wine_bot/internal/greeting"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
@@ -78,6 +79,10 @@ func run() error {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
 
+	if err := command.Register(ctx, b, texts); err != nil {
+		return fmt.Errorf("register commands: %w", err)
+	}
+
 	drawer := giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
 
 	// Regular tasks. They share ctx with the bot, so the same signal stops them all. Waiting
@@ -99,27 +104,33 @@ func handlers(
 ) []bot.Option {
 	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
 	editor := giveaway.NewEditor(giveaways, store, store)
+	kb := keyboard.NewTracker(users, log)
 
 	return slices.Concat([]bot.Option{
 		// Runs before every handler: records every sender's profile and its revisions, and
 		// leaves any unfinished setup on a command or menu button.
-		bot.WithMiddlewares(user.Middleware(users, menu.IsLabel(texts), log)),
+		bot.WithMiddlewares(user.Middleware(users, kb, menu.IsLabel(texts), log)),
 		// Before the greeting: an edit link sends /start with a payload, which the greeting
 		// would also match, and the first matching handler wins.
 		bot.WithMessageTextHandler(
 			giveaway.EditLinkPrefix,
 			bot.MatchTypePrefix,
-			giveaway.EditLinkHandler(editor, texts, users, users, log),
+			giveaway.EditLinkHandler(editor, texts, users, kb, log),
 		),
 		bot.WithMessageTextHandler(
-			greeting.Command,
+			command.Start,
 			bot.MatchTypeCommandStartOnly,
-			greeting.Handler(texts, users, log),
+			command.StartHandler(texts, users, log),
+		),
+		bot.WithMessageTextHandler(
+			command.Cancel,
+			bot.MatchTypeCommandStartOnly,
+			command.CancelHandler(texts, users, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,
 			bot.MatchTypePrefix,
-			language.ButtonHandler(texts, users, log),
+			language.ButtonHandler(texts, users, kb, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.JoinCallback,
@@ -129,29 +140,34 @@ func handlers(
 		bot.WithCallbackQueryDataHandler(
 			giveaway.SetupCallbackPrefix,
 			bot.MatchTypePrefix,
-			giveaway.SetupCallbackHandler(giveaways, texts, users, users, log),
+			giveaway.SetupCallbackHandler(giveaways, texts, users, kb, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.EditCallbackPrefix,
 			bot.MatchTypePrefix,
-			giveaway.EditCallbackHandler(editor, texts, users, users, log),
+			giveaway.EditCallbackHandler(editor, texts, users, kb, log),
 		),
 		// Forwarded posts and typed setup and edit values match no handler above, so they
 		// land here.
-		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, users, log)),
-	}, menuHandlers(texts, users, giveaways, editor, log))
+		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, kb, log)),
+	}, menuHandlers(texts, users, kb, giveaways, editor, log))
 }
 
 // menuHandlers wires the menu buttons. A button sends its label as text, so each label in
 // each language gets its own exact-match handler.
 func menuHandlers(
-	texts *i18n.Catalog, users *user.Store, giveaways *giveaway.Service, editor *giveaway.Editor, log *slog.Logger,
+	texts *i18n.Catalog,
+	users *user.Store,
+	kb *keyboard.Tracker,
+	giveaways *giveaway.Service,
+	editor *giveaway.Editor,
+	log *slog.Logger,
 ) []bot.Option {
 	return slices.Concat(
-		labelHandlers(texts.All(i18n.MenuGiveaway), giveaway.StartHandler(giveaways, texts, users, users, log)),
-		labelHandlers(texts.All(i18n.MenuEdit), giveaway.EditStartHandler(editor, texts, users, users, log)),
+		labelHandlers(texts.All(i18n.MenuGiveaway), giveaway.StartHandler(giveaways, texts, users, kb, log)),
+		labelHandlers(texts.All(i18n.MenuEdit), giveaway.EditStartHandler(editor, texts, users, kb, log)),
 		labelHandlers(texts.All(i18n.MenuList), giveaway.ListHandler(editor, texts, users, log)),
-		labelHandlers(texts.All(i18n.MenuLanguage), language.PromptHandler(texts, users, log)),
+		labelHandlers(texts.All(i18n.MenuLanguage), language.PromptHandler(texts, users, kb, log)),
 	)
 }
 

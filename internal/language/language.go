@@ -10,6 +10,7 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
+	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 )
 
@@ -43,7 +44,7 @@ func options() []option {
 
 // PromptHandler returns a handler that answers the language menu button in a private chat
 // with one button per language, in the user's saved language. It ignores groups and channels.
-func PromptHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.HandlerFunc {
+func PromptHandler(texts *i18n.Catalog, store Store, kb *keyboard.Tracker, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
 		if msg == nil || msg.Chat.Type != models.ChatTypePrivate {
@@ -55,22 +56,16 @@ func PromptHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Handl
 			row = append(row, models.InlineKeyboardButton{Text: o.label, CallbackData: CallbackPrefix + o.code})
 		}
 
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:      msg.Chat.ID,
-			Text:        texts.Text(UserLanguage(ctx, store, log, msg.From), i18n.LanguagePrompt),
-			ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{row}},
-		})
-		if err != nil {
-			log.ErrorContext(ctx, "send language prompt", "chat_id", msg.Chat.ID, "error", err)
-		}
+		text := texts.Text(UserLanguage(ctx, store, log, msg.From), i18n.LanguagePrompt)
+		kb.Send(ctx, b, msg.Chat.ID, text, [][]models.InlineKeyboardButton{row})
 	}
 }
 
 // ButtonHandler returns a handler for taps on the language buttons. It stops the button's
-// loading spinner, saves the choice and confirms it in the chosen language with the menu
-// keyboard relabelled in that language. If saving fails, it logs the error and still
-// confirms, so the user is not left without an answer.
-func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.HandlerFunc {
+// loading spinner, deletes the language buttons, saves the choice and confirms it in the
+// chosen language with the menu keyboard relabelled in that language. If saving fails, it
+// logs the error and still confirms, so the user is not left without an answer.
+func ButtonHandler(texts *i18n.Catalog, store Store, kb *keyboard.Tracker, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
 		if query == nil {
@@ -81,6 +76,8 @@ func ButtonHandler(texts *i18n.Catalog, store Store, log *slog.Logger) bot.Handl
 		if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
 			log.ErrorContext(ctx, "answer language button", "user_id", query.From.ID, "error", err)
 		}
+
+		kb.Discard(ctx, b, query.Message)
 
 		code := strings.TrimPrefix(query.Data, CallbackPrefix)
 		for _, o := range options() {
