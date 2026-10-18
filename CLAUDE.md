@@ -77,7 +77,7 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 ## Database
 
 - PostgreSQL only, through GORM with `AutoMigrate` from Go structs. The database runs outside this repo; `DATABASE_URL` (`postgres://user:password@host:port/database`) is the only setting the bot needs. For local work, `docker compose up -d` starts PostgreSQL 18 with `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` from `.env`, which the image applies on the first start of an empty volume.
-- Compose also runs `backup` (`nfrastack/db-backup`): a gzipped SQL dump at 03:00 Europe/Kyiv into the `backups` volume, keeping only the newest file. Back up now: `docker compose exec backup backup-now`. Read the dump: `docker compose exec backup sh -c 'zcat /backup/*.sql.gz'`.
+- Backups belong to the hosting (the owner's Dokploy), not to this repo. Do not add a backup service, script or schedule here.
 - Describe every column with a `comment:` in its `gorm` tag, and every table and named index in `descriptions()` in `internal/db/db.go`, so database tools show what each holds. `TestEverythingDescribed` enforces it.
 - `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
 - Store Telegram user and chat IDs as `int64`.
