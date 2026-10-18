@@ -38,7 +38,6 @@ The winner draw finishes due giveaways without anyone acting. The owner made sev
 - **The participant's `winner` mark is the only record of a win.** The owner chose this over a separate `giveaway_winners` table. Do not add a second store of winners.
 - **No retry.** The owner chose a single private fallback over retrying the channel post every minute. If a retry is ever wanted, it needs its own "results posted" state, because `finished_at` already means "winners saved".
 - **A filter error stops that giveaway's draw with nothing saved** (`draw.go:30-32`). The giveaway stays due and the next minute shuffles again. A rule that calls Telegram, such as "still in the channel", should return an error on a failed call rather than `false`. Otherwise a network blip silently disqualifies people.
-- **Times reach SQL in UTC.** See [Compare times in SQLite queries only in UTC](sqlite-time-comparisons-in-utc.md).
 
 ### Known gaps, accepted on 2026-10-09
 
@@ -75,5 +74,3 @@ func StillSubscribed(tg MemberChecker) Filter {
 ## Related
 
 - [Giveaway CRUD around the published flag](giveaway-crud-around-the-published-flag.md): the states a giveaway row can be in, and the guarded `UPDATE` pattern `Finish` follows.
-- [SQLite runs on one connection; transactions use only tx and start with a write](sqlite-one-connection-and-write-first-transactions.md): the rules the `Finish` transaction follows.
-- [Compare times in SQLite queries only in UTC](sqlite-time-comparisons-in-utc.md).

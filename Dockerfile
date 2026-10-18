@@ -1,4 +1,4 @@
-# Build: pure-Go SQLite driver, so CGO stays off and the binary is static.
+# Build: pure Go, so CGO stays off and the binary is static.
 FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./

@@ -48,7 +48,7 @@ A `comment:` tag looks like schema documentation but reaches nothing: not the da
 
 ## When to Apply
 
-Every GORM model in this repo while the database is SQLite through glebarez. If Postgres comes back (an owner decision, see CLAUDE.md), `comment:` tags start working there and this choice is worth revisiting.
+Every GORM model in this repo. Since the move to PostgreSQL (2026-10-18), GORM's Postgres migrator does write `comment:` tags as `COMMENT ON COLUMN`, so the SQLite finding above no longer holds; Go comments stay the convention because the struct is the schema and is what every editor reads. Switching to `comment:` tags is an open choice, not a rule.
 
 ## Examples
 

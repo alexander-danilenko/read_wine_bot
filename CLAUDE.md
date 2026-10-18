@@ -38,10 +38,10 @@ CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
 ## Dependencies: standard library first
 
 - Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
-- Approved modules: `gorm.io/gorm`, `github.com/glebarez/sqlite`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
+- Approved modules: `gorm.io/gorm`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
-- Never use `gorm.io/driver/sqlite` or `github.com/mattn/go-sqlite3`: both need CGO.
-- Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators.
+- Keep `CGO_ENABLED=0` builds working: the Docker image is static.
+- Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators. Tests never open a database, real or embedded: test the code above a store with in-memory fakes of its interfaces.
 
 ## Code style
 
@@ -76,14 +76,13 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 
 ## Database
 
-- SQLite only, through GORM with `AutoMigrate` from Go structs. `DB_PATH` names the database file. Postgres was dropped; adding it back is an owner decision.
+- PostgreSQL only, through GORM with `AutoMigrate` from Go structs. The database runs outside this repo; `DATABASE_URL` (`postgres://user:password@host:port/database`) is the only setting the bot needs.
 - `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
-- SQLite leaves foreign keys off by default. `internal/db` adds `_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)` to `DB_PATH`, so the path itself carries no `?`.
 - Store Telegram user and chat IDs as `int64`.
 
 ## Gotchas
 
-- `github.com/glebarez/sqlite`'s last tag bundles SQLite 3.41. Keep `modernc.org/sqlite` and `github.com/glebarez/go-sqlite` explicitly upgraded in `go.mod`.
+- Store SQL has no automated tests. After changing a query in a `Store`, run the bot against a real `DATABASE_URL` and exercise the flow by hand.
 - Hooks (`.claude/hooks/`, loaded when a session starts): after every `.go` edit, `go-lint-fix.sh` formats and autofixes that package and shows remaining findings. Before your turn ends, `go-lint-gate.sh` runs the full lint and blocks the stop until it passes, at most three times in a row before it hands the findings to the owner. Fix the finding; do not work around the hook.
 - Write an import and its first use in the same edit. An unused import stops the package compiling, and the per-edit hook cannot autofix a package that does not compile.
 - Markdown: one line per paragraph (no hard wrapping) and `-` bullets. `markdownlint-fix.sh` runs `markdownlint-cli2 --fix` on every edited `.md` file.

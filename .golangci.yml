@@ -21,7 +21,7 @@ linters:
     - lll # golines (below) already wraps long lines
     - gosmopolitan # flags non-Latin string literals; bot replies may be Cyrillic
     - testpackage # forces black-box tests only, blocking tests of unexported helpers
-    - paralleltest # forces t.Parallel everywhere; awkward with a shared SQLite file
+    - paralleltest # forces t.Parallel everywhere; tests that call t.Setenv cannot run in parallel
   settings:
     errcheck:
       check-type-assertions: true
