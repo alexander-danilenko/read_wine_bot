@@ -15,7 +15,9 @@ import (
 	_ "time/tzdata" // embeds the time zone database for Europe/Kyiv
 
 	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 
+	"github.com/alexander-danilenko/read_wine_bot/internal/channel"
 	"github.com/alexander-danilenko/read_wine_bot/internal/command"
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 	"github.com/alexander-danilenko/read_wine_bot/internal/cron"
@@ -73,10 +75,14 @@ func run() error {
 	store := giveaway.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	b, err := bot.New(cfg.TelegramBotToken, handlers(users, store, texts, kyiv, log)...)
+	opts := append(handlers(users, store, texts, kyiv, log), bot.WithAllowedUpdates(allowedUpdates()))
+
+	b, err := bot.New(cfg.TelegramBotToken, opts...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
+
+	registerAudienceLog(b, channel.NewStore(conn), users, log)
 
 	if err := command.Register(ctx, b, texts); err != nil {
 		return fmt.Errorf("register commands: %w", err)
@@ -95,6 +101,35 @@ func run() error {
 	slog.InfoContext(ctx, "bot stopped")
 
 	return nil
+}
+
+// registerAudienceLog wires the channel's audience log. go-telegram/bot has no option for
+// handlers matched by update type, so they are registered on the bot; they match no update
+// the handlers from handlers take.
+func registerAudienceLog(b *bot.Bot, audience *channel.Store, users *user.Store, log *slog.Logger) {
+	b.RegisterHandlerMatchFunc(
+		func(u *models.Update) bool { return u.ChatMember != nil },
+		channel.MemberHandler(audience, users, log),
+	)
+	b.RegisterHandlerMatchFunc(
+		func(u *models.Update) bool { return u.ChannelPost != nil },
+		channel.PostHandler(audience, log),
+	)
+}
+
+// allowedUpdates lists the update types the bot asks Telegram for. Telegram sends chat_member
+// only when it is listed, and a list replaces Telegram's default set, so it names every type a
+// handler or user.Middleware reads. Add a type here before handling it.
+func allowedUpdates() bot.AllowedUpdates {
+	return bot.AllowedUpdates{
+		models.AllowedUpdateMessage,
+		models.AllowedUpdateEditedMessage,
+		models.AllowedUpdateChannelPost,
+		models.AllowedUpdateCallbackQuery,
+		models.AllowedUpdateMyChatMember,
+		models.AllowedUpdateChatMember,
+		models.AllowedUpdateChatJoinRequest,
+	}
 }
 
 // handlers wires every update the bot handles to the package that handles it.
