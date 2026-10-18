@@ -73,5 +73,12 @@
   "edit.list": "Your active giveaways:",
   "edit.list_item": "%[1]d. <a href=\"%[2]s\">📌 Post</a> · ends %[3]s · <a href=\"%[4]s\">✏️ Edit</a>",
   "edit.list_due": ", awaiting results",
-  "edit.list_empty": "You have no active giveaways."
+  "edit.list_empty": "You have no active giveaways.",
+  "edit.move_giveaway": "🔀 Move to another post",
+  "edit.move_prompt": "Forward me the new post from the same channel, or send its link. The participants stay with the giveaway.",
+  "edit.move_other_channel": "This post is from another channel. Send a post from the giveaway's channel.",
+  "edit.move_same": "The giveaway is already on this post.",
+  "edit.move_taken": "This post already has a giveaway. Send another post.",
+  "edit.moved": "The giveaway is on the new post now. Its participants are kept.",
+  "edit.post_gone": "This post no longer exists. Move the giveaway to another post with «🔀 Move to another post» in its menu."
 }

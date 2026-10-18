@@ -32,6 +32,7 @@ const (
 	colWinners    = "winners"
 	colButtonText = "button_text"
 	colFinished   = "finished_at"
+	colMessageID  = "message_id"
 )
 
 // Store reads and writes giveaways and their participants.
@@ -192,6 +193,28 @@ func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winn
 		Updates(map[string]any{colEndsAt: endsAt, colWinners: winners, colButtonText: buttonText})
 	if res.Error != nil {
 		return fmt.Errorf("save fields of giveaway %d: %w", id, res.Error)
+	}
+
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// Move puts the published or cancelled, unfinished giveaway id on post messageID of its
+// channel, keeping its participants. It returns ErrNotFound when no such giveaway exists and
+// ErrExists when another giveaway, a setup draft included, is on that post.
+func (s *Store) Move(ctx context.Context, id uint, messageID int64) error {
+	res := s.db.WithContext(ctx).Model(&Giveaway{}).
+		Where("id = ? AND finished_at IS NULL AND "+managed, id).
+		Update(colMessageID, messageID)
+	if errors.Is(res.Error, gorm.ErrDuplicatedKey) {
+		return ErrExists
+	}
+
+	if res.Error != nil {
+		return fmt.Errorf("move giveaway %d: %w", id, res.Error)
 	}
 
 	if res.RowsAffected == 0 {

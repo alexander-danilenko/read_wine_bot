@@ -65,6 +65,23 @@ func TestIgnoreGone(t *testing.T) {
 	}
 }
 
+func TestMarkGone(t *testing.T) {
+	gone := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: message to edit not found")
+	noRights := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: message can't be edited")
+
+	if got := markGone(gone); !errors.Is(got, ErrPostGone) {
+		t.Errorf("markGone(deleted post) = %v, want ErrPostGone", got)
+	}
+
+	if got := markGone(noRights); errors.Is(got, ErrPostGone) || !errors.Is(got, noRights) {
+		t.Errorf("markGone(no rights) = %v, want it unchanged", got)
+	}
+
+	if got := markGone(nil); got != nil {
+		t.Errorf("markGone(nil) = %v, want nil", got)
+	}
+}
+
 func TestJoinText(t *testing.T) {
 	tests := []struct {
 		result JoinResult

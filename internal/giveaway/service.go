@@ -56,6 +56,9 @@ type Steps interface {
 	MovePendingCommand(ctx context.Context, telegramID int64, from, to string) (bool, error)
 }
 
+// ErrPostGone means the channel post no longer exists, so the bot cannot put a button on it.
+var ErrPostGone = errors.New("channel post not found")
+
 // Telegram is what the rules need from the Telegram API.
 type Telegram interface {
 	// IsChannelAdmin reports whether the user is the creator or an administrator of the channel.
@@ -63,7 +66,8 @@ type Telegram interface {
 	// CanEditPosts reports whether the bot may edit the channel's posts.
 	CanEditPosts(ctx context.Context, chatID int64) (bool, error)
 	// AttachButton puts a join button with label and a link to the @read_wine channel under
-	// the channel post. A post that already carries those buttons counts as success.
+	// the channel post. A post that already carries those buttons counts as success; a deleted
+	// post returns ErrPostGone.
 	AttachButton(ctx context.Context, chatID, messageID int64, label string) error
 }
 

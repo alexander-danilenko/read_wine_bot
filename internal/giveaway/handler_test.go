@@ -344,6 +344,7 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		"giveaway-edit:field:end_time:" + id,
 		"giveaway-edit:field:winners:" + id,
 		"giveaway-edit:field:button_text:" + id,
+		"giveaway-edit:move:" + id,
 		"giveaway-edit:ask_finish:" + id,
 		"giveaway-edit:ask:" + id,
 	}
@@ -397,6 +398,44 @@ func TestEditMenuOfCancelled(t *testing.T) {
 	}
 }
 
+func TestEditMoveByLink(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+
+	h.tap(t, "giveaway-edit:move:"+strconv.FormatUint(uint64(g.ID), 10))
+
+	rows := h.keyboard(t)
+	if len(rows) != 1 || rows[0][0].CallbackData != "giveaway-edit:stop" {
+		t.Fatalf("keyboard = %+v, want only Cancel under the move prompt", rows)
+	}
+
+	h.messageHandler()(t.Context(), h.bot, h.message("https://t.me/c/1234567890/43", false))
+
+	if got := h.read(t, g.ID); got.MessageID != 43 {
+		t.Errorf("post %d, want the giveaway moved to 43", got.MessageID)
+	}
+
+	if !slices.Contains(h.sent(), h.texts.Text("en", i18n.EditMoved)) {
+		t.Errorf("sent %q, want the moved notice", h.sent())
+	}
+}
+
+func TestEditTextAtMove(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+
+	h.tap(t, "giveaway-edit:move:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.messageHandler()(t.Context(), h.bot, h.message("hello", false))
+
+	if got := h.sent(); got[len(got)-1] != h.texts.Text("en", i18n.EditMovePrompt) {
+		t.Errorf("last sent %q, want the move prompt again", got[len(got)-1])
+	}
+
+	if h.read(t, g.ID).MessageID != 42 {
+		t.Error("giveaway moved on a text message")
+	}
+}
+
 func TestEditTextAtField(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
@@ -413,8 +452,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 4 {
-		t.Errorf("reply has %d button rows, want the menu's 4", len(rows))
+	if rows := h.keyboard(t); len(rows) != 5 {
+		t.Errorf("reply has %d button rows, want the menu's 5", len(rows))
 	}
 }
 

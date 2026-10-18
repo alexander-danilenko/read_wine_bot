@@ -36,6 +36,9 @@ const (
 	askFinishStep = "finish" // the finish now confirmation of a giveaway
 )
 
+// moveStep is the step that waits for the post to move a giveaway to: edit:move:<giveaway ID>.
+const moveStep = "move"
+
 // inEdit reports whether a pending command is an edit step.
 func inEdit(pending string) bool { return strings.HasPrefix(pending, editPrefix) }
 
@@ -85,6 +88,11 @@ type Writer interface {
 	Publish(ctx context.Context, id uint) error
 }
 
+// Mover puts a giveaway on another post of its channel. *Store implements it.
+type Mover interface {
+	Move(ctx context.Context, id uint, messageID int64) error
+}
+
 // ButtonRemover takes the join button off a channel post. A post without a button counts as
 // success.
 type ButtonRemover interface {
@@ -99,11 +107,12 @@ type Editor struct {
 	svc       *Service
 	giveaways Giveaways
 	writer    Writer
+	mover     Mover
 }
 
 // NewEditor returns an Editor that reuses svc's steps, texts, clock and parsers.
-func NewEditor(svc *Service, giveaways Giveaways, writer Writer) *Editor {
-	return &Editor{svc: svc, giveaways: giveaways, writer: writer}
+func NewEditor(svc *Service, giveaways Giveaways, writer Writer, mover Mover) *Editor {
+	return &Editor{svc: svc, giveaways: giveaways, writer: writer, mover: mover}
 }
 
 // BeginEdit starts an edit for the user: the bot now waits for a forwarded post.
@@ -317,15 +326,10 @@ func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint
 		return Reply{Notice: i18n.EditEndPassed, Next: menu}
 	}
 
-	label := g.ButtonText
-	if label == "" {
-		label = e.svc.texts.Text(g.Language, i18n.GiveawayButton)
-	}
-
-	if err := tg.AttachButton(ctx, g.ChatID, g.MessageID, label); err != nil {
+	if err := tg.AttachButton(ctx, g.ChatID, g.MessageID, e.label(g)); err != nil {
 		log.WarnContext(ctx, "attach join button", "error", err)
 
-		return Reply{Notice: i18n.EditNoRights, Next: menu}
+		return Reply{Notice: attachFailure(err), Next: menu}
 	}
 
 	err := e.writer.Publish(ctx, id)
@@ -340,6 +344,76 @@ func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint
 	}
 
 	return Reply{Notice: i18n.EditRestored, Next: menu}
+}
+
+// AskMove asks for the post to move the published or cancelled giveaway id to: the bot now
+// waits for it. A giveaway past its end time waits for its draw and cannot move.
+func (e *Editor) AskMove(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
+	g, r, ok := e.load(ctx, tg, userID, id)
+	if !ok {
+		return r
+	}
+
+	if e.due(g) {
+		return Reply{Stale: true}
+	}
+
+	step := editStep(moveStep, id)
+	if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
+		e.svc.log.ErrorContext(ctx, "start giveaway move", "user_id", userID, "error", err)
+
+		return Reply{Notice: i18n.EditFailed}
+	}
+
+	return Reply{Next: step}
+}
+
+// Move puts the giveaway the move step waits for on the post messageID, keeping its ID,
+// channel and participants. The post must be in the giveaway's channel and carry no other
+// giveaway; otherwise the step stays and the notice says what to send instead.
+func (e *Editor) Move(ctx context.Context, tg Telegram, rm ButtonRemover, userID, chatID, messageID int64) Reply {
+	log := e.svc.log.With("user_id", userID, "chat_id", chatID, "message_id", messageID)
+
+	step, err := e.svc.steps.PendingCommand(ctx, userID)
+	if err != nil {
+		log.ErrorContext(ctx, "read move step", "error", err)
+
+		return Reply{Notice: i18n.EditFailed}
+	}
+
+	what, id, ok := parseEditStep(step)
+	if !ok || what != moveStep {
+		return Reply{Stale: true}
+	}
+
+	g, r, ok := e.loadMovable(ctx, tg, log, userID, id)
+	if !ok {
+		return r
+	}
+
+	if key, ok := e.checkTarget(ctx, log, g, chatID, messageID); !ok {
+		return Reply{Notice: key, Next: step}
+	}
+
+	if r, ok := e.svc.claim(ctx, log, userID, step, ""); !ok {
+		return r
+	}
+
+	if messageID == g.MessageID {
+		return Reply{Notice: i18n.EditMoveSame, Next: editStep(menuStep, id)}
+	}
+
+	return e.move(ctx, tg, rm, log, userID, g, messageID)
+}
+
+// attachFailure returns the notice for a failed attach: the post is gone, or the bot may not
+// edit it.
+func attachFailure(err error) i18n.Key {
+	if errors.Is(err, ErrPostGone) {
+		return i18n.EditPostGone
+	}
+
+	return i18n.EditNoRights
 }
 
 // Stop ends the wait for a forward or a field value: the edit ends at the forward, and the
@@ -569,4 +643,125 @@ func (e *Editor) check(ctx context.Context, tg Telegram, userID int64, g Giveawa
 	default:
 		return i18n.EditNoRights, false
 	}
+}
+
+// loadMovable reads giveaway id for the move step and checks that the user may change it and
+// that it is not waiting for its draw. On failure it ends the step and returns the Reply that
+// names the failed check, and false.
+func (e *Editor) loadMovable(
+	ctx context.Context, tg Telegram, log *slog.Logger, userID int64, id uint,
+) (Giveaway, Reply, bool) {
+	g, r, ok := e.load(ctx, tg, userID, id)
+	if ok && !e.due(g) {
+		return g, Reply{}, true
+	}
+
+	if err := e.svc.steps.SetPendingCommand(ctx, userID, ""); err != nil {
+		log.ErrorContext(ctx, "clear move step", "error", err)
+	}
+
+	if ok {
+		return Giveaway{}, Reply{Stale: true}, false
+	}
+
+	return Giveaway{}, r, false
+}
+
+// checkTarget checks that the post is in g's channel and carries no other giveaway. It
+// returns the notice that names the failed check and false, or true when both hold.
+func (e *Editor) checkTarget(
+	ctx context.Context,
+	log *slog.Logger,
+	g Giveaway,
+	chatID, messageID int64,
+) (i18n.Key, bool) {
+	if chatID != g.ChatID {
+		return i18n.EditMoveOtherChannel, false
+	}
+
+	other, err := e.giveaways.Post(ctx, chatID, messageID)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return "", true
+	case err != nil:
+		log.ErrorContext(ctx, "find giveaway on new post", "error", err)
+
+		return i18n.EditFailed, false
+	case other.ID == g.ID:
+		return "", true
+	default:
+		return i18n.EditMoveTaken, false
+	}
+}
+
+// move puts g on the post messageID. A published giveaway's button goes on the new post
+// first, so a post the bot cannot edit leaves the giveaway where it was, and comes off the
+// old post last; a button left behind there joins nothing. A failure that the user can fix
+// by sending another post keeps the move step.
+func (e *Editor) move(
+	ctx context.Context, tg Telegram, rm ButtonRemover, log *slog.Logger, userID int64, g Giveaway, messageID int64,
+) Reply {
+	retry := func(key i18n.Key) Reply {
+		step := editStep(moveStep, g.ID)
+		if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
+			log.ErrorContext(ctx, "keep move step", "error", err)
+		}
+
+		return Reply{Notice: key, Next: step}
+	}
+
+	if g.Published {
+		if err := tg.AttachButton(ctx, g.ChatID, messageID, e.label(g)); err != nil {
+			log.WarnContext(ctx, "attach join button to new post", "error", err)
+
+			return retry(attachFailure(err))
+		}
+	}
+
+	menu := editStep(menuStep, g.ID)
+
+	err := e.mover.Move(ctx, g.ID, messageID)
+	switch {
+	case errors.Is(err, ErrExists):
+		// A setup draft holds the post; the button just attached must not stay on it.
+		e.removeButton(ctx, rm, log, g, messageID)
+
+		return retry(i18n.EditMoveTaken)
+	case errors.Is(err, ErrNotFound):
+		return Reply{Notice: i18n.EditFinished}
+	case err != nil:
+		log.ErrorContext(ctx, "move giveaway", "giveaway_id", g.ID, "error", err)
+
+		return Reply{Notice: i18n.EditFailed, Next: menu}
+	}
+
+	e.removeButton(ctx, rm, log, g, g.MessageID)
+
+	return Reply{Notice: i18n.EditMoved, Next: menu}
+}
+
+// removeButton takes the join button of the published g off post messageID of its channel.
+// A failure only leaves a button that joins nothing, so it is logged, not reported.
+func (e *Editor) removeButton(ctx context.Context, rm ButtonRemover, log *slog.Logger, g Giveaway, messageID int64) {
+	if !g.Published {
+		return
+	}
+
+	if err := rm.RemoveButton(ctx, g.ChatID, messageID); err != nil {
+		log.WarnContext(ctx, "remove join button", "giveaway_id", g.ID, "post", messageID, "error", err)
+	}
+}
+
+// label returns the join button text of g: its own text, or the default one.
+func (e *Editor) label(g Giveaway) string {
+	if g.ButtonText == "" {
+		return e.svc.texts.Text(g.Language, i18n.GiveawayButton)
+	}
+
+	return g.ButtonText
+}
+
+// due reports whether the published g is past its end time and waits for its draw.
+func (e *Editor) due(g Giveaway) bool {
+	return g.Published && g.State(e.svc.now()) == Due
 }

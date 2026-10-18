@@ -68,6 +68,8 @@ type fakeTelegram struct {
 	removed     int
 	adminChecks int
 	attached    int
+	attachedTo  int64 // the post of the last attach
+	removedFrom int64 // the post of the last removal
 }
 
 func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, error) {
@@ -78,23 +80,25 @@ func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, erro
 
 func (f *fakeTelegram) CanEditPosts(context.Context, int64) (bool, error) { return !f.noEdit, nil }
 
-func (f *fakeTelegram) AttachButton(_ context.Context, _, _ int64, label string) error {
+func (f *fakeTelegram) AttachButton(_ context.Context, _, messageID int64, label string) error {
 	if f.attachErr != nil {
 		return f.attachErr
 	}
 
 	f.label = label
 	f.attached++
+	f.attachedTo = messageID
 
 	return nil
 }
 
-func (f *fakeTelegram) RemoveButton(context.Context, int64, int64) error {
+func (f *fakeTelegram) RemoveButton(_ context.Context, _, messageID int64) error {
 	if f.removeErr != nil {
 		return f.removeErr
 	}
 
 	f.removed++
+	f.removedFrom = messageID
 
 	return nil
 }

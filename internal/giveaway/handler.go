@@ -3,6 +3,7 @@ package giveaway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -128,7 +129,7 @@ func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, 
 		}}},
 	})
 
-	return ignoreNotModified(err)
+	return markGone(ignoreNotModified(err))
 }
 
 // RemoveButton takes every inline button off the channel post. A post without buttons, or a
@@ -175,6 +176,15 @@ func ignoreNotModified(err error) error {
 func ignoreGone(err error) error {
 	if isGone(err) {
 		return nil
+	}
+
+	return err
+}
+
+// markGone wraps Telegram's "message to edit not found" answer as ErrPostGone.
+func markGone(err error) error {
+	if isGone(err) {
+		return fmt.Errorf("%w: %w", ErrPostGone, err)
 	}
 
 	return err

@@ -43,8 +43,9 @@ func descriptions() []string {
 // Open connects to the PostgreSQL database at url, pings it and creates or updates the bot's
 // tables and their descriptions. The caller closes the connection with DB().Close().
 func Open(ctx context.Context, url string) (*gorm.DB, error) {
-	// Errors come back as return values, so GORM's own logger stays silent.
-	conn, err := gorm.Open(postgres.Open(url), &gorm.Config{Logger: logger.Discard})
+	// Errors come back as return values, so GORM's own logger stays silent. TranslateError
+	// turns a unique violation into gorm.ErrDuplicatedKey, which stores compare with errors.Is.
+	conn, err := gorm.Open(postgres.Open(url), &gorm.Config{Logger: logger.Discard, TranslateError: true})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}

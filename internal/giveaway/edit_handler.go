@@ -38,6 +38,7 @@ const (
 	editYesFinish = "yes_finish" // finishes the giveaway now
 	editNo        = "no"         // declines the cancel or finish and shows the menu
 	editPublish   = "publish"    // publishes a cancelled giveaway again
+	editMove      = "move"       // asks for the post to move the giveaway to
 	editStop      = "stop"       // stops waiting for a forward or a value
 )
 
@@ -197,14 +198,20 @@ func parseEditLink(text string) (int64, int64, bool) {
 	return chatID, messageID, errChat == nil && errPost == nil
 }
 
-// message hands a private message to the edit step the user is at: the post step takes a
-// forwarded channel post, a field step takes text, and any other input asks again.
+// message hands a private message to the edit step the user is at: the post and move steps
+// take a forwarded channel post or its link, a field step takes text, and any other input
+// asks again.
 func (h editHandler) message(ctx context.Context, b *bot.Bot, msg *models.Message, step, lang string) {
 	chatID, messageID, isPost := postRef(ctx, b, h.log, msg)
 
 	tg := telegramAPI{b: b}
+	what, _, _ := parseEditStep(step)
 
 	switch {
+	case what == moveStep && isPost:
+		h.reply(ctx, b, msg.From.ID, lang, h.ed.Move(ctx, tg, tg, msg.From.ID, chatID, messageID))
+	case what == moveStep:
+		h.prompt(ctx, b, msg.From.ID, lang, step)
 	case step == EditStepPost && isPost:
 		h.reply(
 			ctx,
@@ -276,6 +283,8 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 		return h.confirm(ctx, tg, userID, a)
 	case editPublish:
 		return h.ed.Restore(ctx, tg, userID, a.id)
+	case editMove:
+		return h.ed.AskMove(ctx, tg, userID, a.id)
 	case editStop:
 		return h.ed.Stop(ctx, userID)
 	default:
@@ -344,6 +353,8 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 			button(i18n.EditYes, editData(editYes, rawID)),
 			button(i18n.EditNo, editData(editNo, rawID)),
 		}})
+	case moveStep:
+		h.ask(ctx, b, userID, h.texts.Text(lang, i18n.EditMovePrompt), [][]models.InlineKeyboardButton{stop})
 	case askFinishStep:
 		h.ask(ctx, b, userID, h.texts.Text(lang, i18n.EditAskFinish), [][]models.InlineKeyboardButton{{
 			button(i18n.EditYesFinish, editData(editYesFinish, rawID)),
@@ -365,8 +376,8 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 // fieldsPerRow is how many field buttons share a row of the field menu.
 const fieldsPerRow = 2
 
-// menu sends the field menu of giveaway id: a button per field, two to a row, then Finish now
-// and Cancel for a published giveaway or Publish for a cancelled one.
+// menu sends the field menu of giveaway id: a button per field, two to a row, then Move, then
+// Finish now and Cancel for a published giveaway or Publish for a cancelled one.
 func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang string, id uint) {
 	text, published, err := h.ed.Menu(ctx, id, lang)
 	if err != nil {
@@ -391,9 +402,13 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 		return []models.InlineKeyboardButton{{Text: h.texts.Text(lang, key), CallbackData: editData(action, rawID)}}
 	}
 
-	tail := [][]models.InlineKeyboardButton{row(i18n.EditPublishGiveaway, editPublish)}
+	tail := [][]models.InlineKeyboardButton{
+		row(i18n.EditMoveGiveaway, editMove),
+		row(i18n.EditPublishGiveaway, editPublish),
+	}
 	if published {
 		tail = [][]models.InlineKeyboardButton{
+			row(i18n.EditMoveGiveaway, editMove),
 			row(i18n.EditFinishGiveaway, editAskFinish),
 			row(i18n.EditCancelGiveaway, editAsk),
 		}

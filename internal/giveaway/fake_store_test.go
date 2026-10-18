@@ -212,6 +212,27 @@ func (f *memStore) Cancel(_ context.Context, id uint) error {
 	return nil
 }
 
+func (f *memStore) Move(_ context.Context, id uint, messageID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	g, ok := f.rows[id]
+	if !ok || g.FinishedAt != nil || !isManaged(g) {
+		return giveaway.ErrNotFound
+	}
+
+	// idx_giveaways_post allows one giveaway, a draft included, per post.
+	for _, row := range f.rows {
+		if row.ChatID == g.ChatID && row.MessageID == messageID && row.ID != id {
+			return giveaway.ErrExists
+		}
+	}
+
+	g.MessageID = messageID
+
+	return nil
+}
+
 // ids returns the row IDs in ascending order, so lookups are deterministic.
 // violates reports whether the database would reject g as a draft: chk_giveaways_winners
 // needs a winner, and idx_giveaways_draft allows one draft per admin.
