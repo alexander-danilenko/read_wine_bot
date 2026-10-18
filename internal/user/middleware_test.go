@@ -38,9 +38,6 @@ func (f *fakeRecorder) SetPendingCommand(_ context.Context, id int64, command st
 	return f.err
 }
 
-// isLabel stands in for menu.IsLabel with one known label.
-func isLabel(text string) bool { return text == "🌐 Змінити мову" }
-
 func privateMessage(text string) *models.Update {
 	return &models.Update{Message: &models.Message{
 		Text: text,
@@ -85,9 +82,9 @@ func TestMiddleware(t *testing.T) {
 			[]string{"record Olena Koval 7", "pending  7", "clear 7"},
 		},
 		{
-			"menu label clears",
+			"former menu label keeps the step",
 			privateMessage("🌐 Змінити мову"),
-			[]string{"record Olena Koval 7", "pending  7", "clear 7"},
+			[]string{"record Olena Koval 7"},
 		},
 		{"group message records only", group, []string{"record Olena Koval 7"}},
 		{"message as a channel", asChannel, nil},
@@ -104,7 +101,7 @@ func TestMiddleware(t *testing.T) {
 			called := false
 			next := func(context.Context, *bot.Bot, *models.Update) { called = true }
 
-			user.Middleware(rec, rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, tt.update)
+			user.Middleware(rec, rec, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, tt.update)
 
 			if !slices.Equal(rec.calls, tt.want) {
 				t.Errorf("calls = %q, want %q", rec.calls, tt.want)
@@ -122,7 +119,7 @@ func TestMiddlewareStoreError(t *testing.T) {
 	called := false
 	next := func(context.Context, *bot.Bot, *models.Update) { called = true }
 
-	user.Middleware(rec, rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, privateMessage("/start"))
+	user.Middleware(rec, rec, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, privateMessage("/start"))
 
 	if !called {
 		t.Error("next handler not called after a store error")
@@ -138,7 +135,7 @@ func TestMiddlewareRecordsFullProfile(t *testing.T) {
 	next := func(context.Context, *bot.Bot, *models.Update) {}
 	update := &models.Update{CallbackQuery: &models.CallbackQuery{From: from}}
 
-	user.Middleware(rec, rec, isLabel, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, update)
+	user.Middleware(rec, rec, slog.New(slog.DiscardHandler))(next)(t.Context(), nil, update)
 
 	want := user.Profile{
 		TelegramID: 9, IsBot: true, FirstName: "Taras", LastName: "Shevchenko", Username: "kobzar",

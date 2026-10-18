@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -94,8 +95,8 @@ type editHandler struct {
 	tapped int // the message whose button was tapped, replaced in place by the next prompt; 0 for none
 }
 
-// EditStartHandler returns the handler for the edit menu button in a private chat: it asks
-// for the post of the giveaway to change.
+// EditStartHandler returns the handler for /edit in a private chat: it asks for the post of the
+// giveaway to change.
 func EditStartHandler(
 	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
@@ -117,8 +118,7 @@ func EditStartHandler(
 	}
 }
 
-// ListHandler returns the handler for the list menu button: it sends the user's running
-// giveaways.
+// ListHandler returns the handler for /list: it sends the user's running giveaways.
 func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
 	h := editHandler{ed: ed, texts: texts, log: log}
 
@@ -362,8 +362,11 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 	}
 }
 
-// menu sends the field menu of giveaway id: a button per field, then Finish now and Cancel for
-// a published giveaway or Publish for a cancelled one.
+// fieldsPerRow is how many field buttons share a row of the field menu.
+const fieldsPerRow = 2
+
+// menu sends the field menu of giveaway id: a button per field, two to a row, then Finish now
+// and Cancel for a published giveaway or Publish for a cancelled one.
 func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang string, id uint) {
 	text, published, err := h.ed.Menu(ctx, id, lang)
 	if err != nil {
@@ -396,15 +399,14 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 		}
 	}
 
-	rows := make([][]models.InlineKeyboardButton, 0, len(menuFields)+len(tail))
-
+	fields := make([]models.InlineKeyboardButton, 0, len(menuFields))
 	for _, f := range menuFields {
-		rows = append(rows, []models.InlineKeyboardButton{{
+		fields = append(fields, models.InlineKeyboardButton{
 			Text: h.texts.Text(lang, f.label), CallbackData: editData(editField, f.field, rawID),
-		}})
+		})
 	}
 
-	h.ask(ctx, b, userID, text, append(rows, tail...))
+	h.ask(ctx, b, userID, text, append(slices.Collect(slices.Chunk(fields, fieldsPerRow)), tail...))
 }
 
 // ask shows text with an inline keyboard of rows in place of the previous one.

@@ -254,7 +254,9 @@ func TestSetupCallbackData(t *testing.T) {
 	}
 
 	// Telegram limits callback data to 64 bytes.
-	for _, step := range []string{giveaway.StepEndTime, giveaway.StepWinners, giveaway.StepButtonText} {
+	for _, step := range []string{
+		giveaway.StepEndDate, giveaway.StepEndTime, giveaway.StepWinners, giveaway.StepButtonText,
+	} {
 		if data := giveaway.SetupCallbackPrefix + "default:" + step; len(data) > 64 {
 			t.Errorf("callback data %q is %d bytes, over 64", data, len(data))
 		}
@@ -332,7 +334,9 @@ func TestEditForwardSendsMenu(t *testing.T) {
 
 	got := make([]string, 0, len(rows))
 	for _, row := range rows {
-		got = append(got, row[0].CallbackData)
+		for _, button := range row {
+			got = append(got, button.CallbackData)
+		}
 	}
 
 	want := []string{
@@ -347,8 +351,8 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		t.Errorf("menu buttons = %q, want %q", got, want)
 	}
 
-	if rows[0][0].Text != "📝 Edit end date" {
-		t.Errorf("first button = %q, want the end date label", rows[0][0].Text)
+	if len(rows[0]) != 2 || rows[0][0].Text != "📝 Date" {
+		t.Errorf("first row = %+v, want the end date and end time side by side", rows[0])
 	}
 }
 
@@ -369,7 +373,7 @@ func TestEditLinkSendsMenu(t *testing.T) {
 
 			h.messageHandler()(t.Context(), h.bot, h.message(link, false))
 
-			if rows := h.keyboard(t); rows[0][0].Text != "📝 Edit end date" {
+			if rows := h.keyboard(t); rows[0][0].Text != "📝 Date" {
 				t.Errorf("first button = %q, want the field menu", rows[0][0].Text)
 			}
 		})
@@ -409,8 +413,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 6 {
-		t.Errorf("reply has %d button rows, want the menu's 6", len(rows))
+	if rows := h.keyboard(t); len(rows) != 4 {
+		t.Errorf("reply has %d button rows, want the menu's 4", len(rows))
 	}
 }
 
@@ -591,7 +595,7 @@ func TestEditLinkHandler(t *testing.T) {
 			)
 
 			if tt.wantMenu {
-				if rows := h.keyboard(t); rows[0][0].Text != "📝 Edit end date" {
+				if rows := h.keyboard(t); rows[0][0].Text != "📝 Date" {
 					t.Errorf("first button = %q, want the field menu", rows[0][0].Text)
 				}
 

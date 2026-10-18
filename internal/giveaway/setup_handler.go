@@ -57,8 +57,8 @@ type setupHandler struct {
 	tapped int // the message whose button was tapped, replaced in place by the next prompt; 0 for none
 }
 
-// StartHandler returns the handler for the giveaway menu button in a private chat: it starts
-// a new setup and asks for the post.
+// StartHandler returns the handler for /new in a private chat: it starts a new setup and asks
+// for the post.
 func StartHandler(
 	svc *Service, texts *i18n.Catalog, users Users, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {

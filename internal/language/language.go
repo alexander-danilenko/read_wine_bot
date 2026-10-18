@@ -11,7 +11,6 @@ import (
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
-	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 )
 
 // CallbackPrefix starts the callback data of every language button; the language code follows.
@@ -42,7 +41,7 @@ func options() []option {
 	}
 }
 
-// PromptHandler returns a handler that answers the language menu button in a private chat
+// PromptHandler returns a handler that answers /language in a private chat
 // with one button per language, in the user's saved language. It ignores groups and channels.
 func PromptHandler(texts *i18n.Catalog, store Store, kb *keyboard.Tracker, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -63,8 +62,8 @@ func PromptHandler(texts *i18n.Catalog, store Store, kb *keyboard.Tracker, log *
 
 // ButtonHandler returns a handler for taps on the language buttons. It stops the button's
 // loading spinner, deletes the language buttons, saves the choice and confirms it in the
-// chosen language with the menu keyboard relabelled in that language. If saving fails, it
-// logs the error and still confirms, so the user is not left without an answer.
+// chosen language. If saving fails, it logs the error and still confirms, so the user is not
+// left without an answer.
 func ButtonHandler(texts *i18n.Catalog, store Store, kb *keyboard.Tracker, log *slog.Logger) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		query := update.CallbackQuery
@@ -91,9 +90,8 @@ func ButtonHandler(texts *i18n.Catalog, store Store, kb *keyboard.Tracker, log *
 
 			// The buttons are sent only in private chats, where the chat ID equals the user ID.
 			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID:      query.From.ID,
-				Text:        texts.Text(o.code, i18n.LanguageSelected, o.label),
-				ReplyMarkup: menu.Keyboard(texts, o.code),
+				ChatID: query.From.ID,
+				Text:   texts.Text(o.code, i18n.LanguageSelected, o.label),
 			})
 			if err != nil {
 				log.ErrorContext(ctx, "send language selected", "user_id", query.From.ID, "error", err)

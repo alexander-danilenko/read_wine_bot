@@ -6,41 +6,75 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
-	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 )
 
-// Commands, without the slash.
+// Commands, without the slash. Every command but Start is in the command menu.
 const (
-	Start  = "start"  // shows the greeting; Telegram sends it when a user first opens the bot
-	Cancel = "cancel" // leaves any unfinished step
+	Start    = "start"    // shows the greeting; Telegram sends it when a user first opens the bot
+	New      = "new"      // starts a giveaway setup
+	Edit     = "edit"     // starts editing a giveaway
+	List     = "list"     // lists the user's running giveaways
+	Language = "language" // shows the language buttons
+	Cancel   = "cancel"   // leaves any unfinished step
 )
 
-// StartHandler returns a handler that answers /start with the greeting.
+// entry is one command in the command menu.
+type entry struct {
+	command     string
+	description i18n.Key // starts with an emoji, so the eye finds the command
+}
+
+// menu returns the command menu in display order.
+func menu() []entry {
+	return []entry{
+		{New, i18n.CommandNew},
+		{Edit, i18n.CommandEdit},
+		{List, i18n.CommandList},
+		{Language, i18n.CommandLanguage},
+		{Cancel, i18n.CommandCancel},
+	}
+}
+
+// StartHandler returns a handler that answers /start with the greeting and the command menu
+// as tappable commands.
 func StartHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
-	return reply(texts, langs, log, i18n.Greeting)
+	return reply(langs, log, func(lang string) string {
+		lines := make([]string, 0, len(menu()))
+		for _, e := range menu() {
+			lines = append(lines, "/"+e.command+" — "+texts.Text(lang, e.description))
+		}
+
+		return texts.Text(lang, i18n.Greeting) + "\n\n" + strings.Join(lines, "\n")
+	})
 }
 
 // CancelHandler returns a handler that answers /cancel. user.Middleware has already left the
 // unfinished step and deleted its buttons, as it does for every command.
 func CancelHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
-	return reply(texts, langs, log, i18n.CommandCancelled)
+	return reply(langs, log, func(lang string) string { return texts.Text(lang, i18n.CommandCancelled) })
 }
 
 // Register lists the commands in Telegram's command menu of private chats, in every language
 // with a locale file, and in the default language for the rest.
 func Register(ctx context.Context, b *bot.Bot, texts *i18n.Catalog) error {
 	for _, lang := range append([]string{""}, texts.Langs()...) {
+		commands := make([]models.BotCommand, 0, len(menu()))
+		for _, e := range menu() {
+			commands = append(
+				commands,
+				models.BotCommand{Command: e.command, Description: texts.Text(lang, e.description)},
+			)
+		}
+
 		_, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
-			Commands: []models.BotCommand{
-				{Command: Start, Description: texts.Text(lang, i18n.CommandStart)},
-				{Command: Cancel, Description: texts.Text(lang, i18n.CommandCancel)},
-			},
+			Commands:     commands,
 			Scope:        &models.BotCommandScopeAllPrivateChats{},
 			LanguageCode: lang,
 		})
@@ -52,10 +86,11 @@ func Register(ctx context.Context, b *bot.Bot, texts *i18n.Catalog) error {
 	return nil
 }
 
-// reply returns a handler that answers a command in a private chat with text and the menu
-// keyboard, in the language the user chose or else the language of their Telegram app. It
-// ignores the command in groups and channels.
-func reply(texts *i18n.Catalog, langs language.Reader, log *slog.Logger, text i18n.Key) bot.HandlerFunc {
+// reply returns a handler that answers a command in a private chat with the text for the
+// language the user chose, or else the language of their Telegram app. The reply also takes
+// away the menu keyboard that older versions of the bot sent. It ignores the command in
+// groups and channels.
+func reply(langs language.Reader, log *slog.Logger, text func(lang string) string) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
 		if msg == nil || msg.Chat.Type != models.ChatTypePrivate {
@@ -66,11 +101,11 @@ func reply(texts *i18n.Catalog, langs language.Reader, log *slog.Logger, text i1
 
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:      msg.Chat.ID,
-			Text:        texts.Text(lang, text),
-			ReplyMarkup: menu.Keyboard(texts, lang),
+			Text:        text(lang),
+			ReplyMarkup: &models.ReplyKeyboardRemove{RemoveKeyboard: true},
 		})
 		if err != nil {
-			log.ErrorContext(ctx, "reply to command", "chat_id", msg.Chat.ID, "text", text, "error", err)
+			log.ErrorContext(ctx, "reply to command", "chat_id", msg.Chat.ID, "command", msg.Text, "error", err)
 		}
 	}
 }

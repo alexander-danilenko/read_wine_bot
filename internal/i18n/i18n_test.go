@@ -54,19 +54,6 @@ func TestText(t *testing.T) {
 	}
 }
 
-func TestAll(t *testing.T) {
-	c, err := i18n.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	got := c.All(i18n.MenuLanguage)
-	want := []string{"🌐 Change language", "🌐 Змінити мову"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("All(%q) = %q, want %q", i18n.MenuLanguage, got, want)
-	}
-}
-
 func TestSummaryPlaceholders(t *testing.T) {
 	c, err := i18n.Load()
 	if err != nil {

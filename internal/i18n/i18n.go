@@ -23,13 +23,12 @@ type Key string
 // reorder them.
 const (
 	Greeting         Key = "greeting"
-	CommandStart     Key = "command.start"
+	CommandNew       Key = "command.new"
+	CommandEdit      Key = "command.edit"
+	CommandList      Key = "command.list"
+	CommandLanguage  Key = "command.language"
 	CommandCancel    Key = "command.cancel"
 	CommandCancelled Key = "command.cancelled"
-	MenuGiveaway     Key = "menu.giveaway"
-	MenuEdit         Key = "menu.edit"
-	MenuList         Key = "menu.list"
-	MenuLanguage     Key = "menu.language"
 	LanguagePrompt   Key = "language.prompt"
 	LanguageSelected Key = "language.selected"
 
@@ -213,21 +212,6 @@ func (c *Catalog) Text(lang string, key Key, args ...any) string {
 // Langs returns the language of every locale file, sorted.
 func (c *Catalog) Langs() []string {
 	return slices.Sorted(maps.Keys(c.texts))
-}
-
-// All returns the text for key in every language, sorted and without duplicates. The bot
-// uses it to recognize a menu button whatever language the keyboard was sent in.
-func (c *Catalog) All(key Key) []string {
-	var all []string
-	for _, m := range c.texts {
-		if text, ok := m[key]; ok {
-			all = append(all, text)
-		}
-	}
-
-	slices.Sort(all)
-
-	return slices.Compact(all)
 }
 
 // keyDiff returns the keys present in only one of want and got, sorted.

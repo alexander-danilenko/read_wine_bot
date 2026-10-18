@@ -32,6 +32,7 @@ func inSetup(pending string) bool { return strings.HasPrefix(pending, stepPrefix
 const (
 	dateLayout        = "2006-01-02"
 	timeLayout        = "15:04"
+	defaultEndDays    = 7 // the default end date is this many days after today
 	defaultEndTime    = "19:00"
 	minWinners        = 1
 	maxWinners        = 100
@@ -355,6 +356,8 @@ func utcPtr(t time.Time) *time.Time {
 // Default returns the value a step's default button stands for, or "" if the step has none.
 func (s *Service) Default(step, lang string) string {
 	switch step {
+	case StepEndDate:
+		return s.now().In(s.kyiv).AddDate(0, 0, defaultEndDays).Format(dateLayout)
 	case StepEndTime:
 		return defaultEndTime
 	case StepWinners:

@@ -347,7 +347,7 @@ func TestDefault(t *testing.T) {
 		{giveaway.StepEndTime, "uk", "19:00"},
 		{giveaway.StepWinners, "en", "1"},
 		{giveaway.StepButtonText, "uk", "Приймаю участь"},
-		{giveaway.StepEndDate, "uk", ""},
+		{giveaway.StepEndDate, "uk", "2026-10-16"}, // a week after s.now
 	} {
 		if got := s.svc.Default(tt.step, tt.lang); got != tt.want {
 			t.Errorf("Default(%s, %s) = %q, want %q", tt.step, tt.lang, got, tt.want)

@@ -24,7 +24,6 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
-	"github.com/alexander-danilenko/read_wine_bot/internal/menu"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
@@ -108,8 +107,8 @@ func handlers(
 
 	return slices.Concat([]bot.Option{
 		// Runs before every handler: records every sender's profile and its revisions, and
-		// leaves any unfinished setup on a command or menu button.
-		bot.WithMiddlewares(user.Middleware(users, kb, menu.IsLabel(texts), log)),
+		// leaves any unfinished setup on a command.
+		bot.WithMiddlewares(user.Middleware(users, kb, log)),
 		// Before the greeting: an edit link sends /start with a payload, which the greeting
 		// would also match, and the first matching handler wins.
 		bot.WithMessageTextHandler(
@@ -121,11 +120,6 @@ func handlers(
 			command.Start,
 			bot.MatchTypeCommandStartOnly,
 			command.StartHandler(texts, users, log),
-		),
-		bot.WithMessageTextHandler(
-			command.Cancel,
-			bot.MatchTypeCommandStartOnly,
-			command.CancelHandler(texts, users, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,
@@ -153,8 +147,7 @@ func handlers(
 	}, menuHandlers(texts, users, kb, giveaways, editor, log))
 }
 
-// menuHandlers wires the menu buttons. A button sends its label as text, so each label in
-// each language gets its own exact-match handler.
+// menuHandlers wires the commands of the command menu.
 func menuHandlers(
 	texts *i18n.Catalog,
 	users *user.Store,
@@ -163,19 +156,17 @@ func menuHandlers(
 	editor *giveaway.Editor,
 	log *slog.Logger,
 ) []bot.Option {
-	return slices.Concat(
-		labelHandlers(texts.All(i18n.MenuGiveaway), giveaway.StartHandler(giveaways, texts, users, kb, log)),
-		labelHandlers(texts.All(i18n.MenuEdit), giveaway.EditStartHandler(editor, texts, users, kb, log)),
-		labelHandlers(texts.All(i18n.MenuList), giveaway.ListHandler(editor, texts, users, log)),
-		labelHandlers(texts.All(i18n.MenuLanguage), language.PromptHandler(texts, users, kb, log)),
-	)
-}
+	handlers := map[string]bot.HandlerFunc{
+		command.New:      giveaway.StartHandler(giveaways, texts, users, kb, log),
+		command.Edit:     giveaway.EditStartHandler(editor, texts, users, kb, log),
+		command.List:     giveaway.ListHandler(editor, texts, users, log),
+		command.Language: language.PromptHandler(texts, users, kb, log),
+		command.Cancel:   command.CancelHandler(texts, users, log),
+	}
 
-// labelHandlers routes a message whose text is exactly one of labels to h.
-func labelHandlers(labels []string, h bot.HandlerFunc) []bot.Option {
-	opts := make([]bot.Option, 0, len(labels))
-	for _, label := range labels {
-		opts = append(opts, bot.WithMessageTextHandler(label, bot.MatchTypeExact, h))
+	opts := make([]bot.Option, 0, len(handlers))
+	for name, h := range handlers {
+		opts = append(opts, bot.WithMessageTextHandler(name, bot.MatchTypeCommandStartOnly, h))
 	}
 
 	return opts
