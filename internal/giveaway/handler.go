@@ -171,7 +171,7 @@ func ignoreNotModified(err error) error {
 	return err
 }
 
-// ignoreGone treats Telegram's "message to edit not found" answer as success: a deleted post
+// ignoreGone treats Telegram's answer for a deleted post as success: a deleted post
 // carries no button.
 func ignoreGone(err error) error {
 	if isGone(err) {
@@ -181,7 +181,7 @@ func ignoreGone(err error) error {
 	return err
 }
 
-// markGone wraps Telegram's "message to edit not found" answer as ErrPostGone.
+// markGone wraps Telegram's answer for a deleted post as ErrPostGone.
 func markGone(err error) error {
 	if isGone(err) {
 		return fmt.Errorf("%w: %w", ErrPostGone, err)
@@ -190,7 +190,14 @@ func markGone(err error) error {
 	return err
 }
 
-// isGone reports whether err says the post to edit no longer exists.
+// isGone reports whether err says the post to edit no longer exists. Telegram answers
+// "message to edit not found" in private chats and "MESSAGE_ID_INVALID" for channel posts.
 func isGone(err error) bool {
-	return errors.Is(err, bot.ErrorBadRequest) && strings.Contains(err.Error(), "message to edit not found")
+	if !errors.Is(err, bot.ErrorBadRequest) {
+		return false
+	}
+
+	text := err.Error()
+
+	return strings.Contains(text, "message to edit not found") || strings.Contains(text, "MESSAGE_ID_INVALID")
 }

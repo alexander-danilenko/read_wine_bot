@@ -39,6 +39,8 @@ func TestIgnoreNotModified(t *testing.T) {
 
 func TestIgnoreGone(t *testing.T) {
 	gone := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: message to edit not found")
+	// Telegram answers this for a deleted channel post.
+	invalid := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: MESSAGE_ID_INVALID")
 	notModified := fmt.Errorf("%w, %s", bot.ErrorBadRequest,
 		"Bad Request: message is not modified: specified new message content and reply markup are exactly the same")
 	noRights := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: message can't be edited")
@@ -51,6 +53,7 @@ func TestIgnoreGone(t *testing.T) {
 	}{
 		{"no error", nil, nil},
 		{"post deleted", gone, nil},
+		{"channel post deleted", invalid, nil},
 		{"button already there", notModified, notModified},
 		{"cannot edit", noRights, noRights},
 		{"not in channel", forbidden, forbidden},
@@ -71,6 +74,11 @@ func TestMarkGone(t *testing.T) {
 
 	if got := markGone(gone); !errors.Is(got, ErrPostGone) {
 		t.Errorf("markGone(deleted post) = %v, want ErrPostGone", got)
+	}
+
+	invalid := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: MESSAGE_ID_INVALID")
+	if got := markGone(invalid); !errors.Is(got, ErrPostGone) {
+		t.Errorf("markGone(deleted channel post) = %v, want ErrPostGone", got)
 	}
 
 	if got := markGone(noRights); errors.Is(got, ErrPostGone) || !errors.Is(got, noRights) {
