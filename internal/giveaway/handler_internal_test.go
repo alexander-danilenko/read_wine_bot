@@ -37,6 +37,34 @@ func TestIgnoreNotModified(t *testing.T) {
 	}
 }
 
+func TestIgnoreGone(t *testing.T) {
+	gone := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: message to edit not found")
+	notModified := fmt.Errorf("%w, %s", bot.ErrorBadRequest,
+		"Bad Request: message is not modified: specified new message content and reply markup are exactly the same")
+	noRights := fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: message can't be edited")
+	forbidden := fmt.Errorf("%w, %s", bot.ErrorForbidden, "Forbidden: bot is not a member of the channel chat")
+
+	tests := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"no error", nil, nil},
+		{"post deleted", gone, nil},
+		{"button already there", notModified, notModified},
+		{"cannot edit", noRights, noRights},
+		{"not in channel", forbidden, forbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ignoreGone(tt.err); !errors.Is(got, tt.want) || (got == nil) != (tt.want == nil) {
+				t.Errorf("ignoreGone(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestJoinText(t *testing.T) {
 	tests := []struct {
 		result JoinResult

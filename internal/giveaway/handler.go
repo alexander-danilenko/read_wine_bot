@@ -131,15 +131,15 @@ func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, 
 	return ignoreNotModified(err)
 }
 
-// RemoveButton takes every inline button off the channel post. A post without buttons
-// counts as success.
+// RemoveButton takes every inline button off the channel post. A post without buttons, or a
+// deleted post, counts as success.
 func (t telegramAPI) RemoveButton(ctx context.Context, chatID, messageID int64) error {
 	_, err := t.b.EditMessageReplyMarkup(
 		ctx,
 		&bot.EditMessageReplyMarkupParams{ChatID: chatID, MessageID: int(messageID)},
 	)
 
-	return ignoreNotModified(err)
+	return ignoreGone(ignoreNotModified(err))
 }
 
 // SendHTML sends an HTML text without a link preview, as a reply to message replyTo of the
@@ -168,4 +168,19 @@ func ignoreNotModified(err error) error {
 	}
 
 	return err
+}
+
+// ignoreGone treats Telegram's "message to edit not found" answer as success: a deleted post
+// carries no button.
+func ignoreGone(err error) error {
+	if isGone(err) {
+		return nil
+	}
+
+	return err
+}
+
+// isGone reports whether err says the post to edit no longer exists.
+func isGone(err error) bool {
+	return errors.Is(err, bot.ErrorBadRequest) && strings.Contains(err.Error(), "message to edit not found")
 }
