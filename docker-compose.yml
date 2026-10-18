@@ -18,44 +18,19 @@ services:
       timeout: 3s
       retries: 10
 
-  # Daily compressed dump of the database into the backups volume; keeps only the newest one.
-  # A failed run leaves the previous backup in place: pruning happens only after a successful dump.
-  # Settings: https://nfrastack.com/db-backup/container
-  backup:
-    image: nfrastack/db-backup:5.0.5
-    restart: unless-stopped
-    environment:
-      TIMEZONE: Europe/Kyiv
-      CHECK_NEW_VERSION: "FALSE" # the image is pinned; no daily call to nfrastack.com
-      DB01_TYPE: postgres
-      DB01_HOST: db
-      DB01_USER: ${POSTGRES_USER}
-      DB01_PASS: ${POSTGRES_PASSWORD}
-      DB01_NAME: ${POSTGRES_DB}
-      DB01_BACKUP_BEGIN: "0300" # daily at 03:00; the default interval is 1440 minutes
-      DB01_COMPRESSION: GZ # zcat / zless / gunzip work everywhere
-      DB01_CHECKSUM: NONE # no .md5 file next to the dump
-      DB01_RETENTION_LAST: 1
-    volumes:
-      - backups:/backup
-    depends_on:
-      db:
-        condition: service_healthy
-
-  # The bot itself, built from the Dockerfile. Uncomment to run it in Docker instead of `go run .`.
-  bot:
-    build: .
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      # Inside compose the database host is the service name, not localhost.
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
-    depends_on:
-      db:
-        condition: service_healthy
-    # A winner draw can spend up to a minute per Telegram call; Docker's 10 s default would cut it off.
-    stop_grace_period: 2m
+#  # The bot itself, built from the Dockerfile. Uncomment to run it in Docker instead of `go run .`.
+#  bot:
+#    build: .
+#    restart: unless-stopped
+#    env_file: .env
+#    environment:
+#      # Inside compose the database host is the service name, not localhost.
+#      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+#    depends_on:
+#      db:
+#        condition: service_healthy
+#    # A winner draw can spend up to a minute per Telegram call; Docker's 10 s default would cut it off.
+#    stop_grace_period: 2m
 
 volumes:
   pgdata:
-  backups:
