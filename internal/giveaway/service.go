@@ -62,8 +62,8 @@ type Telegram interface {
 	IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error)
 	// CanEditPosts reports whether the bot may edit the channel's posts.
 	CanEditPosts(ctx context.Context, chatID int64) (bool, error)
-	// AttachButton puts a single join button with label under the channel post. A post that
-	// already carries that button counts as success.
+	// AttachButton puts a join button with label and a link to the @read_wine channel under
+	// the channel post. A post that already carries those buttons counts as success.
 	AttachButton(ctx context.Context, chatID, messageID int64, label string) error
 }
 
