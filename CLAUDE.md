@@ -31,6 +31,7 @@ Follows go.dev's "Organizing a Go module" for a single command: the main package
 *.go              # main package in the repo root: wiring only (config, logger, DB, bot, shutdown), no business logic
 internal/<name>/  # every other package, one responsibility each
 docs/plans/       # Compound Engineering plans
+docs/channel-analytics.md  # ready SQL over the channel audience log
 docs/solutions/   # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
 CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
 ```

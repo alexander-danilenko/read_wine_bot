@@ -45,3 +45,17 @@ What Telegram tells the bot about a user: first and last name, username, Telegra
 ### User revision
 
 A saved snapshot of a user profile. The bot writes a new revision only when the profile it receives differs from the saved one. Revisions count per user from 1, and the user row records the latest number.
+
+## Channel audience
+
+### Subscriber
+
+A Telegram user subscribed to the channel. The Bot API cannot list subscribers, so the bot knows only those whose subscription changed while it was logging.
+
+### Membership event
+
+One change in who is subscribed: joined (with the invite link and its name at that moment), left, or removed by an admin. Events are only added, never changed, and one subscription is a joined event followed by the next left or removed event of the same user.
+
+### Channel post
+
+The time a post was published in the channel, kept so unsubscribes can be compared with the posts before them.
