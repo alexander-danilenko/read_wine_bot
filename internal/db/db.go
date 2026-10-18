@@ -9,13 +9,17 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"github.com/alexander-danilenko/read_wine_bot/internal/channel"
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
 // models returns the structs AutoMigrate turns into tables, parents before children.
 func models() []any {
-	return []any{&user.User{}, &user.Revision{}, &giveaway.Giveaway{}, &giveaway.Participant{}}
+	return []any{
+		&user.User{}, &user.Revision{}, &giveaway.Giveaway{}, &giveaway.Participant{},
+		&channel.Event{}, &channel.Post{},
+	}
 }
 
 // descriptions documents the tables and named indexes for database tools. Column descriptions
@@ -30,6 +34,9 @@ func descriptions() []string {
 		`COMMENT ON INDEX idx_giveaways_post IS 'At most one giveaway per channel post'`,
 		`COMMENT ON INDEX idx_giveaways_draft IS 'At most one unfinished setup (unpublished, not cancelled) per admin'`,
 		`COMMENT ON TABLE giveaway_participants IS 'Users who tapped a giveaway''s join button, with the winners marked after the draw'`,
+		`COMMENT ON TABLE channel_member_events IS 'Every subscribe, unsubscribe and removal in the channel since logging started. Rows are only added'`,
+		`COMMENT ON INDEX idx_channel_member_events_once IS 'One row per event, so an update Telegram delivers twice is saved once'`,
+		`COMMENT ON TABLE channel_posts IS 'Time of every channel post since logging started, to compare unsubscribes with posts. Rows are only added'`,
 	}
 }
 
