@@ -347,7 +347,6 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		"giveaway-edit:move:" + id,
 		"giveaway-edit:ask_finish:" + id,
 		"giveaway-edit:ask:" + id,
-		"giveaway-edit:refresh:" + id,
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("menu buttons = %q, want %q", got, want)
@@ -394,17 +393,13 @@ func TestEditMenuOfCancelled(t *testing.T) {
 	h.tap(t, "giveaway-edit:no:"+id)
 
 	rows := h.keyboard(t)
-	if publish := rows[len(rows)-2][0]; publish.Text != "✅ Publish giveaway" ||
-		publish.CallbackData != "giveaway-edit:publish:"+id {
-		t.Errorf("button above the last = %+v, want Publish", publish)
-	}
-
-	if last := rows[len(rows)-1][0]; last.CallbackData != "giveaway-edit:refresh:"+id {
-		t.Errorf("last button = %+v, want Refresh", last)
+	if last := rows[len(rows)-1][0]; last.Text != "✅ Publish giveaway" ||
+		last.CallbackData != "giveaway-edit:publish:"+id {
+		t.Errorf("last button = %+v, want Publish", last)
 	}
 }
 
-func TestEditRefreshShowsNewParticipants(t *testing.T) {
+func TestEditMenuShowsNewParticipants(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
 
@@ -417,7 +412,7 @@ func TestEditRefreshShowsNewParticipants(t *testing.T) {
 	}
 
 	h.api.calls = nil
-	h.tap(t, "giveaway-edit:refresh:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.tap(t, "giveaway-edit:no:"+strconv.FormatUint(uint64(g.ID), 10))
 
 	var edited string
 	for _, c := range h.api.calls {
@@ -485,8 +480,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 6 {
-		t.Errorf("reply has %d button rows, want the menu's 6", len(rows))
+	if rows := h.keyboard(t); len(rows) != 5 {
+		t.Errorf("reply has %d button rows, want the menu's 5", len(rows))
 	}
 }
 

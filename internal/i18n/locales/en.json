@@ -81,7 +81,6 @@
   "edit.list_gone_note": "⚠️ A post was deleted. Its participants are kept: tap [edit], then “🔀 Move to another post”, and send a new post of the same channel.",
   "edit.list_empty": "You have no active giveaways.",
   "edit.move_giveaway": "🔀 Move to another post",
-  "edit.refresh": "🔄 Refresh",
   "edit.move_prompt": "Forward me the new post from the same channel, or send its link. The participants stay with the giveaway.",
   "edit.move_other_channel": "This post is from another channel. Send a post from the giveaway's channel.",
   "edit.move_same": "The giveaway is already on this post.",
