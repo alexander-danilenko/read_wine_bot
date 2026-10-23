@@ -594,7 +594,7 @@ func TestEditListPostGone(t *testing.T) {
 	want := "Your active giveaways:\n\n" +
 		`- ⚠️ <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️]</a> · ` +
 		`ends 2026-10-25 19:00, post deleted · 👥 0` + "\n\n" +
-		"⚠️ A post was deleted. Its participants are kept: tap [✏️], then “🔀 Move to another post”, " +
+		"⚠️ A post was deleted. Its participants are kept: tap [✏️], then [✏️] next to “📄 Post”, " +
 		"and send a new post of the same channel."
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)

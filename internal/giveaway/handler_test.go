@@ -357,7 +357,6 @@ func TestEditForwardSendsMenu(t *testing.T) {
 	}
 
 	want := []string{
-		"giveaway-edit:move:" + id,
 		"giveaway-edit:ask_finish:" + id,
 		"giveaway-edit:ask:" + id,
 	}
@@ -369,7 +368,7 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		return `<a href="https://t.me/test_bot?start=field_` + field + "_" + id + `">[✏️]</a>`
 	}
 	wantText := h.texts.Text("en", i18n.EditStatusPublished) + "\n\n" +
-		"<b>📄 Post:</b> https://t.me/c/1234567890/42\n" +
+		"<b>📄 Post:</b> https://t.me/c/1234567890/42 " + edit("post") + "\n" +
 		"<b>📅 Date:</b> — " + edit("end_date") + "\n" +
 		"<b>⏰ Time:</b> — (Kyiv time) " + edit("end_time") + "\n" +
 		"<b>🏆 Winners:</b> 1 " + edit("winners") + "\n" +
@@ -421,7 +420,7 @@ func TestEditLinkSendsMenu(t *testing.T) {
 
 			h.messageHandler()(t.Context(), h.bot, h.message(link, false))
 
-			if rows := h.keyboard(t); rows[0][0].CallbackData != "giveaway-edit:move:1" {
+			if rows := h.keyboard(t); rows[0][0].CallbackData != "giveaway-edit:ask_finish:1" {
 				t.Errorf("first button = %+v, want the field menu", rows[0][0])
 			}
 		})
@@ -481,7 +480,7 @@ func TestEditMoveByLink(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
 
-	h.tap(t, "giveaway-edit:move:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.tapField(t, "post", g.ID)
 
 	rows := h.keyboard(t)
 	if len(rows) != 1 || rows[0][0].CallbackData != "giveaway-edit:stop" {
@@ -503,7 +502,7 @@ func TestEditTextAtMove(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
 
-	h.tap(t, "giveaway-edit:move:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.tapField(t, "post", g.ID)
 	h.messageHandler()(t.Context(), h.bot, h.message("hello", false))
 
 	if got := h.sent(); got[len(got)-1] != h.texts.Text("en", i18n.EditMovePrompt) {
@@ -541,8 +540,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 3 {
-		t.Errorf("reply has %d button rows, want the menu's 3", len(rows))
+	if rows := h.keyboard(t); len(rows) != 2 {
+		t.Errorf("reply has %d button rows, want the menu's 2", len(rows))
 	}
 }
 
@@ -714,7 +713,7 @@ func TestEditLinkHandler(t *testing.T) {
 			)
 
 			if tt.wantMenu {
-				if rows := h.keyboard(t); rows[0][0].CallbackData != "giveaway-edit:move:1" {
+				if rows := h.keyboard(t); rows[0][0].CallbackData != "giveaway-edit:ask_finish:1" {
 					t.Errorf("first button = %+v, want the field menu", rows[0][0])
 				}
 
@@ -803,6 +802,7 @@ func TestFieldLinkHandler(t *testing.T) {
 		{name: "winners", payload: "winners_<id>", wantStep: "edit:winners:<id>"},
 		{name: "field with underscore", payload: "end_date_<id>", wantStep: "edit:end_date:<id>"},
 		{name: "button text", payload: "button_text_<id>", wantStep: "edit:button_text:<id>"},
+		{name: "post", payload: "post_<id>", wantStep: "edit:move:<id>"},
 		{name: "another user", payload: "winners_<id>", from: adminID + 1, notice: i18n.EditNotYours},
 		{name: "unknown giveaway", payload: "winners_999", notice: i18n.EditNotFound},
 		{name: "unknown field", payload: "title_<id>", notice: i18n.EditNotFound},

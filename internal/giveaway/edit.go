@@ -65,6 +65,10 @@ func parseEditStep(step string) (string, uint, bool) {
 	return what, uint(id), true
 }
 
+// linkPost stands in for a field in a field link: the link moves the giveaway to another
+// post of its channel.
+const linkPost = "post"
+
 // isField reports whether what names a field the creator can change.
 func isField(what string) bool {
 	switch what {
@@ -506,7 +510,7 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang, botUsername string) (s
 	text := e.svc.texts.Text(lang, i18n.EditMenu,
 		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), date, clock, g.Winners, counts[id],
 		html.EscapeString(e.label(g)),
-		edit(FieldEndDate), edit(FieldEndTime), edit(FieldWinners), edit(FieldButtonText))
+		edit(FieldEndDate), edit(FieldEndTime), edit(FieldWinners), edit(FieldButtonText), edit(linkPost))
 
 	return text, g.Published, nil
 }

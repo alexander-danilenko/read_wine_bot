@@ -44,7 +44,6 @@ const (
 	editYesFinish = "yes_finish" // finishes the giveaway now
 	editNo        = "no"         // declines the cancel or finish and shows the menu
 	editPublish   = "publish"    // publishes a cancelled giveaway again
-	editMove      = "move"       // asks for the post to move the giveaway to
 	editStop      = "stop"       // stops waiting for a forward or a value
 )
 
@@ -203,7 +202,7 @@ func EditLinkHandler(
 }
 
 // FieldLinkHandler returns the handler for the field links of the field menu: it asks for a new
-// value of the field the link names.
+// value of the field the link names, or for the post to move the giveaway to.
 func FieldLinkHandler(
 	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
 ) bot.HandlerFunc {
@@ -221,7 +220,9 @@ func FieldLinkHandler(
 		typing(ctx, b, log, msg.From.ID)
 
 		r := Reply{Stale: true}
-		if id, field, ok := parseFieldLink(msg.Text); ok {
+		if id, field, ok := parseFieldLink(msg.Text); ok && field == linkPost {
+			r = ed.AskMove(ctx, telegramAPI{b: b}, msg.From.ID, id)
+		} else if ok {
 			r = ed.Field(ctx, telegramAPI{b: b}, msg.From.ID, id, field)
 		}
 
@@ -360,8 +361,6 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 		return h.confirm(ctx, tg, userID, a)
 	case editPublish:
 		return h.ed.Restore(ctx, tg, userID, a.id)
-	case editMove:
-		return h.ed.AskMove(ctx, tg, userID, a.id)
 	case editStop:
 		return h.ed.Stop(ctx, userID)
 	default:
@@ -476,13 +475,9 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 		return []models.InlineKeyboardButton{{Text: h.texts.Text(lang, key), CallbackData: editData(action, rawID)}}
 	}
 
-	tail := [][]models.InlineKeyboardButton{
-		row(i18n.EditMoveGiveaway, editMove),
-		row(i18n.EditPublishGiveaway, editPublish),
-	}
+	tail := [][]models.InlineKeyboardButton{row(i18n.EditPublishGiveaway, editPublish)}
 	if published {
 		tail = [][]models.InlineKeyboardButton{
-			row(i18n.EditMoveGiveaway, editMove),
 			row(i18n.EditFinishGiveaway, editAskFinish),
 			row(i18n.EditCancelGiveaway, editAsk),
 		}

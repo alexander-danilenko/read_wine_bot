@@ -101,7 +101,6 @@ const (
 	EditListGone          Key = "edit.list_gone"
 	EditListGoneNote      Key = "edit.list_gone_note"
 	EditListEmpty         Key = "edit.list_empty"
-	EditMoveGiveaway      Key = "edit.move_giveaway"
 	EditMovePrompt        Key = "edit.move_prompt"
 	EditMoveOtherChannel  Key = "edit.move_other_channel"
 	EditMoveSame          Key = "edit.move_same"
