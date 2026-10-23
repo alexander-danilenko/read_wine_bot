@@ -35,7 +35,7 @@ const (
 	defaultEndDays    = 7 // the default end date is this many days after today
 	defaultEndTime    = "19:00"
 	minWinners        = 1
-	maxWinners        = 99 // 99 reroll buttons and Publish fill Telegram's 100 buttons per message
+	maxWinners        = 98 // 98 reroll buttons, Publish and Skip fill Telegram's 100 buttons per message
 	maxButtonTextRune = 64
 )
 

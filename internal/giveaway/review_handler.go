@@ -28,13 +28,15 @@ const ReviewCallbackPrefix = "giveaway-review:"
 
 // Results review button actions: giveaway-review:<action>:<giveaway ID>[:<argument>]. The
 // argument is a winner's Telegram ID for the reroll actions and the rerolled-out count the
-// admin saw for the publish actions.
+// admin saw for the publish and skip actions.
 const (
 	reviewShow       = "show"   // shows the review
 	reviewAskReroll  = "ask"    // asks to confirm replacing a winner
 	reviewReroll     = "reroll" // replaces the winner
 	reviewAskPublish = "askpub" // asks to confirm publishing
 	reviewPublish    = "pub"    // publishes the results
+	reviewAskSkip    = "asksk"  // asks to confirm closing without publishing
+	reviewSkip       = "skip"   // closes without publishing
 )
 
 // Parts of a review button's callback data after the prefix: the action, the giveaway ID and
@@ -74,7 +76,7 @@ func parseReviewData(data string) (reviewAction, bool) {
 	switch parts[0] {
 	case reviewShow:
 		want = withoutArg
-	case reviewAskReroll, reviewReroll, reviewAskPublish, reviewPublish:
+	case reviewAskReroll, reviewReroll, reviewAskPublish, reviewPublish, reviewAskSkip, reviewSkip:
 	default:
 		return reviewAction{}, false
 	}
@@ -125,6 +127,11 @@ func reviewView(rv *Reviewer, lang string, r ReviewReply) (string, [][]models.In
 			button(texts.Text(lang, i18n.ReviewYesPublish), reviewData(reviewPublish, r.Giveaway.ID, rerolled)),
 			back,
 		}}
+	case SkipScreen:
+		return texts.Text(lang, i18n.ReviewAskSkip), [][]models.InlineKeyboardButton{{
+			button(texts.Text(lang, i18n.ReviewYesSkip), reviewData(reviewSkip, r.Giveaway.ID, rerolled)),
+			back,
+		}}
 	case NoScreen, ResultsScreen:
 	}
 
@@ -137,9 +144,14 @@ func reviewView(rv *Reviewer, lang string, r ReviewReply) (string, [][]models.In
 	}
 
 	rows := slices.Collect(slices.Chunk(rerolls, rerollsPerRow))
-	rows = append(rows, []models.InlineKeyboardButton{
-		button(texts.Text(lang, i18n.ReviewPublishButton), reviewData(reviewAskPublish, r.Giveaway.ID, rerolled)),
-	})
+	rows = append(rows,
+		[]models.InlineKeyboardButton{
+			button(texts.Text(lang, i18n.ReviewPublishButton), reviewData(reviewAskPublish, r.Giveaway.ID, rerolled)),
+		},
+		[]models.InlineKeyboardButton{
+			button(texts.Text(lang, i18n.ReviewSkipButton), reviewData(reviewAskSkip, r.Giveaway.ID, rerolled)),
+		},
+	)
 
 	return rv.ReviewText(lang, r.Giveaway, r.Results), rows
 }
@@ -230,6 +242,10 @@ func (h reviewHandler) act(ctx context.Context, tg telegramAPI, userID int64, a 
 		return h.rv.AskPublish(ctx, tg, userID, a.id, int(a.arg))
 	case reviewPublish:
 		return h.rv.Publish(ctx, tg, userID, a.id, int(a.arg))
+	case reviewAskSkip:
+		return h.rv.AskSkip(ctx, tg, userID, a.id, int(a.arg))
+	case reviewSkip:
+		return h.rv.Skip(ctx, tg, userID, a.id, int(a.arg))
 	default:
 		return h.rv.Show(ctx, tg, userID, a.id)
 	}

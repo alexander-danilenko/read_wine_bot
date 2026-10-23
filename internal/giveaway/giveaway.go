@@ -38,10 +38,10 @@ type Giveaway struct {
 	// GORM leaves a false zero value out of an INSERT for a column with a default, so
 	// Store.SaveDraft names the column explicitly.
 	Published bool `gorm:"not null;default:true;comment:Whether the join button is on the post. False for unfinished setups and cancelled giveaways"`
-	// ResultsPending is set together with FinishedAt and cleared when an admin publishes the
-	// results. The default is false, so giveaways drawn before results review count as
+	// ResultsPending is set together with FinishedAt and cleared when an admin publishes or
+	// skips the results. The default is false, so giveaways drawn before results review count as
 	// published.
-	ResultsPending bool      `gorm:"not null;default:false;check:chk_giveaways_results,NOT results_pending OR finished_at IS NOT NULL;comment:Whether the drawn results wait for an admin to publish them in the channel. False before the draw and after publishing"`
+	ResultsPending bool      `gorm:"not null;default:false;check:chk_giveaways_results,NOT results_pending OR finished_at IS NOT NULL;comment:Whether the drawn results wait for an admin to publish them in the channel. False before the draw and after publishing or skipping"`
 	CreatedAt      time.Time `gorm:"comment:When the setup started"`
 	UpdatedAt      time.Time `gorm:"comment:When the row last changed"`
 }

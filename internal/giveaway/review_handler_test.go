@@ -59,8 +59,8 @@ func TestSendReviewToCreator(t *testing.T) {
 	}
 
 	rows := h.keyboard(t)
-	if len(rows) != 2 || !strings.HasPrefix(rows[0][0].CallbackData, giveaway.ReviewCallbackPrefix) {
-		t.Errorf("rows = %+v, want one reroll row and the publish row", rows)
+	if len(rows) != 3 || !strings.HasPrefix(rows[0][0].CallbackData, giveaway.ReviewCallbackPrefix) {
+		t.Errorf("rows = %+v, want one reroll row, the publish row and the skip row", rows)
 	}
 }
 

@@ -58,6 +58,7 @@ const (
 	ResultsScreen                     // the winners with their reroll buttons and Publish
 	RerollScreen                      // asks to confirm replacing one winner
 	PublishScreen                     // asks to confirm publishing
+	SkipScreen                        // asks to confirm closing without publishing
 )
 
 // ReviewReply is the outcome of a results review action: a notice to send, the screen to
@@ -194,6 +195,21 @@ func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, 
 // AskPublish asks to confirm publishing the results of giveaway id that the admin saw with
 // rerolled participants rerolled out.
 func (r *Reviewer) AskPublish(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
+	return r.ask(ctx, tg, userID, id, rerolled, PublishScreen)
+}
+
+// AskSkip asks to confirm closing giveaway id without publishing the results that the admin
+// saw with rerolled participants rerolled out.
+func (r *Reviewer) AskSkip(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
+	return r.ask(ctx, tg, userID, id, rerolled, SkipScreen)
+}
+
+// Skip closes giveaway id without posting its results, if they are still the results the
+// admin saw: rerolled is their rerolled-out count then. It claims the results the way
+// Publish does, so a skip and a publish cannot both win.
+func (r *Reviewer) Skip(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
+	log := r.log.With("user_id", userID, "giveaway_id", id)
+
 	g, res, reply, ok := r.load(ctx, tg, userID, id)
 	if !ok {
 		return reply
@@ -203,7 +219,20 @@ func (r *Reviewer) AskPublish(ctx context.Context, tg ReviewTelegram, userID int
 		return ReviewReply{Stale: true}
 	}
 
-	return ReviewReply{Screen: PublishScreen, Giveaway: g, Results: res}
+	err := r.publish.ClaimResults(ctx, id, rerolled)
+	if errors.Is(err, ErrNotFound) {
+		return ReviewReply{Stale: true}
+	}
+
+	if err != nil {
+		log.ErrorContext(ctx, "claim giveaway results to skip", "error", err)
+
+		return ReviewReply{Notice: i18n.EditFailed, Screen: ResultsScreen, Giveaway: g, Results: res}
+	}
+
+	log.InfoContext(ctx, "giveaway results skipped")
+
+	return ReviewReply{Notice: i18n.ReviewSkipped}
 }
 
 // Publish posts the results of giveaway id as a reply to its post, if they are still the
@@ -305,6 +334,23 @@ func (r *Reviewer) ReviewText(lang string, g Giveaway, res Results) string {
 // RerollText returns the confirmation for replacing winner w as HTML.
 func (r *Reviewer) RerollText(lang string, i int, w Winner) string {
 	return r.texts.Text(lang, i18n.ReviewAskReroll, place(w, i), userLink(w.User, r.maxWidth))
+}
+
+// ask shows the confirmation screen for the results of giveaway id that the admin saw with
+// rerolled participants rerolled out.
+func (r *Reviewer) ask(
+	ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int, screen ReviewScreen,
+) ReviewReply {
+	g, res, reply, ok := r.load(ctx, tg, userID, id)
+	if !ok {
+		return reply
+	}
+
+	if res.Rerolled != rerolled {
+		return ReviewReply{Stale: true}
+	}
+
+	return ReviewReply{Screen: screen, Giveaway: g, Results: res}
 }
 
 // load reads giveaway id and its results and checks that they wait for review and that the

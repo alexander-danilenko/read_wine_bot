@@ -371,9 +371,10 @@ func TestRerollWithoutReplacementLeavesFewerWinners(t *testing.T) {
 		t.Errorf("review text = %q, want the no-winners text", text)
 	}
 
-	if len(rows) != 1 || len(rows[0]) != 1 ||
-		!strings.HasPrefix(rows[0][0].CallbackData, ReviewCallbackPrefix+reviewAskPublish) {
-		t.Errorf("rows = %+v, want only the publish button", rows)
+	if len(rows) != 2 || len(rows[0]) != 1 || len(rows[1]) != 1 ||
+		!strings.HasPrefix(rows[0][0].CallbackData, ReviewCallbackPrefix+reviewAskPublish) ||
+		!strings.HasPrefix(rows[1][0].CallbackData, ReviewCallbackPrefix+reviewAskSkip) {
+		t.Errorf("rows = %+v, want only the publish and skip buttons", rows)
 	}
 }
 
@@ -417,6 +418,46 @@ func TestRerollAfterPublishIsStale(t *testing.T) {
 
 	if len(tg.sent) != 1 {
 		t.Errorf("sent %d messages, want the results once", len(tg.sent))
+	}
+}
+
+func TestSkipClosesWithoutPosting(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()}, bob())
+	rv := newTestReviewer(t, store)
+	tg := newAdmins()
+
+	if r := rv.Skip(t.Context(), tg, creatorID, reviewID, 0); r.Notice != i18n.ReviewSkipped || r.Screen != NoScreen {
+		t.Errorf("skip = %+v, want the skipped notice", r)
+	}
+
+	if len(tg.sent) != 0 {
+		t.Errorf("sent %+v, want nothing in the channel", tg.sent)
+	}
+
+	if store.pending(t) {
+		t.Error("results still pending after skipping")
+	}
+
+	if r := rv.Publish(t.Context(), tg, creatorID, reviewID, 0); !r.Stale {
+		t.Errorf("publish after skip = %+v, want stale", r)
+	}
+}
+
+func TestSkipAfterAnotherAdminsRerollIsStale(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()}, bob())
+	rv := newTestReviewer(t, store)
+	tg := newAdmins()
+
+	rv.Reroll(t.Context(), tg, otherAdmin, reviewID, ann().TelegramID)
+
+	if r := rv.Skip(t.Context(), tg, creatorID, reviewID, 0); !r.Stale {
+		t.Errorf("skip = %+v, want stale", r)
+	}
+
+	if !store.pending(t) {
+		t.Error("results closed by a stale skip")
 	}
 }
 
@@ -669,6 +710,8 @@ func TestReviewCallbackData(t *testing.T) {
 		reviewData(reviewReroll, maxID, maxUser),
 		reviewData(reviewAskPublish, maxID, maxWinners),
 		reviewData(reviewPublish, maxID, maxUser),
+		reviewData(reviewAskSkip, maxID, maxUser),
+		reviewData(reviewSkip, maxID, maxUser),
 	} {
 		if len(data) > 64 {
 			t.Errorf("%q is %d bytes, over Telegram's 64", data, len(data))

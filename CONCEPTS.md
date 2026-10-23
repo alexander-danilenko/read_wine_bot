@@ -18,7 +18,7 @@ The once-a-minute step that finishes a due giveaway: it picks distinct participa
 
 ### Results review
 
-The step between the winner draw and the published results. The creator gets the results in private, and any current admin of the giveaway's channel can reroll winners one at a time, then publish the results as a reply to the giveaway post. Publishing happens once and closes rerolls.
+The step between the winner draw and the published results. The creator gets the results in private, and any current admin of the giveaway's channel can reroll winners one at a time, then publish the results as a reply to the giveaway post, or skip them to close the giveaway without posting. Publishing or skipping happens once and closes rerolls.
 
 ### Reroll
 

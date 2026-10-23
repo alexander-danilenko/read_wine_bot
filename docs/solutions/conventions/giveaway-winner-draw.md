@@ -42,7 +42,7 @@ The owner checks winners by hand against partner channels the bot cannot read, s
 - **A rerolled-out participant keeps `rerolled_at` and never wins that giveaway again.** Clearing `winner` alone would let the next reroll pick the same person.
 - **Publish carries the rerolled-out count the admin saw.** `ClaimResults` locks the giveaway row and then counts in a separate statement, so a reroll it waited on is counted (a subquery inside the `UPDATE` would read the pre-reroll snapshot under READ COMMITTED). It matches the count, so a publish confirmed on a review older than another admin's reroll is stale and never posts a winner nobody checked.
 - **Publish claims, then posts, then gives the claim back** when the first message fails. Posting and the release run under `context.WithoutCancel`. A deleted post gets the results as a standalone message (`AllowSendingWithoutReply`).
-- **At most 99 winners.** Telegram allows 100 buttons on a message: 99 rerolls and Publish.
+- **At most 98 winners.** Telegram allows 100 buttons on a message: 98 rerolls, Publish and Skip.
 
 ### Rules to keep
 
