@@ -98,6 +98,11 @@ type PendingLister interface {
 	PendingResults(ctx context.Context) ([]Giveaway, error)
 }
 
+// Counter counts the participants of giveaways. *Store implements it.
+type Counter interface {
+	Participants(ctx context.Context, ids []uint) (map[uint]int, error)
+}
+
 // ButtonRemover takes the join button off a channel post. A post without a button counts as
 // success.
 type ButtonRemover interface {
@@ -114,11 +119,14 @@ type Editor struct {
 	writer    Writer
 	mover     Mover
 	pending   PendingLister
+	counter   Counter
 }
 
 // NewEditor returns an Editor that reuses svc's steps, texts, clock and parsers.
-func NewEditor(svc *Service, giveaways Giveaways, writer Writer, mover Mover, pending PendingLister) *Editor {
-	return &Editor{svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending}
+func NewEditor(
+	svc *Service, giveaways Giveaways, writer Writer, mover Mover, pending PendingLister, counter Counter,
+) *Editor {
+	return &Editor{svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending, counter: counter}
 }
 
 // BeginEdit starts an edit for the user: the bot now waits for a forwarded post.
@@ -469,6 +477,11 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, 
 		return "", false, err //nolint:wrapcheck // Store already names the giveaway
 	}
 
+	counts, err := e.counter.Participants(ctx, []uint{id})
+	if err != nil {
+		return "", false, err //nolint:wrapcheck // Store already names the giveaway
+	}
+
 	status := i18n.EditStatusDraft
 
 	switch {
@@ -479,7 +492,7 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, 
 	}
 
 	text := e.svc.texts.Text(lang, i18n.EditMenu,
-		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), e.ends(g), g.Winners, e.label(g))
+		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), e.ends(g), g.Winners, e.label(g), counts[id])
 
 	return text, g.Published, nil
 }
@@ -511,7 +524,10 @@ func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botU
 		return e.svc.texts.Text(lang, i18n.EditListEmpty), nil
 	}
 
-	lines, gone := e.runningLines(ctx, tg, lang, botUsername, gs)
+	lines, gone, err := e.runningLines(ctx, tg, lang, botUsername, gs)
+	if err != nil {
+		return "", err
+	}
 
 	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(append(lines, results...), "\n")
 	if gone {
@@ -530,7 +546,17 @@ func (e *Editor) Default(field, lang string) string {
 // one of their posts was deleted.
 func (e *Editor) runningLines(
 	ctx context.Context, tg Telegram, lang, botUsername string, gs []Giveaway,
-) ([]string, bool) {
+) ([]string, bool, error) {
+	ids := make([]uint, 0, len(gs))
+	for _, g := range gs {
+		ids = append(ids, g.ID)
+	}
+
+	counts, err := e.counter.Participants(ctx, ids)
+	if err != nil {
+		return nil, false, err //nolint:wrapcheck // Store already names the giveaways
+	}
+
 	now := e.svc.now()
 	lines := make([]string, 0, len(gs))
 	gone := false
@@ -551,10 +577,10 @@ func (e *Editor) runningLines(
 
 		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListItem,
 			e.svc.texts.Text(lang, mark), postLink(g.ChatID, g.MessageID), editLink(botUsername, g.ChatID, g.MessageID),
-			ends))
+			ends, counts[g.ID]))
 	}
 
-	return lines, gone
+	return lines, gone, nil
 }
 
 // pendingLines returns a /list line for every giveaway whose results wait for review in a

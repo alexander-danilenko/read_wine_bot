@@ -293,7 +293,7 @@ func TestMoveStoreFails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newSetup(t)
 			g := s.joined(t)
-			ed := giveaway.NewEditor(s.svc, s.store, s.store, failingMover{tt.err}, s.store)
+			ed := giveaway.NewEditor(s.svc, s.store, s.store, failingMover{tt.err}, s.store, s.store)
 
 			if r := ed.AskMove(t.Context(), s.tg, adminID, g.ID); r.Next != moveStep(g.ID) {
 				t.Fatalf("AskMove = %+v, want the move step", r)

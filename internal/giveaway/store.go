@@ -275,6 +275,34 @@ func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, e
 	return us, nil
 }
 
+// Participants returns the number of participants of each giveaway in ids. A giveaway
+// without participants is missing from the map, which reads as 0.
+func (s *Store) Participants(ctx context.Context, ids []uint) (map[uint]int, error) {
+	counts := map[uint]int{}
+	if len(ids) == 0 {
+		return counts, nil
+	}
+
+	var rows []struct {
+		GiveawayID uint
+		Count      int
+	}
+
+	err := s.db.WithContext(ctx).Model(&Participant{}).
+		Select("giveaway_id, count(*) AS count").
+		Where("giveaway_id IN ?", ids).
+		Group("giveaway_id").Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("count participants of giveaways %v: %w", ids, err)
+	}
+
+	for _, r := range rows {
+		counts[r.GiveawayID] = r.Count
+	}
+
+	return counts, nil
+}
+
 // Finish marks the winners of giveaway id at places 1, 2, … in the order of winnerIDs, sets
 // its finish time to now and leaves its results waiting for review, all or nothing. It
 // returns ErrNotFound when the giveaway is no longer due at now: cancelled, finished, or

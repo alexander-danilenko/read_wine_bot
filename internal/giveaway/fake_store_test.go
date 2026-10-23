@@ -130,6 +130,21 @@ func (f *memStore) Join(_ context.Context, giveawayID uint, telegramID int64) (b
 	return true, nil
 }
 
+func (f *memStore) Participants(_ context.Context, ids []uint) (map[uint]int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	counts := map[uint]int{}
+
+	for _, id := range ids {
+		if n := len(f.participants[id]); n > 0 {
+			counts[id] = n
+		}
+	}
+
+	return counts, nil
+}
+
 func (f *memStore) Post(_ context.Context, chatID, messageID int64) (giveaway.Giveaway, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

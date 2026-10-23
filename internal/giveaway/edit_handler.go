@@ -39,6 +39,7 @@ const (
 	editNo        = "no"         // declines the cancel or finish and shows the menu
 	editPublish   = "publish"    // publishes a cancelled giveaway again
 	editMove      = "move"       // asks for the post to move the giveaway to
+	editRefresh   = "refresh"    // shows the menu again with fresh data
 	editStop      = "stop"       // stops waiting for a forward or a value
 )
 
@@ -291,6 +292,8 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 		return h.ed.Restore(ctx, tg, userID, a.id)
 	case editMove:
 		return h.ed.AskMove(ctx, tg, userID, a.id)
+	case editRefresh:
+		return h.ed.ShowMenu(ctx, tg, userID, a.id)
 	case editStop:
 		return h.ed.Stop(ctx, userID)
 	default:
@@ -383,7 +386,7 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 const fieldsPerRow = 2
 
 // menu sends the field menu of giveaway id: a button per field, two to a row, then Move, then
-// Finish now and Cancel for a published giveaway or Publish for a cancelled one.
+// Finish now and Cancel for a published giveaway or Publish for a cancelled one, then Refresh.
 func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang string, id uint) {
 	text, published, err := h.ed.Menu(ctx, id, lang)
 	if err != nil {
@@ -411,12 +414,14 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 	tail := [][]models.InlineKeyboardButton{
 		row(i18n.EditMoveGiveaway, editMove),
 		row(i18n.EditPublishGiveaway, editPublish),
+		row(i18n.EditRefresh, editRefresh),
 	}
 	if published {
 		tail = [][]models.InlineKeyboardButton{
 			row(i18n.EditMoveGiveaway, editMove),
 			row(i18n.EditFinishGiveaway, editAskFinish),
 			row(i18n.EditCancelGiveaway, editAsk),
+			row(i18n.EditRefresh, editRefresh),
 		}
 	}
 

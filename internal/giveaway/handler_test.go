@@ -347,6 +347,7 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		"giveaway-edit:move:" + id,
 		"giveaway-edit:ask_finish:" + id,
 		"giveaway-edit:ask:" + id,
+		"giveaway-edit:refresh:" + id,
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("menu buttons = %q, want %q", got, want)
@@ -392,9 +393,43 @@ func TestEditMenuOfCancelled(t *testing.T) {
 	h.tap(t, "giveaway-edit:no:"+strconv.FormatUint(uint64(g.ID), 10))
 
 	rows := h.keyboard(t)
-	if last := rows[len(rows)-1][0]; last.Text != "✅ Publish giveaway" ||
-		last.CallbackData != "giveaway-edit:publish:"+strconv.FormatUint(uint64(g.ID), 10) {
-		t.Errorf("last button = %+v, want Publish", last)
+	if publish := rows[len(rows)-2][0]; publish.Text != "✅ Publish giveaway" ||
+		publish.CallbackData != "giveaway-edit:publish:"+strconv.FormatUint(uint64(g.ID), 10) {
+		t.Errorf("button above the last = %+v, want Publish", publish)
+	}
+
+	if last := rows[len(rows)-1][0]; last.CallbackData != "giveaway-edit:refresh:"+strconv.FormatUint(
+		uint64(g.ID),
+		10,
+	) {
+		t.Errorf("last button = %+v, want Refresh", last)
+	}
+}
+
+func TestEditRefreshShowsNewParticipants(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+
+	if sent := h.sent(); !strings.Contains(sent[len(sent)-1], "Participants: 0\n") {
+		t.Fatalf("menu = %q, want 0 participants", sent[len(sent)-1])
+	}
+
+	if _, err := h.store.Join(t.Context(), g.ID, 101); err != nil {
+		t.Fatal(err)
+	}
+
+	h.api.calls = nil
+	h.tap(t, "giveaway-edit:refresh:"+strconv.FormatUint(uint64(g.ID), 10))
+
+	var edited string
+	for _, c := range h.api.calls {
+		if c.method == "editMessageText" && c.form["message_id"] == "5" {
+			edited = c.form["text"]
+		}
+	}
+
+	if !strings.Contains(edited, "Participants: 1\n") {
+		t.Errorf("tapped message edited to %q, want the menu with 1 participant", edited)
 	}
 }
 
@@ -452,8 +487,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 5 {
-		t.Errorf("reply has %d button rows, want the menu's 5", len(rows))
+	if rows := h.keyboard(t); len(rows) != 6 {
+		t.Errorf("reply has %d button rows, want the menu's 6", len(rows))
 	}
 }
 
@@ -603,7 +638,7 @@ func TestListHandler(t *testing.T) {
 
 	want := "Your active giveaways:\n\n" +
 		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> [<a href="https://t.me/test_bot?start=edit_1234567890_42">edit</a>] · ` +
-		`ends 2026-10-25 19:00`
+		`ends 2026-10-25 19:00 · 👥 0`
 	if sent := h.sent(); len(sent) != 1 || sent[0] != want {
 		t.Errorf("sent %q, want only %q", sent, want)
 	}

@@ -473,11 +473,17 @@ func TestEditList(t *testing.T) {
 		s.store,
 		&giveaway.Giveaway{ChatID: channelID, MessageID: 41, CreatedBy: adminID, EndsAt: s.kyivTime(25, 19, 0)},
 	)
-	publish(
+	due := publish(
 		t,
 		s.store,
 		&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: s.kyivTime(8, 19, 0)},
 	)
+
+	for _, userID := range []int64{101, 102} {
+		if _, err := s.store.Join(ctx, due.ID, userID); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	gone := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 43, CreatedBy: adminID})
 	if err := s.store.Cancel(ctx, gone.ID); err != nil {
@@ -496,11 +502,11 @@ func TestEditList(t *testing.T) {
 
 	want := "Your active giveaways:\n\n" +
 		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> [<a href="https://t.me/test_bot?start=edit_1234567890_42">edit</a>] · ` +
-		`ends 2026-10-08 19:00, awaiting results` + "\n" +
+		`ends 2026-10-08 19:00, awaiting results · 👥 2` + "\n" +
 		`- 🟢 <a href="https://t.me/c/1234567890/41">Post</a> [<a href="https://t.me/test_bot?start=edit_1234567890_41">edit</a>] · ` +
-		`ends 2026-10-25 19:00` + "\n" +
+		`ends 2026-10-25 19:00 · 👥 0` + "\n" +
 		`- 📝 <a href="https://t.me/c/1234567890/44">Post</a> [<a href="https://t.me/test_bot?start=edit_1234567890_44">edit</a>] · ` +
-		`ends —, draft, not published`
+		`ends —, draft, not published · 👥 0`
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)
 	}
@@ -587,7 +593,7 @@ func TestEditListPostGone(t *testing.T) {
 
 	want := "Your active giveaways:\n\n" +
 		`- ⚠️ <a href="https://t.me/c/1234567890/42">Post</a> [<a href="https://t.me/test_bot?start=edit_1234567890_42">edit</a>] · ` +
-		`ends 2026-10-25 19:00, post deleted` + "\n\n" +
+		`ends 2026-10-25 19:00, post deleted · 👥 0` + "\n\n" +
 		"⚠️ A post was deleted. Its participants are kept: tap [edit], then “🔀 Move to another post”, " +
 		"and send a new post of the same channel."
 	if got != want {
