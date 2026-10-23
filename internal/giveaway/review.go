@@ -452,10 +452,15 @@ func displayName(u user.User) string {
 }
 
 // userLink returns an HTML link to u that shows u's name, shortened with "…" to at most width
-// UTF-16 code units.
+// UTF-16 code units. It links to u's username when u has one: Telegram shows a link by ID as
+// plain text when the user's privacy settings hide their account.
 func userLink(u user.User, width int) string {
-	return `<a href="tg://user?id=` + strconv.FormatInt(u.TelegramID, 10) + `">` +
-		html.EscapeString(shorten(displayName(u), width)) + "</a>"
+	href := "tg://user?id=" + strconv.FormatInt(u.TelegramID, 10)
+	if u.Username != "" {
+		href = "https://t.me/" + u.Username
+	}
+
+	return `<a href="` + href + `">` + html.EscapeString(shorten(displayName(u), width)) + "</a>"
 }
 
 // shorten cuts s to at most width UTF-16 code units, ending it with "…" when it was cut.

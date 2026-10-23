@@ -742,3 +742,22 @@ func TestPublishRacingAnotherAdminsRerollIsStale(t *testing.T) {
 		)
 	}
 }
+
+func TestUserLinkPrefersUsername(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		u    user.User
+		want string
+	}{
+		{"username", user.User{TelegramID: 1, FirstName: "Ann", Username: "ann"}, `<a href="https://t.me/ann">Ann</a>`},
+		{"no username", user.User{TelegramID: 2, FirstName: "Bob"}, `<a href="tg://user?id=2">Bob</a>`},
+	}
+
+	for _, tt := range tests {
+		if got := userLink(tt.u, maxMessageLen); got != tt.want {
+			t.Errorf("%s: userLink = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
