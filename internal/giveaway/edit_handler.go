@@ -124,44 +124,6 @@ func EditStartHandler(
 	}
 }
 
-// ListHandler returns the handler for /list: it sends the user's running giveaways.
-func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *slog.Logger) bot.HandlerFunc {
-	h := editHandler{ed: ed, texts: texts, log: log}
-
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := privateMessage(update)
-		if msg == nil {
-			return
-		}
-
-		lang := language.UserLanguage(ctx, users, log, msg.From)
-		typing(ctx, b, log, msg.From.ID)
-
-		text, err := list(ctx, b, ed, msg.From.ID, lang)
-		if err != nil {
-			log.ErrorContext(ctx, "list running giveaways", "user_id", msg.From.ID, "error", err)
-			text = texts.Text(lang, i18n.EditFailed)
-		}
-
-		send(ctx, b, h.log, &bot.SendMessageParams{
-			ChatID:             msg.From.ID,
-			Text:               text,
-			ParseMode:          models.ParseModeHTML,
-			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
-		})
-	}
-}
-
-// list returns the user's running giveaways from List.
-func list(ctx context.Context, b *bot.Bot, ed *Editor, userID int64, lang string) (string, error) {
-	name, err := botUsername(ctx, b)
-	if err != nil {
-		return "", err
-	}
-
-	return ed.List(ctx, telegramAPI{b: b}, userID, lang, name)
-}
-
 // botUsername returns the bot's username, which links to the bot need and only getMe tells.
 func botUsername(ctx context.Context, b *bot.Bot) (string, error) {
 	me, err := b.GetMe(ctx)

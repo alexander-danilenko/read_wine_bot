@@ -121,6 +121,7 @@ func TestParsePage(t *testing.T) {
 		{FinishedCallbackPrefix + "-1", 0, false},
 		{FinishedCallbackPrefix + "x", 0, false},
 		{FinishedCallbackPrefix + "99999999999", 0, false},
+		{ListCallbackPrefix + "1", 0, false},
 	}
 	for _, tt := range tests {
 		if page, ok := parsePage(tt.data, FinishedCallbackPrefix); page != tt.page || ok != tt.ok {
@@ -131,8 +132,8 @@ func TestParsePage(t *testing.T) {
 
 func TestPageCallbackPrefixes(t *testing.T) {
 	others := []string{EditCallbackPrefix, SetupCallbackPrefix, ReviewCallbackPrefix, JoinCallback}
-	for _, prefix := range []string{FinishedCallbackPrefix} {
-		for _, other := range append(others, FinishedCallbackPrefix) {
+	for _, prefix := range []string{ListCallbackPrefix, FinishedCallbackPrefix} {
+		for _, other := range append(others, ListCallbackPrefix, FinishedCallbackPrefix) {
 			if other != prefix && (strings.HasPrefix(other, prefix) || strings.HasPrefix(prefix, other)) {
 				t.Errorf("page prefix %q and %q overlap", prefix, other)
 			}

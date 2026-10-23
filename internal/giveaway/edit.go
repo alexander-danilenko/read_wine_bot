@@ -5,6 +5,7 @@ import (
 	"errors"
 	"html"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -525,14 +526,17 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang, botUsername string) (s
 	return text, g.Published, nil
 }
 
-// List returns the HTML text that lists the user's running giveaways and then their draft as a
-// bulleted list, each with a link to its post and a link that opens its field menu in the bot
-// named botUsername. A running giveaway whose post was deleted gets a warning, and a note
-// under the list says how to move it.
-func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botUsername string) (string, error) {
+// List returns the HTML text of page, from 1, of the user's running giveaways, then their
+// draft, then the giveaways whose results wait for review in a channel the user is an admin
+// of, as a bulleted list, and whether a next page exists. Each line links to its post and opens
+// its field menu or results review in the bot named botUsername. A running giveaway whose post
+// was deleted gets a warning, and a note under the list says how to move it.
+func (e *Editor) List(
+	ctx context.Context, tg Telegram, userID int64, page int, lang, botUsername string,
+) (string, bool, error) {
 	gs, err := e.giveaways.Running(ctx, userID)
 	if err != nil {
-		return "", err //nolint:wrapcheck // Store already names the user
+		return "", false, err //nolint:wrapcheck // Store already names the user
 	}
 
 	d, err := e.svc.drafts.Draft(ctx, userID)
@@ -540,29 +544,49 @@ func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botU
 	case err == nil:
 		gs = append(gs, d)
 	case !errors.Is(err, ErrNotFound):
-		return "", err //nolint:wrapcheck // Store already names the user
+		return "", false, err //nolint:wrapcheck // Store already names the user
 	}
 
-	results, err := e.pendingLines(ctx, tg, userID, lang, botUsername)
+	pending, err := e.pendingResults(ctx, tg, userID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	if len(gs) == 0 && len(results) == 0 {
-		return e.svc.texts.Text(lang, i18n.EditListEmpty), nil
+	// ponytail: the list comes from three sources and an admin check in Telegram, so it is
+	// paged here, not in SQL; fine for a few dozen giveaways per admin.
+	all := slices.Concat(gs, pending)
+	offset := (page - 1) * pageSize
+	more := len(all) > offset+pageSize
+	all = all[min(offset, len(all)):]
+	all = all[:min(pageSize, len(all))]
+
+	if len(all) == 0 {
+		return e.svc.texts.Text(lang, i18n.EditListEmpty), false, nil
 	}
 
-	lines, gone, err := e.runningLines(ctx, tg, lang, botUsername, gs)
+	// Only drawn giveaways have pending results, and running ones come first.
+	split := slices.IndexFunc(all, func(g Giveaway) bool { return g.ResultsPending })
+	if split < 0 {
+		split = len(all)
+	}
+
+	lines, gone, err := e.runningLines(ctx, tg, lang, botUsername, all[:split])
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(append(lines, results...), "\n")
+	for _, g := range all[split:] {
+		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListResults,
+			e.svc.texts.Text(lang, i18n.EditListMarkResults), postLink(g.ChatID, g.MessageID),
+			resultsLink(botUsername, g.ChatID, g.MessageID)))
+	}
+
+	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n")
 	if gone {
 		text += "\n\n" + e.svc.texts.Text(lang, i18n.EditListGoneNote)
 	}
 
-	return text, nil
+	return text, more, nil
 }
 
 // Default returns the value a field's default button stands for, or "" if it has none.
@@ -611,19 +635,17 @@ func (e *Editor) runningLines(
 	return lines, gone, nil
 }
 
-// pendingLines returns a /list line for every giveaway whose results wait for review in a
-// channel the user is an admin of. They stay out of the running giveaways' lines, whose post
-// check would put the join button back on the post.
-func (e *Editor) pendingLines(
-	ctx context.Context, tg Telegram, userID int64, lang, botUsername string,
-) ([]string, error) {
+// pendingResults returns the giveaways whose results wait for review in a channel the user is
+// an admin of. They stay out of the running giveaways' lines, whose post check would put the
+// join button back on the post.
+func (e *Editor) pendingResults(ctx context.Context, tg Telegram, userID int64) ([]Giveaway, error) {
 	gs, err := e.pending.PendingResults(ctx)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Store already says what it listed
 	}
 
 	adminOf := map[int64]bool{} // channel ID -> whether the user is its admin, checked once
-	lines := make([]string, 0, len(gs))
+	mine := make([]Giveaway, 0, len(gs))
 
 	for _, g := range gs {
 		isAdmin, checked := adminOf[g.ChatID]
@@ -638,13 +660,11 @@ func (e *Editor) pendingLines(
 		}
 
 		if isAdmin {
-			lines = append(lines, e.svc.texts.Text(lang, i18n.EditListResults,
-				e.svc.texts.Text(lang, i18n.EditListMarkResults), postLink(g.ChatID, g.MessageID),
-				resultsLink(botUsername, g.ChatID, g.MessageID)))
+			mine = append(mine, g)
 		}
 	}
 
-	return lines, nil
+	return mine, nil
 }
 
 // askPublished returns the confirmation step of the published giveaway id.

@@ -2,6 +2,7 @@ package giveaway_test
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -457,13 +458,7 @@ func TestEditList(t *testing.T) {
 	s := newSetup(t)
 	ctx := t.Context()
 
-	if got, err := s.ed.List(
-		ctx,
-		s.tg,
-		adminID,
-		"en",
-		"test_bot",
-	); err != nil ||
+	if got, _, err := s.ed.List(ctx, s.tg, adminID, 1, "en", "test_bot"); err != nil ||
 		got != "You have no active giveaways." {
 		t.Errorf("empty List = %q, %v", got, err)
 	}
@@ -495,7 +490,7 @@ func TestEditList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.ed.List(ctx, s.tg, adminID, "en", "test_bot")
+	got, _, err := s.ed.List(ctx, s.tg, adminID, 1, "en", "test_bot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +581,7 @@ func TestEditListPostGone(t *testing.T) {
 
 	s.tg.attachErr = giveaway.ErrPostGone
 
-	got, err := s.ed.List(t.Context(), s.tg, adminID, "en", "test_bot")
+	got, _, err := s.ed.List(t.Context(), s.tg, adminID, 1, "en", "test_bot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +618,7 @@ func TestEditListPendingResults(t *testing.T) {
 			s.store.draw(t, g.ID)
 			s.tg.admin = tt.admin
 
-			got, err := s.ed.List(t.Context(), s.tg, tt.userID, "en", "test_bot")
+			got, _, err := s.ed.List(t.Context(), s.tg, tt.userID, 1, "en", "test_bot")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -646,7 +641,7 @@ func TestEditListSkipsPublishedResults(t *testing.T) {
 	s.store.finish(t, g.ID)
 	s.tg.admin = true
 
-	got, err := s.ed.List(t.Context(), s.tg, adminID, "en", "test_bot")
+	got, _, err := s.ed.List(t.Context(), s.tg, adminID, 1, "en", "test_bot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,4 +649,43 @@ func TestEditListSkipsPublishedResults(t *testing.T) {
 	if got != "You have no active giveaways." {
 		t.Errorf("List = %q, want the empty list", got)
 	}
+}
+
+func TestEditListPages(t *testing.T) {
+	s := newSetup(t)
+	n := giveaway.PageSize + 1 // a full page of running giveaways, then one more
+
+	for i := range n {
+		publish(t, s.store, &giveaway.Giveaway{
+			ChatID: channelID, MessageID: int64(100 + i), CreatedBy: adminID, EndsAt: s.kyivTime(25, 19, i),
+		})
+	}
+
+	g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	s.store.draw(t, g.ID)
+
+	// The post check attaches the button once per running giveaway on the page only.
+	lines, more := s.listPage(t, 1)
+	if len(lines) != giveaway.PageSize || !more || s.tg.attached != giveaway.PageSize {
+		t.Fatalf("page 1: %d lines, more %v, %d post checks; want %d lines, more, %d checks",
+			len(lines), more, s.tg.attached, giveaway.PageSize, giveaway.PageSize)
+	}
+
+	lines, more = s.listPage(t, 2)
+	if len(lines) != 2 || more || !strings.Contains(lines[0], "/1234567890/"+strconv.Itoa(100+n-1)+`"`) ||
+		!strings.Contains(lines[1], "Review results") {
+		t.Errorf("page 2 = %q, more %v; want the last running giveaway, then the results, no more", lines, more)
+	}
+}
+
+// listPage returns the lines of page of the admin's /list and whether a next page exists.
+func (s *setup) listPage(t *testing.T, page int) ([]string, bool) {
+	t.Helper()
+
+	got, more, err := s.ed.List(t.Context(), s.tg, adminID, page, "en", "test_bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return strings.Split(got, "\n")[2:], more
 }

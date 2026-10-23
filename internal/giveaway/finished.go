@@ -7,7 +7,7 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
 
-// pageSize is how many giveaways one page of /list_finished shows.
+// pageSize is how many giveaways one page of /list and /list_finished shows.
 const pageSize = 25
 
 // FinishedLister reads a creator's finished giveaways page by page. *Store implements it.

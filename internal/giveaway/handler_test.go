@@ -673,6 +673,7 @@ func TestListHandler(t *testing.T) {
 		h.ed,
 		h.texts,
 		h.users,
+		h.kb,
 		slog.New(slog.DiscardHandler),
 	)(
 		t.Context(),

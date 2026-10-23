@@ -14,9 +14,13 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
+// ListCallbackPrefix starts the callback data of the page buttons of /list:
+// giveaway-list:<page>. No callback prefix starts another, so each handler gets only its own
+// taps.
+const ListCallbackPrefix = "giveaway-list:"
+
 // FinishedCallbackPrefix starts the callback data of the page buttons of /list_finished:
-// giveaway-finished:<page>. No callback prefix starts another, so each handler gets only its
-// own taps.
+// giveaway-finished:<page>.
 const FinishedCallbackPrefix = "giveaway-finished:"
 
 // renderPage returns the HTML text of page, from 1, of a list for the user, with links to the
@@ -36,6 +40,15 @@ type pager struct {
 	log    *slog.Logger
 }
 
+// listPager returns the pager of /list: the user's running giveaways, draft and results that
+// wait for review.
+func listPager(ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger) pager {
+	return pager{
+		prefix: ListCallbackPrefix, what: "active giveaways", render: ed.List,
+		users: users, kb: kb, texts: texts, log: log,
+	}
+}
+
 // finishedPager returns the pager of /list_finished: the user's finished giveaways.
 func finishedPager(
 	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
@@ -48,6 +61,21 @@ func finishedPager(
 		prefix: FinishedCallbackPrefix, what: "finished giveaways", render: render,
 		users: users, kb: kb, texts: texts, log: log,
 	}
+}
+
+// ListHandler returns the handler for /list: it sends the first page of the user's running
+// giveaways.
+func ListHandler(
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
+) bot.HandlerFunc {
+	return listPager(ed, texts, users, kb, log).command()
+}
+
+// ListCallbackHandler returns the handler for the page buttons of /list.
+func ListCallbackHandler(
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
+) bot.HandlerFunc {
+	return listPager(ed, texts, users, kb, log).callback()
 }
 
 // ListFinishedHandler returns the handler for /list_finished: it sends the first page of the
