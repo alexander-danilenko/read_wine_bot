@@ -366,7 +366,7 @@ func TestEditForwardSendsMenu(t *testing.T) {
 	}
 
 	edit := func(field string) string {
-		return `<a href="https://t.me/test_bot?start=field_` + field + "_" + id + `">[✏️ Edit]</a>`
+		return `<a href="https://t.me/test_bot?start=field_` + field + "_" + id + `">[✏️]</a>`
 	}
 	wantText := h.texts.Text("en", i18n.EditStatusPublished) + "\n\n" +
 		"<b>📄 Post:</b> https://t.me/c/1234567890/42\n" +
@@ -682,7 +682,7 @@ func TestListHandler(t *testing.T) {
 	)
 
 	want := "Your active giveaways:\n\n" +
-		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️ Edit]</a> · ` +
+		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️]</a> · ` +
 		`ends 2026-10-25 19:00 · 👥 0`
 	if sent := h.sent(); len(sent) != 1 || sent[0] != want {
 		t.Errorf("sent %q, want only %q", sent, want)

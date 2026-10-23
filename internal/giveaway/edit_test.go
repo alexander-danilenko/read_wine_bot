@@ -501,11 +501,11 @@ func TestEditList(t *testing.T) {
 	}
 
 	want := "Your active giveaways:\n\n" +
-		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️ Edit]</a> · ` +
+		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️]</a> · ` +
 		`ends 2026-10-08 19:00, awaiting results · 👥 2` + "\n" +
-		`- 🟢 <a href="https://t.me/c/1234567890/41">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_41">[✏️ Edit]</a> · ` +
+		`- 🟢 <a href="https://t.me/c/1234567890/41">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_41">[✏️]</a> · ` +
 		`ends 2026-10-25 19:00 · 👥 0` + "\n" +
-		`- 📝 <a href="https://t.me/c/1234567890/44">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_44">[✏️ Edit]</a> · ` +
+		`- 📝 <a href="https://t.me/c/1234567890/44">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_44">[✏️]</a> · ` +
 		`ends —, draft, not published · 👥 0`
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)
@@ -592,9 +592,9 @@ func TestEditListPostGone(t *testing.T) {
 	}
 
 	want := "Your active giveaways:\n\n" +
-		`- ⚠️ <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️ Edit]</a> · ` +
+		`- ⚠️ <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️]</a> · ` +
 		`ends 2026-10-25 19:00, post deleted · 👥 0` + "\n\n" +
-		"⚠️ A post was deleted. Its participants are kept: tap [✏️ Edit], then “🔀 Move to another post”, " +
+		"⚠️ A post was deleted. Its participants are kept: tap [✏️], then “🔀 Move to another post”, " +
 		"and send a new post of the same channel."
 	if got != want {
 		t.Errorf("List = %q, want %q", got, want)
