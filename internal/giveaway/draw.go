@@ -3,25 +3,13 @@ package giveaway
 import (
 	"context"
 	"errors"
-	"html"
 	"log/slog"
-	"strconv"
-	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/go-telegram/bot"
 
-	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
-
-// maxMessageLen is Telegram's limit for one message: UTF-16 code units of the text left after
-// the markup is parsed.
-const maxMessageLen = 4096
-
-// winnerBullet starts each winner line of the results.
-const winnerBullet = "🏆 "
 
 // DrawStore finds due giveaways and records their winners. *Store implements it.
 type DrawStore interface {
@@ -37,20 +25,27 @@ type Filter func(ctx context.Context, g Giveaway, candidate user.User) (bool, er
 // AcceptAll is the Filter that lets every participant win.
 func AcceptAll(context.Context, Giveaway, user.User) (bool, error) { return true, nil }
 
-// Announcer is what the draw needs from Telegram.
+// Announcer is what the draw needs to close a giveaway: take its join button off and hand its
+// results to review.
 type Announcer interface {
 	ButtonRemover
-	// SendHTML sends an HTML text to the chat, as a reply to message replyTo unless it is 0.
-	SendHTML(ctx context.Context, chatID, replyTo int64, text string) error
+	// SendReview sends the giveaway's results to its creator for review.
+	SendReview(ctx context.Context, g Giveaway)
+}
+
+// ReviewSender hands a drawn giveaway's results to its creator for review. *ReviewNotifier
+// implements it.
+type ReviewSender interface {
+	SendReview(ctx context.Context, b *bot.Bot, g Giveaway)
 }
 
 // Drawer finishes due giveaways: it picks their winners, records them, removes the join
-// button and posts the results.
+// button and sends the results to the creator for review.
 type Drawer struct {
 	store   DrawStore
 	filter  Filter
 	shuffle func(n int, swap func(i, j int)) // rand.Shuffle; tests fix the order
-	texts   *i18n.Catalog
+	reviews ReviewSender
 	now     func() time.Time
 	log     *slog.Logger
 }
@@ -58,15 +53,15 @@ type Drawer struct {
 // NewDrawer returns a Drawer.
 func NewDrawer(
 	store DrawStore, filter Filter, shuffle func(n int, swap func(i, j int)),
-	texts *i18n.Catalog, now func() time.Time, log *slog.Logger,
+	reviews ReviewSender, now func() time.Time, log *slog.Logger,
 ) *Drawer {
-	return &Drawer{store: store, filter: filter, shuffle: shuffle, texts: texts, now: now, log: log}
+	return &Drawer{store: store, filter: filter, shuffle: shuffle, reviews: reviews, now: now, log: log}
 }
 
-// DrawDue draws every giveaway that is due now, announcing the results through b. main runs
-// it once a minute with internal/cron.
+// DrawDue draws every giveaway that is due now and sends each one's results to its creator
+// for review through b. main runs it once a minute with internal/cron.
 func (d *Drawer) DrawDue(ctx context.Context, b *bot.Bot) {
-	d.drawDue(ctx, telegramAPI{b})
+	d.drawDue(ctx, drawAnnouncer{telegramAPI: telegramAPI{b: b}, b: b, reviews: d.reviews})
 }
 
 // drawDue draws every giveaway that is due now. A failure in one giveaway is logged and the
@@ -119,7 +114,7 @@ func (d *Drawer) draw(ctx context.Context, tg Announcer, g Giveaway, now time.Ti
 	log.InfoContext(ctx, "giveaway drawn", "winners", len(ids))
 
 	// The winners are saved: announce them even if shutdown has begun.
-	d.announce(context.WithoutCancel(ctx), tg, g, winners)
+	d.announce(context.WithoutCancel(ctx), tg, g)
 }
 
 // pick returns up to g.Winners distinct participants in random order that pass the filter.
@@ -129,119 +124,56 @@ func (d *Drawer) pick(ctx context.Context, g Giveaway) ([]user.User, error) {
 		return nil, err //nolint:wrapcheck // the store's error names the giveaway
 	}
 
-	// Walking a shuffled list draws without replacement, so nobody is picked twice.
-	d.shuffle(len(candidates), func(i, j int) { candidates[i], candidates[j] = candidates[j], candidates[i] })
+	return pickFiltered(ctx, d.filter, d.shuffle, g, candidates, g.Winners)
+}
 
-	winners := make([]user.User, 0, min(g.Winners, len(candidates)))
+// pickFiltered returns up to n of candidates of g in random order that pass filter. The draw
+// and a reroll both pick this way.
+func pickFiltered(
+	ctx context.Context, filter Filter, shuffle func(n int, swap func(i, j int)),
+	g Giveaway, candidates []user.User, n int,
+) ([]user.User, error) {
+	// Walking a shuffled list draws without replacement, so nobody is picked twice.
+	shuffle(len(candidates), func(i, j int) { candidates[i], candidates[j] = candidates[j], candidates[i] })
+
+	picked := make([]user.User, 0, min(n, len(candidates)))
 	for _, c := range candidates {
-		if len(winners) == g.Winners {
+		if len(picked) == n {
 			break
 		}
 
-		ok, err := d.filter(ctx, g, c)
+		ok, err := filter(ctx, g, c)
 		if err != nil {
 			return nil, err
 		}
 
 		if ok {
-			winners = append(winners, c)
+			picked = append(picked, c)
 		}
 	}
 
-	return winners, nil
+	return picked, nil
 }
 
-// announce removes the join button and replies to the post with the results. If the channel
-// refuses a message, the creator gets the post's link and every results message instead.
-func (d *Drawer) announce(ctx context.Context, tg Announcer, g Giveaway, winners []user.User) {
-	log := d.log.With("giveaway_id", g.ID, "chat_id", g.ChatID, "message_id", g.MessageID)
-
+// announce removes the join button and sends the results to the creator for review.
+func (d *Drawer) announce(ctx context.Context, tg Announcer, g Giveaway) {
 	if err := tg.RemoveButton(ctx, g.ChatID, g.MessageID); err != nil {
-		log.WarnContext(ctx, "remove join button", "error", err)
+		d.log.WarnContext(ctx, "remove join button",
+			"giveaway_id", g.ID, "chat_id", g.ChatID, "message_id", g.MessageID, "error", err)
 	}
 
-	messages := d.resultMessages(g.Language, winners)
-
-	for _, m := range messages {
-		if err := tg.SendHTML(ctx, g.ChatID, g.MessageID, m); err != nil {
-			log.WarnContext(ctx, "post giveaway results", "error", err)
-			d.sendToCreator(ctx, tg, g, messages)
-
-			return
-		}
-	}
+	tg.SendReview(ctx, g)
 }
 
-func (d *Drawer) sendToCreator(ctx context.Context, tg Announcer, g Giveaway, messages []string) {
-	link := html.EscapeString(d.texts.Text(g.Language, i18n.DrawPrivatePrefix, postLink(g.ChatID, g.MessageID)))
+// drawAnnouncer is the Announcer of a real draw: Telegram removes the button, and the review
+// sender sends the review through the bot.
+type drawAnnouncer struct {
+	telegramAPI
 
-	for _, m := range append([]string{link}, messages...) {
-		if err := tg.SendHTML(ctx, g.CreatedBy, 0, m); err != nil {
-			d.log.ErrorContext(ctx, "send giveaway results to creator",
-				"giveaway_id", g.ID, "user_id", g.CreatedBy, "error", err)
-
-			return
-		}
-	}
+	b       *bot.Bot
+	reviews ReviewSender
 }
 
-// resultMessages returns the results as HTML messages, each within Telegram's length limit:
-// the header, a blank line, one winner per line, a blank line and the congratulations. A
-// split starts a new message without the separator.
-func (d *Drawer) resultMessages(lang string, winners []user.User) []string {
-	if len(winners) == 0 {
-		return []string{html.EscapeString(d.texts.Text(lang, i18n.DrawNoWinners))}
-	}
-
-	var (
-		messages []string
-		current  string
-		size     int
-	)
-
-	// add appends text, which shows as plain visible characters, to the current message.
-	add := func(sep, text string, visible int) {
-		if current != "" && size+len(sep)+visible > maxMessageLen {
-			messages = append(messages, current)
-			current, size = "", 0
-		}
-
-		if current != "" {
-			current += sep
-			size += len(sep)
-		}
-
-		current += text
-		size += visible
-	}
-
-	headerKey, congratsKey := i18n.DrawResults, i18n.DrawCongrats
-	if len(winners) == 1 {
-		headerKey, congratsKey = i18n.DrawResultsOne, i18n.DrawCongratsOne
-	}
-
-	header := d.texts.Text(lang, headerKey)
-	add("", html.EscapeString(header), utf16Len(header))
-
-	sep := "\n\n"
-	for _, w := range winners {
-		name := strings.TrimSpace(w.FirstName + " " + w.LastName)
-		add(sep, winnerBullet+`<a href="tg://user?id=`+strconv.FormatInt(w.TelegramID, 10)+`">`+
-			html.EscapeString(name)+"</a>", utf16Len(winnerBullet)+utf16Len(name))
-		sep = "\n"
-	}
-
-	congrats := d.texts.Text(lang, congratsKey)
-	add("\n\n", html.EscapeString(congrats), utf16Len(congrats))
-
-	return append(messages, current)
-}
-
-func utf16Len(s string) int {
-	n := 0
-	for _, r := range s {
-		n += utf16.RuneLen(r)
-	}
-
-	return n
+func (a drawAnnouncer) SendReview(ctx context.Context, g Giveaway) {
+	a.reviews.SendReview(ctx, a.b, g)
 }

@@ -233,6 +233,22 @@ func (f *memStore) Move(_ context.Context, id uint, messageID int64) error {
 	return nil
 }
 
+// PendingResults follows chk_giveaways_results: only a finished giveaway has pending results.
+func (f *memStore) PendingResults(context.Context) ([]giveaway.Giveaway, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var gs []giveaway.Giveaway
+
+	for _, id := range f.ids() {
+		if g := f.rows[id]; g.ResultsPending && g.FinishedAt != nil {
+			gs = append(gs, *g)
+		}
+	}
+
+	return gs, nil
+}
+
 // ids returns the row IDs in ascending order, so lookups are deterministic.
 // violates reports whether the database would reject g as a draft: chk_giveaways_winners
 // needs a winner, and idx_giveaways_draft allows one draft per admin.
@@ -273,6 +289,18 @@ func (f *memStore) finish(t *testing.T, id uint) {
 
 	now := time.Now()
 	g.FinishedAt = &now
+}
+
+// draw marks giveaway id finished with its results waiting for review, as the draw does.
+func (f *memStore) draw(t *testing.T, id uint) {
+	t.Helper()
+
+	f.finish(t, id)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.rows[id].ResultsPending = true
 }
 
 // fakeUsers keeps each user's language, pending command and keyboard message in memory.

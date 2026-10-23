@@ -93,6 +93,11 @@ type Mover interface {
 	Move(ctx context.Context, id uint, messageID int64) error
 }
 
+// PendingLister finds the giveaways whose results wait for review. *Store implements it.
+type PendingLister interface {
+	PendingResults(ctx context.Context) ([]Giveaway, error)
+}
+
 // ButtonRemover takes the join button off a channel post. A post without a button counts as
 // success.
 type ButtonRemover interface {
@@ -108,11 +113,12 @@ type Editor struct {
 	giveaways Giveaways
 	writer    Writer
 	mover     Mover
+	pending   PendingLister
 }
 
 // NewEditor returns an Editor that reuses svc's steps, texts, clock and parsers.
-func NewEditor(svc *Service, giveaways Giveaways, writer Writer, mover Mover) *Editor {
-	return &Editor{svc: svc, giveaways: giveaways, writer: writer, mover: mover}
+func NewEditor(svc *Service, giveaways Giveaways, writer Writer, mover Mover, pending PendingLister) *Editor {
+	return &Editor{svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending}
 }
 
 // BeginEdit starts an edit for the user: the bot now waits for a forwarded post.
@@ -496,10 +502,35 @@ func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botU
 		return "", err //nolint:wrapcheck // Store already names the user
 	}
 
-	if len(gs) == 0 {
+	results, err := e.pendingLines(ctx, tg, userID, lang, botUsername)
+	if err != nil {
+		return "", err
+	}
+
+	if len(gs) == 0 && len(results) == 0 {
 		return e.svc.texts.Text(lang, i18n.EditListEmpty), nil
 	}
 
+	lines, gone := e.runningLines(ctx, tg, lang, botUsername, gs)
+
+	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(append(lines, results...), "\n")
+	if gone {
+		text += "\n\n" + e.svc.texts.Text(lang, i18n.EditListGoneNote)
+	}
+
+	return text, nil
+}
+
+// Default returns the value a field's default button stands for, or "" if it has none.
+func (e *Editor) Default(field, lang string) string {
+	return e.svc.Default(stepPrefix+field, lang)
+}
+
+// runningLines returns a /list line for every running giveaway and draft in gs, and whether
+// one of their posts was deleted.
+func (e *Editor) runningLines(
+	ctx context.Context, tg Telegram, lang, botUsername string, gs []Giveaway,
+) ([]string, bool) {
 	now := e.svc.now()
 	lines := make([]string, 0, len(gs))
 	gone := false
@@ -523,17 +554,43 @@ func (e *Editor) List(ctx context.Context, tg Telegram, userID int64, lang, botU
 			ends))
 	}
 
-	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n")
-	if gone {
-		text += "\n\n" + e.svc.texts.Text(lang, i18n.EditListGoneNote)
-	}
-
-	return text, nil
+	return lines, gone
 }
 
-// Default returns the value a field's default button stands for, or "" if it has none.
-func (e *Editor) Default(field, lang string) string {
-	return e.svc.Default(stepPrefix+field, lang)
+// pendingLines returns a /list line for every giveaway whose results wait for review in a
+// channel the user is an admin of. They stay out of the running giveaways' lines, whose post
+// check would put the join button back on the post.
+func (e *Editor) pendingLines(
+	ctx context.Context, tg Telegram, userID int64, lang, botUsername string,
+) ([]string, error) {
+	gs, err := e.pending.PendingResults(ctx)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // Store already says what it listed
+	}
+
+	adminOf := map[int64]bool{} // channel ID -> whether the user is its admin, checked once
+	lines := make([]string, 0, len(gs))
+
+	for _, g := range gs {
+		isAdmin, checked := adminOf[g.ChatID]
+		if !checked {
+			isAdmin, err = tg.IsChannelAdmin(ctx, g.ChatID, userID)
+			if err != nil {
+				e.svc.log.WarnContext(ctx, "check channel admin for list",
+					"user_id", userID, "chat_id", g.ChatID, "error", err)
+			}
+
+			adminOf[g.ChatID] = isAdmin
+		}
+
+		if isAdmin {
+			lines = append(lines, e.svc.texts.Text(lang, i18n.EditListResults,
+				e.svc.texts.Text(lang, i18n.EditListMarkResults), postLink(g.ChatID, g.MessageID),
+				resultsLink(botUsername, g.ChatID, g.MessageID)))
+		}
+	}
+
+	return lines, nil
 }
 
 // askPublished returns the confirmation step of the published giveaway id.

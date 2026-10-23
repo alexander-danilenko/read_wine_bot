@@ -45,7 +45,7 @@ func newSetup(t *testing.T) *setup {
 		func() time.Time { return s.now },
 		slog.New(slog.DiscardHandler),
 	)
-	s.ed = giveaway.NewEditor(s.svc, store, store, store)
+	s.ed = giveaway.NewEditor(s.svc, store, store, store, store)
 
 	return s
 }

@@ -87,10 +87,10 @@ func TestParseWinners(t *testing.T) {
 		want  int // 0 when the input is rejected
 	}{
 		{input: "1", want: 1},
-		{input: "100", want: 100},
+		{input: "99", want: 99},
 		{input: "7\n", want: 7},
 		{input: "0"},
-		{input: "101"},
+		{input: "100"},
 		{input: "abc"},
 		{input: "2.5"},
 	}

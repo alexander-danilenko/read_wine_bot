@@ -35,7 +35,7 @@ const (
 	defaultEndDays    = 7 // the default end date is this many days after today
 	defaultEndTime    = "19:00"
 	minWinners        = 1
-	maxWinners        = 100
+	maxWinners        = 99 // 99 reroll buttons and Publish fill Telegram's 100 buttons per message
 	maxButtonTextRune = 64
 )
 
@@ -336,8 +336,23 @@ func postLink(chatID, messageID int64) string {
 // https://t.me/<bot>?start=edit_<channel>_<post>. A start payload cannot hold the minus of a
 // chat ID, so the channel is written as in a post link, without its -100.
 func editLink(botUsername string, chatID, messageID int64) string {
-	return "https://t.me/" + botUsername + "?start=" + editPayload +
-		channelPart(chatID) + "_" + strconv.FormatInt(messageID, 10)
+	return startLink(botUsername, editPayload, chatID, messageID)
+}
+
+// resultsLink returns the deep link that opens the results review of the giveaway on the
+// post: https://t.me/<bot>?start=results_<channel>_<post>.
+func resultsLink(botUsername string, chatID, messageID int64) string {
+	return startLink(botUsername, resultsPayload, chatID, messageID)
+}
+
+// startLink returns https://t.me/<bot>?start=<payload><channel>_<post>.
+func startLink(botUsername, payload string, chatID, messageID int64) string {
+	return "https://t.me/" + botUsername + "?start=" + payload + channelPart(
+		chatID,
+	) + "_" + strconv.FormatInt(
+		messageID,
+		10,
+	)
 }
 
 // channelPart returns a channel's chat ID as post links write it: without its -100.

@@ -187,7 +187,13 @@ func EditLinkHandler(
 
 // parseEditLink parses /start edit_<channel>_<post> into the post's chat and message IDs.
 func parseEditLink(text string) (int64, int64, bool) {
-	channel, post, found := strings.Cut(strings.TrimPrefix(strings.TrimSpace(text), EditLinkPrefix), "_")
+	return parsePostPayload(text, EditLinkPrefix)
+}
+
+// parsePostPayload parses a start link message, prefix followed by <channel>_<post>, into the
+// post's chat and message IDs.
+func parsePostPayload(text, prefix string) (int64, int64, bool) {
+	channel, post, found := strings.Cut(strings.TrimPrefix(strings.TrimSpace(text), prefix), "_")
 	if !found || !positive(channel) || !positive(post) {
 		return 0, 0, false
 	}

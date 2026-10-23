@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "0.5.2"
+const version = "0.6.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -80,7 +80,8 @@ func run() error {
 	store := giveaway.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	opts := append(handlers(users, store, texts, kyiv, log), bot.WithAllowedUpdates(allowedUpdates()))
+	reviewer := newReviewer(store, texts, log)
+	opts := append(handlers(users, store, reviewer, texts, kyiv, log), bot.WithAllowedUpdates(allowedUpdates()))
 
 	b, err := bot.New(cfg.TelegramBotToken, opts...)
 	if err != nil {
@@ -93,7 +94,7 @@ func run() error {
 		return fmt.Errorf("register commands: %w", err)
 	}
 
-	drawer := giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
+	drawer := newDrawer(store, users, reviewer, texts, log)
 
 	// Regular tasks. They share ctx with the bot, so the same signal stops them all. Waiting
 	// for them before returning keeps the deferred database close from cutting a run short.
@@ -137,12 +138,33 @@ func allowedUpdates() bot.AllowedUpdates {
 	}
 }
 
+// newDrawer returns the winner draw, which sends the results to the creator for review.
+func newDrawer(
+	store *giveaway.Store, users *user.Store, reviewer *giveaway.Reviewer, texts *i18n.Catalog, log *slog.Logger,
+) *giveaway.Drawer {
+	kb := keyboard.NewTracker(users, log)
+	notifier := giveaway.NewReviewNotifier(reviewer, users, texts, kb, log)
+
+	return giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, notifier, time.Now, log)
+}
+
+// newReviewer returns the results review rules. A replacement winner is picked with the
+// draw's filter and shuffle.
+func newReviewer(store *giveaway.Store, texts *i18n.Catalog, log *slog.Logger) *giveaway.Reviewer {
+	return giveaway.NewReviewer(store, store, store, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
+}
+
 // handlers wires every update the bot handles to the package that handles it.
 func handlers(
-	users *user.Store, store *giveaway.Store, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger,
+	users *user.Store,
+	store *giveaway.Store,
+	reviewer *giveaway.Reviewer,
+	texts *i18n.Catalog,
+	kyiv *time.Location,
+	log *slog.Logger,
 ) []bot.Option {
 	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
-	editor := giveaway.NewEditor(giveaways, store, store, store)
+	editor := giveaway.NewEditor(giveaways, store, store, store, store)
 	kb := keyboard.NewTracker(users, log)
 
 	return slices.Concat([]bot.Option{
@@ -151,6 +173,11 @@ func handlers(
 		bot.WithMiddlewares(user.Middleware(users, kb, log)),
 		// Before the greeting: an edit link sends /start with a payload, which the greeting
 		// would also match, and the first matching handler wins.
+		bot.WithMessageTextHandler(
+			giveaway.ReviewLinkPrefix,
+			bot.MatchTypePrefix,
+			giveaway.ReviewLinkHandler(reviewer, texts, users, kb, log),
+		),
 		bot.WithMessageTextHandler(
 			giveaway.EditLinkPrefix,
 			bot.MatchTypePrefix,
@@ -175,6 +202,11 @@ func handlers(
 			giveaway.SetupCallbackPrefix,
 			bot.MatchTypePrefix,
 			giveaway.SetupCallbackHandler(giveaways, texts, users, kb, log),
+		),
+		bot.WithCallbackQueryDataHandler(
+			giveaway.ReviewCallbackPrefix,
+			bot.MatchTypePrefix,
+			giveaway.ReviewCallbackHandler(reviewer, texts, users, kb, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.EditCallbackPrefix,

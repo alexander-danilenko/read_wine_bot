@@ -14,7 +14,15 @@ The guided dialogue in the bot's private chat that creates a giveaway: the admin
 
 ### Winner draw
 
-The once-a-minute step that finishes a due giveaway: it picks distinct participants at random up to the winner count, passes each one through the candidate filter, records the winners, removes the join button and replies to the giveaway post with the results. A giveaway is drawn at most once; with too few eligible participants it finishes with fewer winners, possibly none.
+The once-a-minute step that finishes a due giveaway: it picks distinct participants at random up to the winner count, passes each one through the candidate filter, records the winners, removes the join button and sends the results to the giveaway's creator in private for results review. A giveaway is drawn at most once; with too few eligible participants it finishes with fewer winners, possibly none.
+
+### Results review
+
+The step between the winner draw and the published results. The creator gets the results in private, and any current admin of the giveaway's channel can reroll winners one at a time, then publish the results as a reply to the giveaway post. Publishing happens once and closes rerolls.
+
+### Reroll
+
+Replacing one winner during results review with a random participant who is neither a winner nor rerolled out. The replaced participant can never win that giveaway again. With nobody left to pick, the giveaway keeps one winner fewer.
 
 ### Candidate filter
 
@@ -30,7 +38,7 @@ A Telegram user who tapped a giveaway's join button. A user participates in a gi
 
 ### Finished giveaway
 
-A giveaway whose winners are recorded. Passing the end time does not finish a giveaway: until winners are recorded it is due for drawing.
+A giveaway whose winners are recorded. Passing the end time does not finish a giveaway: until winners are recorded it is due for drawing. A finished giveaway's results are unpublished until an admin publishes them in results review.
 
 ### Channel
 

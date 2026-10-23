@@ -594,3 +594,58 @@ func TestEditListPostGone(t *testing.T) {
 		t.Errorf("List = %q, want %q", got, want)
 	}
 }
+
+// Covers AE6.
+func TestEditListPendingResults(t *testing.T) {
+	line := `- 📣 <a href="https://t.me/c/1234567890/42">Post</a> ` +
+		`[<a href="https://t.me/test_bot?start=results_1234567890_42">review results</a>] · results not published`
+
+	tests := []struct {
+		name   string
+		userID int64
+		admin  bool
+		want   string
+	}{
+		{"creator", adminID, true, "Your active giveaways:\n\n" + line},
+		{"another admin of the channel", fanID, true, "Your active giveaways:\n\n" + line},
+		{"not an admin", fanID, false, "You have no active giveaways."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSetup(t)
+			g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+			s.store.draw(t, g.ID)
+			s.tg.admin = tt.admin
+
+			got, err := s.ed.List(t.Context(), s.tg, tt.userID, "en", "test_bot")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if got != tt.want {
+				t.Errorf("List = %q, want %q", got, tt.want)
+			}
+
+			// The running giveaways' post check attaches the button; a drawn post must stay without it.
+			if s.tg.attached != 0 {
+				t.Errorf("List attached the join button %d times, want none", s.tg.attached)
+			}
+		})
+	}
+}
+
+func TestEditListSkipsPublishedResults(t *testing.T) {
+	s := newSetup(t)
+	g := publish(t, s.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID})
+	s.store.finish(t, g.ID)
+	s.tg.admin = true
+
+	got, err := s.ed.List(t.Context(), s.tg, adminID, "en", "test_bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != "You have no active giveaways." {
+		t.Errorf("List = %q, want the empty list", got)
+	}
+}

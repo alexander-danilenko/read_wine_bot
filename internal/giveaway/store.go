@@ -33,6 +33,10 @@ const (
 	colButtonText = "button_text"
 	colFinished   = "finished_at"
 	colMessageID  = "message_id"
+	colPending    = "results_pending"
+	colWinner     = "winner"
+	colPlace      = "winner_place"
+	colRerolled   = "rerolled_at"
 )
 
 // Store reads and writes giveaways and their participants.
@@ -271,8 +275,9 @@ func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, e
 	return us, nil
 }
 
-// Finish marks the winners of giveaway id and sets its finish time to now, both or neither.
-// It returns ErrNotFound when the giveaway is no longer due at now: cancelled, finished, or
+// Finish marks the winners of giveaway id at places 1, 2, … in the order of winnerIDs, sets
+// its finish time to now and leaves its results waiting for review, all or nothing. It
+// returns ErrNotFound when the giveaway is no longer due at now: cancelled, finished, or
 // given a later end time since it was found due.
 func (s *Store) Finish(ctx context.Context, id uint, winnerIDs []int64, now time.Time) error {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -280,7 +285,7 @@ func (s *Store) Finish(ctx context.Context, id uint, winnerIDs []int64, now time
 		// one pass finishes the giveaway.
 		res := tx.Model(&Giveaway{}).
 			Where("id = ? AND published = ? AND finished_at IS NULL AND ends_at <= ?", id, true, now).
-			Update(colFinished, now)
+			Updates(map[string]any{colFinished: now, colPending: true})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -289,17 +294,221 @@ func (s *Store) Finish(ctx context.Context, id uint, winnerIDs []int64, now time
 			return ErrNotFound
 		}
 
-		if len(winnerIDs) == 0 {
-			return nil
+		for i, userID := range winnerIDs {
+			err := tx.Model(&Participant{}).
+				Where("giveaway_id = ? AND user_id = ?", id, userID).
+				Updates(map[string]any{colWinner: true, colPlace: i + 1}).Error
+			if err != nil {
+				return err
+			}
 		}
 
-		return tx.Model(&Participant{}).
-			Where("giveaway_id = ? AND user_id IN ?", id, winnerIDs).
-			Update("winner", true).Error
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("finish giveaway %d: %w", id, err)
 	}
 
 	return nil
+}
+
+// Winner is a current winner of a drawn giveaway and the place its results show it at.
+type Winner struct {
+	user.User `gorm:"embedded"`
+
+	Place int // from 1; 0 for a winner drawn before places existed
+}
+
+// Results are the current winners of a drawn giveaway in place order, and how many of its
+// participants were rerolled out. Rerolls only add to the count, so it tells whether the
+// winners changed since an admin looked at them.
+type Results struct {
+	Winners  []Winner
+	Rerolled int
+}
+
+// Results returns the current winners of giveaway id and its rerolled-out count.
+func (s *Store) Results(ctx context.Context, id uint) (Results, error) {
+	var rows []struct {
+		user.User `gorm:"embedded"`
+
+		WinnerPlace *int
+	}
+
+	err := s.db.WithContext(ctx).Model(&user.User{}).
+		Select("users.*, p.winner_place").
+		Joins("JOIN giveaway_participants p ON p.user_id = users.telegram_id").
+		Where("p.giveaway_id = ? AND p.winner", id).
+		Order("p.winner_place NULLS LAST").Order("p.created_at").Order("p.user_id").
+		Scan(&rows).Error
+	if err != nil {
+		return Results{}, fmt.Errorf("list winners of giveaway %d: %w", id, err)
+	}
+
+	var rerolled int64
+
+	err = s.db.WithContext(ctx).Model(&Participant{}).
+		Where("giveaway_id = ? AND rerolled_at IS NOT NULL", id).Count(&rerolled).Error
+	if err != nil {
+		return Results{}, fmt.Errorf("count rerolled participants of giveaway %d: %w", id, err)
+	}
+
+	r := Results{Winners: make([]Winner, 0, len(rows)), Rerolled: int(rerolled)}
+	for _, row := range rows {
+		w := Winner{User: row.User}
+		if row.WinnerPlace != nil {
+			w.Place = *row.WinnerPlace
+		}
+
+		r.Winners = append(r.Winners, w)
+	}
+
+	return r, nil
+}
+
+// Eligible returns the participants of giveaway id who may replace a winner: neither winners
+// nor rerolled out, in the order they joined.
+func (s *Store) Eligible(ctx context.Context, id uint) ([]user.User, error) {
+	var us []user.User
+
+	err := s.db.WithContext(ctx).
+		Joins("JOIN giveaway_participants p ON p.user_id = users.telegram_id").
+		Where("p.giveaway_id = ? AND NOT p.winner AND p.rerolled_at IS NULL", id).
+		Order("p.created_at").Order("p.user_id").Find(&us).Error
+	if err != nil {
+		return nil, fmt.Errorf("list eligible participants of giveaway %d: %w", id, err)
+	}
+
+	return us, nil
+}
+
+// Reroll takes winner out of giveaway id, whose results wait for review, and gives its place
+// to participant in, or to nobody when in is 0, all or nothing. It returns ErrNotFound when
+// the results are no longer pending, out is no longer a winner, or in is no longer eligible.
+func (s *Store) Reroll(ctx context.Context, id uint, out, in int64, now time.Time) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return reroll(tx, id, out, in, now) })
+	if errors.Is(err, ErrNotFound) {
+		return ErrNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("reroll winner %d of giveaway %d: %w", out, id, err)
+	}
+
+	return nil
+}
+
+// reroll runs the transaction of Store.Reroll in tx.
+func reroll(tx *gorm.DB, id uint, out, in int64, now time.Time) error {
+	// Locking the giveaway row puts rerolls and the publish claim of one giveaway in a
+	// queue, so each sees the winners the one before it left.
+	var g Giveaway
+
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND results_pending", id).Take(&g).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+
+	if err != nil {
+		return err
+	}
+
+	var p Participant
+
+	err = tx.Where("giveaway_id = ? AND user_id = ? AND winner", id, out).Take(&p).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// The old winner gives up its place first: the unique index allows one winner per place.
+	err = tx.Model(&Participant{}).Where("giveaway_id = ? AND user_id = ?", id, out).
+		Updates(map[string]any{colWinner: false, colPlace: nil, colRerolled: now}).Error
+	if err != nil || in == 0 {
+		return err
+	}
+
+	res := tx.Model(&Participant{}).
+		Where("giveaway_id = ? AND user_id = ? AND NOT winner AND rerolled_at IS NULL", id, in).
+		Updates(map[string]any{colWinner: true, colPlace: p.WinnerPlace})
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// ClaimResults marks the pending results of giveaway id as published, if rerolled is still
+// its rerolled-out count. It returns ErrNotFound when the results are no longer pending or
+// were rerolled since, so only one publish posts them, and only the winners its admin saw.
+func (s *Store) ClaimResults(ctx context.Context, id uint, rerolled int) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// The lock waits for a reroll in progress. The count runs after it as its own
+		// statement, so it sees that reroll; a subquery in the UPDATE would not.
+		var g Giveaway
+
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND results_pending", id).Take(&g).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+
+		if err != nil {
+			return err
+		}
+
+		var n int64
+
+		err = tx.Model(&Participant{}).Where("giveaway_id = ? AND rerolled_at IS NOT NULL", id).Count(&n).Error
+		if err != nil {
+			return err
+		}
+
+		if int(n) != rerolled {
+			return ErrNotFound
+		}
+
+		return tx.Model(&Giveaway{}).Where("id = ?", id).Update(colPending, false).Error
+	})
+	if errors.Is(err, ErrNotFound) {
+		return ErrNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("claim results of giveaway %d: %w", id, err)
+	}
+
+	return nil
+}
+
+// ReleaseResults puts the results of the finished giveaway id back to waiting for review,
+// after a publish claimed them but could not post them.
+func (s *Store) ReleaseResults(ctx context.Context, id uint) error {
+	err := s.db.WithContext(ctx).Model(&Giveaway{}).
+		Where("id = ? AND finished_at IS NOT NULL", id).Update(colPending, true).Error
+	if err != nil {
+		return fmt.Errorf("release results of giveaway %d: %w", id, err)
+	}
+
+	return nil
+}
+
+// PendingResults returns every giveaway whose results wait for review, oldest draw first.
+func (s *Store) PendingResults(ctx context.Context) ([]Giveaway, error) {
+	var gs []Giveaway
+
+	err := s.db.WithContext(ctx).Where("results_pending").Order(colFinished).Order("id").Find(&gs).Error
+	if err != nil {
+		return nil, fmt.Errorf("list giveaways with pending results: %w", err)
+	}
+
+	return gs, nil
 }

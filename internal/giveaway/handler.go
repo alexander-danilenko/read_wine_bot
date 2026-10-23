@@ -144,7 +144,7 @@ func (t telegramAPI) RemoveButton(ctx context.Context, chatID, messageID int64) 
 }
 
 // SendHTML sends an HTML text without a link preview, as a reply to message replyTo of the
-// same chat unless replyTo is 0.
+// same chat unless replyTo is 0. When replyTo was deleted, the text goes without the reply.
 func (t telegramAPI) SendHTML(ctx context.Context, chatID, replyTo int64, text string) error {
 	params := &bot.SendMessageParams{
 		ChatID:             chatID,
@@ -153,12 +153,12 @@ func (t telegramAPI) SendHTML(ctx context.Context, chatID, replyTo int64, text s
 		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 	}
 	if replyTo != 0 {
-		params.ReplyParameters = &models.ReplyParameters{MessageID: int(replyTo)}
+		params.ReplyParameters = &models.ReplyParameters{MessageID: int(replyTo), AllowSendingWithoutReply: true}
 	}
 
 	_, err := t.b.SendMessage(ctx, params)
 
-	return err //nolint:wrapcheck // Drawer logs it with the giveaway, chat and message IDs
+	return err //nolint:wrapcheck // Reviewer logs it with the giveaway, chat and message IDs
 }
 
 // ignoreNotModified treats Telegram's "message is not modified" answer as success: it means

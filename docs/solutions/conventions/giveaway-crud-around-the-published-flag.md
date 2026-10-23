@@ -40,6 +40,7 @@ The rules above are also constraints, declared in gorm tags in `internal/giveawa
 | `chk_giveaways_cancelled` | `cancelled_at IS NULL OR NOT published`: a published row is never cancelled |
 | `chk_giveaways_finished` | `finished_at IS NULL OR (published AND cancelled_at IS NULL)`: only a published giveaway finishes |
 | `chk_giveaways_winners` | `winners >= 1`, drafts included |
+| `chk_giveaways_results` | `NOT results_pending OR finished_at IS NOT NULL`: only a drawn giveaway has results waiting for review |
 | `idx_giveaways_draft` | partial unique index on `created_by` where `published = false AND cancelled_at IS NULL`: one draft per admin |
 
 A store method that breaks one of these gets an SQL error instead of a bad row. Two consequences are easy to miss:
@@ -87,7 +88,7 @@ Domain code still checks `g.Published` after a `managed` read, because `managed`
 
 `publish` in `internal/giveaway/setup.go:257`, and `Cancel` and `Restore` in `edit.go`, change the join button on the post first and the row second. If the database write then fails, the row still describes the old state, and a retry repeats the Telegram call and completes the write. The conditional `UPDATE` makes that retry safe.
 
-The winner draw (`Drawer` in `internal/giveaway/draw.go`) reverses this order on purpose: `Store.Finish` saves the winners and the finish time first, then the draw removes the button and posts the results. Saving first means a failed Telegram call can never lead to a second draw that picks different winners. `Finish` guards on the giveaway still being due, so a cancel or a later end time saved in the meantime wins.
+The winner draw (`Drawer` in `internal/giveaway/draw.go`) reverses this order on purpose: `Store.Finish` saves the winners and the finish time first, then the draw removes the button and sends the results to the creator for review. Publishing them later is its own guarded write, `Store.ClaimResults`, made before the channel post and given back if the post fails. Saving first means a failed Telegram call can never lead to a second draw that picks different winners. `Finish` guards on the giveaway still being due, so a cancel or a later end time saved in the meantime wins.
 
 ## Why This Matters
 

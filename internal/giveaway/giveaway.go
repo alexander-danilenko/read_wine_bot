@@ -37,9 +37,13 @@ type Giveaway struct {
 	// giveaways older than the setup, which all have their button, count as published.
 	// GORM leaves a false zero value out of an INSERT for a column with a default, so
 	// Store.SaveDraft names the column explicitly.
-	Published bool      `gorm:"not null;default:true;comment:Whether the join button is on the post. False for unfinished setups and cancelled giveaways"`
-	CreatedAt time.Time `gorm:"comment:When the setup started"`
-	UpdatedAt time.Time `gorm:"comment:When the row last changed"`
+	Published bool `gorm:"not null;default:true;comment:Whether the join button is on the post. False for unfinished setups and cancelled giveaways"`
+	// ResultsPending is set together with FinishedAt and cleared when an admin publishes the
+	// results. The default is false, so giveaways drawn before results review count as
+	// published.
+	ResultsPending bool      `gorm:"not null;default:false;check:chk_giveaways_results,NOT results_pending OR finished_at IS NOT NULL;comment:Whether the drawn results wait for an admin to publish them in the channel. False before the draw and after publishing"`
+	CreatedAt      time.Time `gorm:"comment:When the setup started"`
+	UpdatedAt      time.Time `gorm:"comment:When the row last changed"`
 }
 
 // State is where a giveaway is in its life.
@@ -67,15 +71,18 @@ func (g Giveaway) State(now time.Time) State {
 
 // Participant is one row of the giveaway_participants table: a user who tapped the button.
 type Participant struct {
-	GiveawayID uint     `gorm:"primaryKey;autoIncrement:false;comment:Giveaway (giveaways.id) the user joined"`
+	// The partial unique index gives each place to one winner of the giveaway.
+	GiveawayID uint     `gorm:"primaryKey;autoIncrement:false;uniqueIndex:idx_participants_place,priority:1,where:winner_place IS NOT NULL;comment:Giveaway (giveaways.id) the user joined"`
 	Giveaway   Giveaway // declares the foreign key from giveaway_id to giveaways; never loaded
 	// UserID (column user_id) holds the participant's users.telegram_id. It must not be named
 	// TelegramID: with the same name, GORM reads the link backwards and puts the foreign key
 	// on the users table.
-	UserID    int64     `gorm:"primaryKey;autoIncrement:false;comment:Telegram user ID (users.telegram_id) of the participant"`
-	User      user.User `gorm:"foreignKey:UserID;references:TelegramID"` // declares the foreign key; never loaded
-	Winner    bool      `gorm:"not null;default:false;comment:Whether the draw picked this participant as a winner"`
-	CreatedAt time.Time `gorm:"comment:When the user tapped the join button"`
+	UserID      int64      `gorm:"primaryKey;autoIncrement:false;comment:Telegram user ID (users.telegram_id) of the participant"`
+	User        user.User  `gorm:"foreignKey:UserID;references:TelegramID"` // declares the foreign key; never loaded
+	Winner      bool       `gorm:"not null;default:false;comment:Whether the draw picked this participant as a winner"`
+	WinnerPlace *int       `gorm:"type:smallint;uniqueIndex:idx_participants_place,priority:2;check:chk_participants_place,winner_place IS NULL OR winner;comment:Place of the winner in the results, from 1. NULL for participants who are not winners and for winners drawn before places existed"`
+	RerolledAt  *time.Time `gorm:"check:chk_participants_rerolled,rerolled_at IS NULL OR NOT winner;comment:When an admin rerolled this winner out during results review, NULL unless rerolled out. A rerolled-out participant never wins this giveaway again"`
+	CreatedAt   time.Time  `gorm:"comment:When the user tapped the join button"`
 }
 
 // TableName names the participants table after the giveaways it belongs to.

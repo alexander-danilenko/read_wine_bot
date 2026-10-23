@@ -55,6 +55,7 @@ Each feature owns one namespace:
 | `giveaway:join` | exact | `internal/giveaway/handler.go` `JoinCallback` |
 | `giveaway-setup:cancel`, `:confirm`, `:default:<step>` | prefix `giveaway-setup:` | `internal/giveaway/setup_handler.go:18-27` |
 | `giveaway-edit:<action>[:<field>]:<giveaway ID>`, `giveaway-edit:stop` | prefix `giveaway-edit:` | `internal/giveaway/edit_handler.go:26-45` |
+| `giveaway-review:<action>:<giveaway ID>[:<user ID or rerolled-out count>]` | prefix `giveaway-review:` | `internal/giveaway/review_handler.go` `reviewData` |
 | `language:<code>` | prefix `language:` | `internal/language/language.go:17` |
 
 Rules:

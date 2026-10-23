@@ -38,20 +38,18 @@ func (t *Tracker) Send(
 	text string,
 	rows [][]models.InlineKeyboardButton,
 ) {
-	t.drop(ctx, b, userID, 0)
+	t.send(ctx, b, userID, text, rows, "")
+}
 
-	m, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      userID,
-		Text:        text,
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
-	})
-	if err != nil {
-		t.log.ErrorContext(ctx, "send message with buttons", "user_id", userID, "error", err)
-
-		return
-	}
-
-	t.save(ctx, userID, int64(m.ID))
+// SendHTML is Send for an HTML text, shown without link previews.
+func (t *Tracker) SendHTML(
+	ctx context.Context,
+	b *bot.Bot,
+	userID int64,
+	text string,
+	rows [][]models.InlineKeyboardButton,
+) {
+	t.send(ctx, b, userID, text, rows, models.ParseModeHTML)
 }
 
 // Replace shows text with rows in place of messageID, the message whose button the user
@@ -65,22 +63,19 @@ func (t *Tracker) Replace(
 	text string,
 	rows [][]models.InlineKeyboardButton,
 ) {
-	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-		ChatID:      userID,
-		MessageID:   messageID,
-		Text:        text,
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: rows},
-	})
-	if err != nil && !isNotModified(err) {
-		t.log.WarnContext(ctx, "replace message with buttons", "user_id", userID, "error", err)
-		discard(ctx, b, t.log, userID, messageID)
-		t.Send(ctx, b, userID, text, rows)
+	t.replace(ctx, b, userID, messageID, text, rows, "")
+}
 
-		return
-	}
-
-	t.drop(ctx, b, userID, messageID)
-	t.save(ctx, userID, int64(messageID))
+// ReplaceHTML is Replace for an HTML text, shown without link previews.
+func (t *Tracker) ReplaceHTML(
+	ctx context.Context,
+	b *bot.Bot,
+	userID int64,
+	messageID int,
+	text string,
+	rows [][]models.InlineKeyboardButton,
+) {
+	t.replace(ctx, b, userID, messageID, text, rows, models.ParseModeHTML)
 }
 
 // Clear deletes the user's message with buttons, if there is one.
@@ -95,6 +90,63 @@ func (t *Tracker) Discard(ctx context.Context, b *bot.Bot, m models.MaybeInacces
 	if m.Message != nil {
 		discard(ctx, b, t.log, m.Message.Chat.ID, m.Message.ID)
 	}
+}
+
+// send sends text in parse mode mode; "" is plain text. See Send.
+func (t *Tracker) send(
+	ctx context.Context,
+	b *bot.Bot,
+	userID int64,
+	text string,
+	rows [][]models.InlineKeyboardButton,
+	mode models.ParseMode,
+) {
+	t.drop(ctx, b, userID, 0)
+
+	m, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:             userID,
+		Text:               text,
+		ParseMode:          mode,
+		LinkPreviewOptions: previewOff(mode),
+		ReplyMarkup:        &models.InlineKeyboardMarkup{InlineKeyboard: rows},
+	})
+	if err != nil {
+		t.log.ErrorContext(ctx, "send message with buttons", "user_id", userID, "error", err)
+
+		return
+	}
+
+	t.save(ctx, userID, int64(m.ID))
+}
+
+// replace edits messageID to text in parse mode mode; "" is plain text. See Replace.
+func (t *Tracker) replace(
+	ctx context.Context,
+	b *bot.Bot,
+	userID int64,
+	messageID int,
+	text string,
+	rows [][]models.InlineKeyboardButton,
+	mode models.ParseMode,
+) {
+	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+		ChatID:             userID,
+		MessageID:          messageID,
+		Text:               text,
+		ParseMode:          mode,
+		LinkPreviewOptions: previewOff(mode),
+		ReplyMarkup:        &models.InlineKeyboardMarkup{InlineKeyboard: rows},
+	})
+	if err != nil && !isNotModified(err) {
+		t.log.WarnContext(ctx, "replace message with buttons", "user_id", userID, "error", err)
+		discard(ctx, b, t.log, userID, messageID)
+		t.send(ctx, b, userID, text, rows, mode)
+
+		return
+	}
+
+	t.drop(ctx, b, userID, messageID)
+	t.save(ctx, userID, int64(messageID))
 }
 
 // drop deletes the user's saved message with buttons unless it is keep, and reports whether
@@ -137,6 +189,16 @@ func discard(ctx context.Context, b *bot.Bot, log *slog.Logger, chatID int64, me
 	if err != nil && !isNotModified(err) && !isGone(err) {
 		log.WarnContext(ctx, "discard message", "chat_id", chatID, "message_id", messageID, "error", err)
 	}
+}
+
+// previewOff turns link previews off for an HTML text, whose links are names, not pages to
+// preview. Plain text keeps Telegram's default.
+func previewOff(mode models.ParseMode) *models.LinkPreviewOptions {
+	if mode == "" {
+		return nil
+	}
+
+	return &models.LinkPreviewOptions{IsDisabled: bot.True()}
 }
 
 // isGone reports whether err says the message no longer exists.

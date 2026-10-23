@@ -64,7 +64,6 @@ const (
 	DrawCongrats              Key = "draw.congrats"
 	DrawCongratsOne           Key = "draw.congrats_one"
 	DrawNoWinners             Key = "draw.no_winners"
-	DrawPrivatePrefix         Key = "draw.private_prefix"
 
 	EditPrompt            Key = "edit.prompt"
 	EditNotFound          Key = "edit.not_found"
@@ -112,6 +111,23 @@ const (
 	EditMoveTaken         Key = "edit.move_taken"
 	EditMoved             Key = "edit.moved"
 	EditPostGone          Key = "edit.post_gone"
+
+	ReviewResults         Key = "review.results"
+	ReviewNoWinners       Key = "review.no_winners"
+	ReviewRerollButton    Key = "review.reroll_button"
+	ReviewPublishButton   Key = "review.publish_button"
+	ReviewAskReroll       Key = "review.ask_reroll"
+	ReviewYesReroll       Key = "review.yes_reroll"
+	ReviewAskPublish      Key = "review.ask_publish"
+	ReviewYesPublish      Key = "review.yes_publish"
+	ReviewPublished       Key = "review.published"
+	ReviewPublishFailed   Key = "review.publish_failed"
+	ReviewPublishedPartly Key = "review.published_partly"
+	ReviewNotAdmin        Key = "review.not_admin"
+	ReviewNotPending      Key = "review.not_pending"
+	ReviewWaiting         Key = "review.waiting"
+	EditListResults       Key = "edit.list_results"
+	EditListMarkResults   Key = "edit.list_mark_results"
 )
 
 // ErrMissingDefault means locales/ has no file for DefaultLang.

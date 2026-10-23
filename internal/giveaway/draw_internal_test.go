@@ -54,19 +54,17 @@ func (f *fakeDrawStore) Finish(_ context.Context, id uint, winnerIDs []int64, _ 
 	return nil
 }
 
-// sent is one message the fake announcer was asked to send.
-type sent struct {
-	chatID, replyTo int64
-	text            string
-	ctxErr          error // the context's error when the message was sent
+// review is one giveaway the fake announcer was asked to send to review.
+type review struct {
+	giveawayID uint
+	ctxErr     error // the context's error when the review was sent
 }
 
-// fakeAnnouncer records the calls the draw makes to Telegram and fails the chats in failChats.
+// fakeAnnouncer records the calls the draw makes to Telegram and to the review.
 type fakeAnnouncer struct {
 	removeErr error
 	removed   int
-	failChats map[int64]bool
-	sent      []sent
+	reviews   []review
 }
 
 func (f *fakeAnnouncer) RemoveButton(context.Context, int64, int64) error {
@@ -75,14 +73,8 @@ func (f *fakeAnnouncer) RemoveButton(context.Context, int64, int64) error {
 	return f.removeErr
 }
 
-func (f *fakeAnnouncer) SendHTML(ctx context.Context, chatID, replyTo int64, text string) error {
-	if f.failChats[chatID] {
-		return errDraw
-	}
-
-	f.sent = append(f.sent, sent{chatID: chatID, replyTo: replyTo, text: text, ctxErr: ctx.Err()})
-
-	return nil
+func (f *fakeAnnouncer) SendReview(ctx context.Context, g Giveaway) {
+	f.reviews = append(f.reviews, review{giveawayID: g.ID, ctxErr: ctx.Err()})
 }
 
 func dueGiveaway(id uint, winners int) Giveaway {
@@ -117,17 +109,13 @@ func newDrawer(
 ) (*Drawer, *bytes.Buffer) {
 	t.Helper()
 
-	texts, err := i18n.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	var logs bytes.Buffer
 
 	now := func() time.Time { return time.Date(2026, 10, 25, 17, 0, 0, 0, time.UTC) }
 	log := slog.New(slog.NewTextHandler(&logs, nil))
 
-	return NewDrawer(store, filter, shuffle, texts, now, log), &logs
+	// The tests hand drawDue its Announcer, so the review sender is never reached.
+	return NewDrawer(store, filter, shuffle, nil, now, log), &logs
 }
 
 func TestDrawPicksWinners(t *testing.T) {
@@ -203,8 +191,8 @@ func TestDrawSkipsGiveawayNoLongerDue(t *testing.T) {
 
 	d.drawDue(t.Context(), tg)
 
-	if tg.removed != 0 || len(tg.sent) != 0 {
-		t.Errorf("announced a giveaway that was not finished: removed %d, sent %d", tg.removed, len(tg.sent))
+	if tg.removed != 0 || len(tg.reviews) != 0 {
+		t.Errorf("announced a giveaway that was not finished: removed %d, reviews %d", tg.removed, len(tg.reviews))
 	}
 
 	if strings.Contains(logs.String(), "level=ERROR") {
@@ -222,7 +210,7 @@ func TestDrawDueErrorIsLogged(t *testing.T) {
 	}
 }
 
-func TestDrawAnnouncesInChannel(t *testing.T) {
+func TestDrawSendsReview(t *testing.T) {
 	store := &fakeDrawStore{
 		due:        []Giveaway{dueGiveaway(1, 1)},
 		candidates: map[uint][]user.User{1: users(5)},
@@ -236,21 +224,24 @@ func TestDrawAnnouncesInChannel(t *testing.T) {
 		t.Errorf("join button removed %d times, want 1", tg.removed)
 	}
 
-	if len(tg.sent) != 1 || tg.sent[0].chatID != drawChannel || tg.sent[0].replyTo != drawPost ||
-		!strings.Contains(tg.sent[0].text, `href="tg://user?id=5"`) {
-		t.Errorf("sent %+v, want one reply to the post linking user 5", tg.sent)
+	if len(tg.reviews) != 1 || tg.reviews[0].giveawayID != 1 {
+		t.Errorf("reviews %+v, want one review of giveaway 1", tg.reviews)
+	}
+
+	if got := store.finished[1]; !slices.Equal(got, []int64{5}) {
+		t.Errorf("winners = %v, want [5]", got)
 	}
 }
 
-func TestDrawAnnouncesDespiteButtonError(t *testing.T) {
+func TestDrawSendsReviewDespiteButtonError(t *testing.T) {
 	store := &fakeDrawStore{due: []Giveaway{dueGiveaway(1, 1)}, candidates: map[uint][]user.User{1: users(5)}}
 	tg := &fakeAnnouncer{removeErr: errDraw}
 	d, logs := newDrawer(t, store, AcceptAll, noShuffle)
 
 	d.drawDue(t.Context(), tg)
 
-	if len(tg.sent) != 1 {
-		t.Errorf("sent %d messages, want the results anyway", len(tg.sent))
+	if len(tg.reviews) != 1 {
+		t.Errorf("sent %d reviews, want the review anyway", len(tg.reviews))
 	}
 
 	if !strings.Contains(logs.String(), "level=WARN") {
@@ -258,58 +249,11 @@ func TestDrawAnnouncesDespiteButtonError(t *testing.T) {
 	}
 }
 
-func TestDrawFallsBackToCreator(t *testing.T) {
-	store := &fakeDrawStore{
-		due:        []Giveaway{dueGiveaway(1, 1)},
-		candidates: map[uint][]user.User{1: users(5)},
-	}
-	tg := &fakeAnnouncer{failChats: map[int64]bool{drawChannel: true}}
-	d, _ := newDrawer(t, store, AcceptAll, noShuffle)
-
-	d.drawDue(t.Context(), tg)
-
-	if len(tg.sent) != 2 {
-		t.Fatalf("sent %+v, want the post link and the results to the creator", tg.sent)
-	}
-
-	link, results := tg.sent[0], tg.sent[1]
-	if link.chatID != creatorID || link.replyTo != 0 || !strings.Contains(link.text, postLink(drawChannel, drawPost)) {
-		t.Errorf("first private message = %+v, want the post link to the creator", link)
-	}
-
-	if results.chatID != creatorID || results.replyTo != 0 || !strings.Contains(results.text, `href="tg://user?id=5"`) {
-		t.Errorf("second private message = %+v, want the results to the creator", results)
-	}
-
-	if _, ok := store.finished[1]; !ok {
-		t.Error("giveaway not finished")
-	}
-}
-
-func TestDrawLogsWhenEveryAnnouncementFails(t *testing.T) {
-	store := &fakeDrawStore{
-		due:        []Giveaway{dueGiveaway(1, 1), dueGiveaway(2, 1)},
-		candidates: map[uint][]user.User{1: users(5), 2: users(6)},
-	}
-	tg := &fakeAnnouncer{failChats: map[int64]bool{drawChannel: true, creatorID: true}}
-	d, logs := newDrawer(t, store, AcceptAll, noShuffle)
-
-	d.drawDue(t.Context(), tg)
-
-	if got := strings.Count(logs.String(), "level=ERROR"); got != 2 {
-		t.Errorf("logged %d errors, want one per giveaway: %s", got, logs)
-	}
-
-	if len(store.finished) != 2 {
-		t.Errorf("finished %d giveaways, want the pass to go on to the second", len(store.finished))
-	}
-}
-
-func TestDrawAnnouncesAfterCancel(t *testing.T) {
+func TestDrawSendsReviewAfterCancel(t *testing.T) {
 	store := &fakeDrawStore{due: []Giveaway{dueGiveaway(1, 1)}, candidates: map[uint][]user.User{1: users(5)}}
 	ctx, cancel := context.WithCancel(t.Context())
 	// Shutdown arrives while the winners are being picked, so after Due and before the
-	// announcement.
+	// review.
 	filter := func(context.Context, Giveaway, user.User) (bool, error) {
 		cancel()
 
@@ -320,8 +264,8 @@ func TestDrawAnnouncesAfterCancel(t *testing.T) {
 
 	d.drawDue(ctx, tg)
 
-	if len(tg.sent) != 1 || tg.sent[0].ctxErr != nil {
-		t.Errorf("sent %+v, want the results sent with a live context", tg.sent)
+	if len(tg.reviews) != 1 || tg.reviews[0].ctxErr != nil {
+		t.Errorf("reviews %+v, want the review sent with a live context", tg.reviews)
 	}
 }
 
@@ -346,9 +290,9 @@ func visibleLen(s string) int {
 }
 
 func TestResultMessages(t *testing.T) {
-	d, _ := newDrawer(t, &fakeDrawStore{}, AcceptAll, noShuffle)
+	rv := newTestReviewer(t, newFakeReviewStore())
 
-	got := d.resultMessages("en", []user.User{
+	got := rv.resultMessages("en", []user.User{
 		{TelegramID: 1, FirstName: "Ann", LastName: "Smith"},
 		{TelegramID: 2, FirstName: "Bob"},
 		{TelegramID: 3, FirstName: "<b>&"},
@@ -361,16 +305,16 @@ func TestResultMessages(t *testing.T) {
 		`🏆 <a href="tg://user?id=1">Ann Smith</a>` + "\n" +
 		`🏆 <a href="tg://user?id=2">Bob</a>` + "\n" +
 		`🏆 <a href="tg://user?id=3">&lt;b&gt;&amp;</a>` + "\n\n" +
-		d.texts.Text("en", i18n.DrawCongrats)
+		rv.texts.Text("en", i18n.DrawCongrats)
 	if got[0] != want {
 		t.Errorf("message = %q, want %q", got[0], want)
 	}
 }
 
 func TestResultMessagesOneWinner(t *testing.T) {
-	d, _ := newDrawer(t, &fakeDrawStore{}, AcceptAll, noShuffle)
+	rv := newTestReviewer(t, newFakeReviewStore())
 
-	got := d.resultMessages("uk", []user.User{{TelegramID: 1, FirstName: "Alex"}})
+	got := rv.resultMessages("uk", []user.User{{TelegramID: 1, FirstName: "Alex"}})
 
 	want := "🎉 Розіграш завершено! Переможець:\n\n" +
 		`🏆 <a href="tg://user?id=1">Alex</a>` + "\n\n" +
@@ -381,16 +325,16 @@ func TestResultMessagesOneWinner(t *testing.T) {
 }
 
 func TestResultMessagesWithoutWinners(t *testing.T) {
-	d, _ := newDrawer(t, &fakeDrawStore{}, AcceptAll, noShuffle)
+	rv := newTestReviewer(t, newFakeReviewStore())
 
-	got := d.resultMessages("uk", nil)
-	if len(got) != 1 || got[0] != d.texts.Text("uk", i18n.DrawNoWinners) {
+	got := rv.resultMessages("uk", nil)
+	if len(got) != 1 || got[0] != rv.texts.Text("uk", i18n.DrawNoWinners) {
 		t.Errorf("got %q, want only the no-winners text", got)
 	}
 }
 
 func TestResultMessagesSplitLongResults(t *testing.T) {
-	d, _ := newDrawer(t, &fakeDrawStore{}, AcceptAll, noShuffle)
+	rv := newTestReviewer(t, newFakeReviewStore())
 
 	long := strings.Repeat("😀", 64) // 2 UTF-16 code units each
 	winners := make([]user.User, 0, maxWinners)
@@ -398,12 +342,12 @@ func TestResultMessagesSplitLongResults(t *testing.T) {
 		winners = append(winners, user.User{TelegramID: i + 1, FirstName: long, LastName: long})
 	}
 
-	got := d.resultMessages("en", winners)
+	got := rv.resultMessages("en", winners)
 	if len(got) < 2 {
 		t.Fatalf("got %d messages, want the results split", len(got))
 	}
 
-	header := d.texts.Text("en", i18n.DrawResults)
+	header := rv.texts.Text("en", i18n.DrawResults)
 	links := 0
 
 	for i, m := range got {
