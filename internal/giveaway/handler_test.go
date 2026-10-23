@@ -385,23 +385,21 @@ func TestEditLinkSendsMenu(t *testing.T) {
 func TestEditMenuOfCancelled(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
+	id := strconv.FormatUint(uint64(g.ID), 10)
 
 	if err := h.store.Cancel(t.Context(), g.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	h.tap(t, "giveaway-edit:no:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.tap(t, "giveaway-edit:no:"+id)
 
 	rows := h.keyboard(t)
 	if publish := rows[len(rows)-2][0]; publish.Text != "✅ Publish giveaway" ||
-		publish.CallbackData != "giveaway-edit:publish:"+strconv.FormatUint(uint64(g.ID), 10) {
+		publish.CallbackData != "giveaway-edit:publish:"+id {
 		t.Errorf("button above the last = %+v, want Publish", publish)
 	}
 
-	if last := rows[len(rows)-1][0]; last.CallbackData != "giveaway-edit:refresh:"+strconv.FormatUint(
-		uint64(g.ID),
-		10,
-	) {
+	if last := rows[len(rows)-1][0]; last.CallbackData != "giveaway-edit:refresh:"+id {
 		t.Errorf("last button = %+v, want Refresh", last)
 	}
 }
