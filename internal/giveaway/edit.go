@@ -3,6 +3,7 @@ package giveaway
 import (
 	"context"
 	"errors"
+	"html"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -470,8 +471,9 @@ func (e *Editor) Stop(ctx context.Context, userID int64) Reply {
 	return Reply{Notice: i18n.EditStopped}
 }
 
-// Menu returns the field menu text of giveaway id and whether it is published.
-func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, error) {
+// Menu returns the HTML field menu text of giveaway id and whether it is published. Each field
+// the creator can change ends with a link that asks the bot named botUsername for its value.
+func (e *Editor) Menu(ctx context.Context, id uint, lang, botUsername string) (string, bool, error) {
 	g, err := e.giveaways.ByID(ctx, id)
 	if err != nil {
 		return "", false, err //nolint:wrapcheck // Store already names the giveaway
@@ -491,8 +493,20 @@ func (e *Editor) Menu(ctx context.Context, id uint, lang string) (string, bool, 
 		status = i18n.EditStatusCancelled
 	}
 
+	date, clock := "—", "—"
+	if g.EndsAt != nil {
+		ends := g.EndsAt.In(e.svc.kyiv)
+		date, clock = ends.Format(dateLayout), ends.Format(timeLayout)
+	}
+
+	edit := func(field string) string {
+		return `<a href="` + fieldLink(botUsername, field, id) + `">` + e.svc.texts.Text(lang, i18n.EditLink) + `</a>`
+	}
+
 	text := e.svc.texts.Text(lang, i18n.EditMenu,
-		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), e.ends(g), g.Winners, e.label(g), counts[id])
+		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), date, clock, g.Winners, counts[id],
+		html.EscapeString(e.label(g)),
+		edit(FieldEndDate), edit(FieldEndTime), edit(FieldWinners), edit(FieldButtonText))
 
 	return text, g.Published, nil
 }
@@ -577,7 +591,7 @@ func (e *Editor) runningLines(
 
 		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListItem,
 			e.svc.texts.Text(lang, mark), postLink(g.ChatID, g.MessageID), editLink(botUsername, g.ChatID, g.MessageID),
-			ends, counts[g.ID]))
+			ends, counts[g.ID], e.svc.texts.Text(lang, i18n.EditLink)))
 	}
 
 	return lines, gone, nil

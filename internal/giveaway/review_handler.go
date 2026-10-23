@@ -165,13 +165,7 @@ func (h reviewHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang
 	}
 
 	text, rows := reviewView(h.rv, lang, r)
-	if tapped == 0 {
-		h.kb.SendHTML(ctx, b, userID, text, rows)
-
-		return
-	}
-
-	h.kb.ReplaceHTML(ctx, b, userID, tapped, text, rows)
+	showHTML(ctx, b, h.kb, tapped, userID, text, rows)
 }
 
 // ReviewCallbackHandler returns the handler for the results review buttons. The next screen
@@ -253,6 +247,8 @@ func ReviewLinkHandler(
 		if msg == nil {
 			return
 		}
+
+		dropLinkTap(ctx, b, log, msg)
 
 		lang := language.UserLanguage(ctx, users, log, msg.From)
 		typing(ctx, b, log, msg.From.ID)

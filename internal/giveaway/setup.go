@@ -345,6 +345,12 @@ func resultsLink(botUsername string, chatID, messageID int64) string {
 	return startLink(botUsername, resultsPayload, chatID, messageID)
 }
 
+// fieldLink returns the deep link that asks for a new value of field of giveaway id:
+// https://t.me/<bot>?start=field_<field>_<giveaway ID>.
+func fieldLink(botUsername, field string, id uint) string {
+	return "https://t.me/" + botUsername + "?start=" + fieldPayload + field + "_" + strconv.FormatUint(uint64(id), 10)
+}
+
 // startLink returns https://t.me/<bot>?start=<payload><channel>_<post>.
 func startLink(botUsername, payload string, chatID, messageID int64) string {
 	return "https://t.me/" + botUsername + "?start=" + payload + channelPart(

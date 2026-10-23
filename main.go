@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "0.7.1"
+const version = "0.8.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -171,12 +171,17 @@ func handlers(
 		// Runs before every handler: records every sender's profile and its revisions, and
 		// leaves any unfinished setup on a command.
 		bot.WithMiddlewares(user.Middleware(users, kb, log)),
-		// Before the greeting: an edit link sends /start with a payload, which the greeting
+		// Before the greeting: a bot link sends /start with a payload, which the greeting
 		// would also match, and the first matching handler wins.
 		bot.WithMessageTextHandler(
 			giveaway.ReviewLinkPrefix,
 			bot.MatchTypePrefix,
 			giveaway.ReviewLinkHandler(reviewer, texts, users, kb, log),
+		),
+		bot.WithMessageTextHandler(
+			giveaway.FieldLinkPrefix,
+			bot.MatchTypePrefix,
+			giveaway.FieldLinkHandler(editor, texts, users, kb, log),
 		),
 		bot.WithMessageTextHandler(
 			giveaway.EditLinkPrefix,

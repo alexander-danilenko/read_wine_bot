@@ -5,13 +5,16 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -32,6 +35,8 @@ type fakeAPI struct {
 	mu    sync.Mutex
 	calls []call
 	sends int // sendMessage requests so far; each sent message gets the next ID
+
+	failDelete bool // answers every deleteMessage request with an error
 }
 
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +66,19 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := fakeResult(method, f.sends)
+	failed := f.failDelete && method == "deleteMessage"
 	f.mu.Unlock()
+
+	if failed {
+		if _, err := io.WriteString(
+			w,
+			`{"ok":false,"error_code":400,"description":"Bad Request: message can't be deleted"}`,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		return
+	}
 
 	if _, err := io.WriteString(w, `{"ok":true,"result":`+result+`}`); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -340,10 +357,6 @@ func TestEditForwardSendsMenu(t *testing.T) {
 	}
 
 	want := []string{
-		"giveaway-edit:field:end_date:" + id,
-		"giveaway-edit:field:end_time:" + id,
-		"giveaway-edit:field:winners:" + id,
-		"giveaway-edit:field:button_text:" + id,
 		"giveaway-edit:move:" + id,
 		"giveaway-edit:ask_finish:" + id,
 		"giveaway-edit:ask:" + id,
@@ -352,8 +365,42 @@ func TestEditForwardSendsMenu(t *testing.T) {
 		t.Errorf("menu buttons = %q, want %q", got, want)
 	}
 
-	if len(rows[0]) != 2 || rows[0][0].Text != "📝 Date" {
-		t.Errorf("first row = %+v, want the end date and end time side by side", rows[0])
+	edit := func(field string) string {
+		return `<a href="https://t.me/test_bot?start=field_` + field + "_" + id + `">[✏️ Edit]</a>`
+	}
+	wantText := h.texts.Text("en", i18n.EditStatusPublished) + "\n\n" +
+		"<b>📄 Post:</b> https://t.me/c/1234567890/42\n" +
+		"<b>📅 Date:</b> — " + edit("end_date") + "\n" +
+		"<b>⏰ Time:</b> — (Kyiv time) " + edit("end_time") + "\n" +
+		"<b>🏆 Winners:</b> 1 " + edit("winners") + "\n" +
+		"<b>👥 Participants:</b> 0\n" +
+		"<b>🔘 Button:</b> Go " + edit("button_text")
+	if sent := h.sent(); sent[len(sent)-1] != wantText {
+		t.Errorf("menu = %q, want %q", sent[len(sent)-1], wantText)
+	}
+
+	if mode := h.api.calls[len(h.api.calls)-1].form["parse_mode"]; mode != "HTML" {
+		t.Errorf("parse_mode = %q, want HTML", mode)
+	}
+}
+
+func TestEditMenuEscapesButtonText(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := publish(t, h.store, &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "<b>Join & win</b>",
+	})
+
+	text, _, err := h.ed.Menu(t.Context(), g.ID, "uk", "test_bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(text, "&lt;b&gt;Join &amp; win&lt;/b&gt;") {
+		t.Errorf("menu = %q, want the button text escaped", text)
+	}
+
+	if !strings.Contains(text, ">"+h.texts.Text("uk", i18n.EditLink)+"</a>") {
+		t.Errorf("menu = %q, want the Ukrainian edit links", text)
 	}
 }
 
@@ -374,8 +421,8 @@ func TestEditLinkSendsMenu(t *testing.T) {
 
 			h.messageHandler()(t.Context(), h.bot, h.message(link, false))
 
-			if rows := h.keyboard(t); rows[0][0].Text != "📝 Date" {
-				t.Errorf("first button = %q, want the field menu", rows[0][0].Text)
+			if rows := h.keyboard(t); rows[0][0].CallbackData != "giveaway-edit:move:1" {
+				t.Errorf("first button = %+v, want the field menu", rows[0][0])
 			}
 		})
 	}
@@ -403,7 +450,7 @@ func TestEditMenuShowsNewParticipants(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
 
-	if sent := h.sent(); !strings.Contains(sent[len(sent)-1], "Participants: 0\n") {
+	if sent := h.sent(); !strings.Contains(sent[len(sent)-1], "<b>👥 Participants:</b> 0\n") {
 		t.Fatalf("menu = %q, want 0 participants", sent[len(sent)-1])
 	}
 
@@ -414,14 +461,18 @@ func TestEditMenuShowsNewParticipants(t *testing.T) {
 	h.api.calls = nil
 	h.tap(t, "giveaway-edit:no:"+strconv.FormatUint(uint64(g.ID), 10))
 
-	var edited string
+	var edited, mode string
 	for _, c := range h.api.calls {
 		if c.method == "editMessageText" && c.form["message_id"] == "5" {
-			edited = c.form["text"]
+			edited, mode = c.form["text"], c.form["parse_mode"]
 		}
 	}
 
-	if !strings.Contains(edited, "Participants: 1\n") {
+	if mode != "HTML" {
+		t.Errorf("parse_mode of the menu edited in place = %q, want HTML", mode)
+	}
+
+	if !strings.Contains(edited, "<b>👥 Participants:</b> 1\n") {
 		t.Errorf("tapped message edited to %q, want the menu with 1 participant", edited)
 	}
 }
@@ -464,11 +515,21 @@ func TestEditTextAtMove(t *testing.T) {
 	}
 }
 
+// tapField taps the field link of field in the menu of giveaway id.
+func (h *handlerSetup) tapField(t *testing.T, field string, id uint) {
+	t.Helper()
+
+	u := h.message(giveaway.FieldLinkPrefix+field+"_"+strconv.FormatUint(uint64(id), 10), false)
+	u.Message.ID = linkTapID
+
+	giveaway.FieldLinkHandler(h.ed, h.texts, h.users, h.kb, slog.New(slog.DiscardHandler))(t.Context(), h.bot, u)
+}
+
 func TestEditTextAtField(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t)
 
-	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.tapField(t, giveaway.FieldWinners, g.ID)
 
 	if sent := h.sent(); sent[len(sent)-1] != h.texts.Text("en", i18n.GiveawayAskWinners) {
 		t.Errorf("last message = %q, want the winners question", sent[len(sent)-1])
@@ -480,8 +541,8 @@ func TestEditTextAtField(t *testing.T) {
 		t.Errorf("winners = %d, want 3", got.Winners)
 	}
 
-	if rows := h.keyboard(t); len(rows) != 5 {
-		t.Errorf("reply has %d button rows, want the menu's 5", len(rows))
+	if rows := h.keyboard(t); len(rows) != 3 {
+		t.Errorf("reply has %d button rows, want the menu's 3", len(rows))
 	}
 }
 
@@ -502,28 +563,19 @@ func TestEditKeepsOneKeyboard(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := h.openMenu(t) // the menu is message 1
 
-	// The tap comes from message 5, so the question replaces 5 in place, and the menu, now
-	// another message with buttons, goes.
+	// A link tap sends /start, so the tap and the menu go, and the question is a new message,
+	// message 2.
 	h.api.calls = nil
-	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10))
+	h.tapField(t, giveaway.FieldWinners, g.ID)
 
-	if got := strings.Join(h.deleted(), ","); got != "1" {
-		t.Errorf("deleted after the tap = %q, want the menu", got)
-	}
-
-	edited := false
-	for _, c := range h.api.calls {
-		edited = edited || c.method == "editMessageText" && c.form["message_id"] == "5"
-	}
-
-	if !edited {
-		t.Errorf("calls = %+v; want the tapped message edited into the question", h.api.calls)
+	if got, want := strings.Join(h.deleted(), ","), strconv.Itoa(linkTapID)+",1"; got != want {
+		t.Errorf("deleted after the tap = %q, want %q: the /start message and the menu", got, want)
 	}
 
 	h.api.calls = nil
 	h.messageHandler()(t.Context(), h.bot, h.message("3", false))
 
-	if got := strings.Join(h.deleted(), ","); got != "5" {
+	if got := strings.Join(h.deleted(), ","); got != "2" {
 		t.Errorf("deleted after the typed value = %q, want the question", got)
 	}
 }
@@ -630,7 +682,7 @@ func TestListHandler(t *testing.T) {
 	)
 
 	want := "Your active giveaways:\n\n" +
-		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> [<a href="https://t.me/test_bot?start=edit_1234567890_42">edit</a>] · ` +
+		`- 🟢 <a href="https://t.me/c/1234567890/42">Post</a> <a href="https://t.me/test_bot?start=edit_1234567890_42">[✏️ Edit]</a> · ` +
 		`ends 2026-10-25 19:00 · 👥 0`
 	if sent := h.sent(); len(sent) != 1 || sent[0] != want {
 		t.Errorf("sent %q, want only %q", sent, want)
@@ -662,8 +714,8 @@ func TestEditLinkHandler(t *testing.T) {
 			)
 
 			if tt.wantMenu {
-				if rows := h.keyboard(t); rows[0][0].Text != "📝 Date" {
-					t.Errorf("first button = %q, want the field menu", rows[0][0].Text)
+				if rows := h.keyboard(t); rows[0][0].CallbackData != "giveaway-edit:move:1" {
+					t.Errorf("first button = %+v, want the field menu", rows[0][0])
 				}
 
 				return
@@ -674,5 +726,184 @@ func TestEditLinkHandler(t *testing.T) {
 				t.Errorf("sent %q, want only %q", got, want)
 			}
 		})
+	}
+}
+
+// linkTapID is the ID of the /start message a link tap sends in the tests.
+const linkTapID = 900
+
+func TestLinkTapDeletesStart(t *testing.T) {
+	tests := []struct {
+		name, text string
+		review     bool
+		failDelete bool
+		wantNotice bool
+	}{
+		{name: "edit link", text: "/start edit_1234567890_42"},
+		{name: "edit link to no giveaway", text: "/start edit_1234567890_43", wantNotice: true},
+		{name: "results link to no giveaway", text: "/start results_1234567890_43", review: true, wantNotice: true},
+		{name: "delete fails", text: "/start edit_1234567890_42", failDelete: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHandlerSetup(t)
+			h.api.failDelete = tt.failDelete
+			publish(
+				t,
+				h.store,
+				&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"},
+			)
+
+			u := h.message(tt.text, false)
+			u.Message.ID = linkTapID
+
+			log := slog.New(slog.DiscardHandler)
+			handler := giveaway.EditLinkHandler(h.ed, h.texts, h.users, h.kb, log)
+			if tt.review {
+				store := resultsStore{memStore: h.store}
+				rv := giveaway.NewReviewer(
+					store,
+					store,
+					store,
+					giveaway.AcceptAll,
+					rand.Shuffle,
+					h.texts,
+					time.Now,
+					log,
+				)
+				handler = giveaway.ReviewLinkHandler(rv, h.texts, h.users, h.kb, log)
+			}
+
+			handler(t.Context(), h.bot, u)
+
+			if !slices.Contains(h.deleted(), strconv.Itoa(linkTapID)) {
+				t.Errorf("deleted %v, want the /start message %d", h.deleted(), linkTapID)
+			}
+
+			if sent := h.sent(); len(sent) != 1 {
+				t.Fatalf("sent %q, want one reply", sent)
+			}
+
+			if !tt.wantNotice && len(h.keyboard(t)) == 0 {
+				t.Error("no menu buttons, want the field menu")
+			}
+		})
+	}
+}
+
+func TestFieldLinkHandler(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  string // follows "/start field_"; <id> stands for the giveaway ID
+		from     int64
+		wantStep string // the step the link starts; "" for none
+		notice   i18n.Key
+	}{
+		{name: "winners", payload: "winners_<id>", wantStep: "edit:winners:<id>"},
+		{name: "field with underscore", payload: "end_date_<id>", wantStep: "edit:end_date:<id>"},
+		{name: "button text", payload: "button_text_<id>", wantStep: "edit:button_text:<id>"},
+		{name: "another user", payload: "winners_<id>", from: adminID + 1, notice: i18n.EditNotYours},
+		{name: "unknown giveaway", payload: "winners_999", notice: i18n.EditNotFound},
+		{name: "unknown field", payload: "title_<id>", notice: i18n.EditNotFound},
+		{name: "zero ID", payload: "winners_0", notice: i18n.EditNotFound},
+		{name: "no ID", payload: "winners", notice: i18n.EditNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHandlerSetup(t)
+			g := publish(
+				t,
+				h.store,
+				&giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, ButtonText: "Go"},
+			)
+			id := strconv.FormatUint(uint64(g.ID), 10)
+
+			u := h.message(giveaway.FieldLinkPrefix+strings.ReplaceAll(tt.payload, "<id>", id), false)
+			u.Message.ID = linkTapID
+			if tt.from != 0 {
+				u.Message.From.ID = tt.from
+				u.Message.Chat.ID = tt.from
+			}
+
+			giveaway.FieldLinkHandler(h.ed, h.texts, h.users, h.kb, slog.New(slog.DiscardHandler))(
+				t.Context(), h.bot, u,
+			)
+
+			if !slices.Contains(h.deleted(), strconv.Itoa(linkTapID)) {
+				t.Errorf("deleted %v, want the /start message %d", h.deleted(), linkTapID)
+			}
+
+			if tt.notice != "" {
+				want := h.texts.Text("en", tt.notice)
+				if got := h.sent(); len(got) != 1 || got[0] != want {
+					t.Errorf("sent %q, want only %q", got, want)
+				}
+
+				return
+			}
+
+			if got, want := h.users.pending[adminID], strings.ReplaceAll(tt.wantStep, "<id>", id); got != want {
+				t.Errorf("pending step = %q, want %q", got, want)
+			}
+
+			rows := h.keyboard(t)
+			if last := rows[len(rows)-1][0]; last.CallbackData != "giveaway-edit:stop" {
+				t.Errorf("last button = %+v, want Cancel", last)
+			}
+		})
+	}
+}
+
+func TestStartLinkPrefixes(t *testing.T) {
+	prefixes := []string{giveaway.EditLinkPrefix, giveaway.ReviewLinkPrefix, giveaway.FieldLinkPrefix}
+	for _, a := range prefixes {
+		for _, b := range prefixes {
+			if a != b && strings.HasPrefix(a, b) {
+				t.Errorf("%q starts with %q, so its links reach the wrong handler", a, b)
+			}
+		}
+	}
+
+	// A start payload holds at most 64 characters from A-Z, a-z, 0-9, _ and -.
+	valid := regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	longest := strings.TrimPrefix(giveaway.FieldLinkPrefix, "/start ") + giveaway.FieldButtonText + "_4294967295"
+	if !valid.MatchString(longest) {
+		t.Errorf("field link payload %q is not a valid start payload", longest)
+	}
+}
+
+func TestEditOldFieldButtonIsStale(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := h.openMenu(t)
+	pending := h.users.pending[adminID]
+
+	h.tap(t, "giveaway-edit:field:winners:"+strconv.FormatUint(uint64(g.ID), 10))
+
+	if got := h.users.pending[adminID]; got != pending {
+		t.Errorf("pending step = %q, want %q kept: a field button from an older menu", got, pending)
+	}
+}
+
+func TestEditMenuSplitsEndDateAndTime(t *testing.T) {
+	h := newHandlerSetup(t)
+	g := publish(t, h.store, &giveaway.Giveaway{
+		ChatID: channelID, MessageID: 42, CreatedBy: adminID, EndsAt: h.kyivTime(25, 19, 0),
+	})
+	id := strconv.FormatUint(uint64(g.ID), 10)
+
+	text, _, err := h.ed.Menu(t.Context(), g.ID, "en", "test_bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"<b>📅 Date:</b> 2026-10-25 " + `<a href="https://t.me/test_bot?start=field_end_date_` + id + `">`,
+		"<b>⏰ Time:</b> 19:00 (Kyiv time) " + `<a href="https://t.me/test_bot?start=field_end_time_` + id + `">`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("menu = %q, want %q", text, want)
+		}
 	}
 }

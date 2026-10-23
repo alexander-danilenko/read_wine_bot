@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -23,14 +22,21 @@ const editPayload = "edit_"
 // giveaway list: /start edit_<channel>_<post>.
 const EditLinkPrefix = "/start " + editPayload
 
+// fieldPayload starts the start payload of a field link in the field menu. No start payload
+// starts another, so each link handler gets only its own taps.
+const fieldPayload = "field_"
+
+// FieldLinkPrefix starts the message Telegram sends when the user taps a field link in the
+// field menu: /start field_<field>_<giveaway ID>.
+const FieldLinkPrefix = "/start " + fieldPayload
+
 // EditCallbackPrefix starts the callback data of every edit button. It is not a prefix of
 // SetupCallbackPrefix or JoinCallback, so each handler gets only its own taps.
 const EditCallbackPrefix = "giveaway-edit:"
 
-// Edit button actions. Every action but stop carries the giveaway ID, and the field and
-// default actions also the field: giveaway-edit:<action>[:<field>]:<giveaway ID>.
+// Edit button actions. Every action but stop carries the giveaway ID, and the default action
+// also the field: giveaway-edit:<action>[:<field>]:<giveaway ID>.
 const (
-	editField     = "field"      // asks for a field value
 	editDefault   = "default"    // saves a field's default value
 	editAsk       = "ask"        // asks to confirm the cancel
 	editYes       = "yes"        // cancels the giveaway
@@ -50,7 +56,7 @@ func editData(action string, parts ...string) string {
 // editAction is a parsed edit button tap.
 type editAction struct {
 	name  string
-	field string // set for field and default
+	field string // set for default
 	id    uint   // set for every action but stop
 }
 
@@ -65,7 +71,7 @@ func parseEditData(data string) (editAction, bool) {
 	}
 
 	rest := parts[1:]
-	if a.name == editField || a.name == editDefault {
+	if a.name == editDefault {
 		if len(rest) == 0 || !isField(rest[0]) {
 			return editAction{}, false
 		}
@@ -147,15 +153,24 @@ func ListHandler(ed *Editor, texts *i18n.Catalog, users language.Reader, log *sl
 	}
 }
 
-// list returns the user's running giveaways from List. The edit links need the bot's username,
-// which only getMe tells.
+// list returns the user's running giveaways from List.
 func list(ctx context.Context, b *bot.Bot, ed *Editor, userID int64, lang string) (string, error) {
+	name, err := botUsername(ctx, b)
+	if err != nil {
+		return "", err
+	}
+
+	return ed.List(ctx, telegramAPI{b: b}, userID, lang, name)
+}
+
+// botUsername returns the bot's username, which links to the bot need and only getMe tells.
+func botUsername(ctx context.Context, b *bot.Bot) (string, error) {
 	me, err := b.GetMe(ctx)
 	if err != nil {
 		return "", fmt.Errorf("get bot username: %w", err)
 	}
 
-	return ed.List(ctx, telegramAPI{b: b}, userID, lang, me.Username)
+	return me.Username, nil
 }
 
 // EditLinkHandler returns the handler for the edit links of the giveaway list: it opens the
@@ -171,6 +186,8 @@ func EditLinkHandler(
 			return
 		}
 
+		dropLinkTap(ctx, b, log, msg)
+
 		lang := language.UserLanguage(ctx, users, log, msg.From)
 		typing(ctx, b, log, msg.From.ID)
 
@@ -183,6 +200,62 @@ func EditLinkHandler(
 
 		h.reply(ctx, b, msg.From.ID, lang, ed.OpenPost(ctx, telegramAPI{b: b}, msg.From.ID, chatID, messageID))
 	}
+}
+
+// FieldLinkHandler returns the handler for the field links of the field menu: it asks for a new
+// value of the field the link names.
+func FieldLinkHandler(
+	ed *Editor, texts *i18n.Catalog, users language.Reader, kb *keyboard.Tracker, log *slog.Logger,
+) bot.HandlerFunc {
+	h := editHandler{ed: ed, kb: kb, texts: texts, log: log}
+
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		msg := privateMessage(update)
+		if msg == nil {
+			return
+		}
+
+		dropLinkTap(ctx, b, log, msg)
+
+		lang := language.UserLanguage(ctx, users, log, msg.From)
+		typing(ctx, b, log, msg.From.ID)
+
+		r := Reply{Stale: true}
+		if id, field, ok := parseFieldLink(msg.Text); ok {
+			r = ed.Field(ctx, telegramAPI{b: b}, msg.From.ID, id, field)
+		}
+
+		// A link answers a message, which shows no popup, so a link that no longer applies
+		// gets a notice.
+		if r.Stale {
+			r = Reply{Notice: i18n.EditNotFound}
+		}
+
+		h.reply(ctx, b, msg.From.ID, lang, r)
+	}
+}
+
+// parseFieldLink parses /start field_<field>_<giveaway ID> into the giveaway ID and the field.
+// Field names hold underscores, so the ID follows the last one.
+func parseFieldLink(text string) (uint, string, bool) {
+	field, raw, found := cutLast(strings.TrimPrefix(strings.TrimSpace(text), FieldLinkPrefix), "_")
+	if !found || !positive(raw) {
+		return 0, "", false
+	}
+
+	id, err := strconv.ParseUint(raw, 10, 0)
+
+	return uint(id), field, err == nil
+}
+
+// cutLast slices s around the last sep, like strings.Cut around the first.
+func cutLast(s, sep string) (string, string, bool) {
+	i := strings.LastIndex(s, sep)
+	if i < 0 {
+		return s, "", false
+	}
+
+	return s[:i], s[i+len(sep):], true
 }
 
 // parseEditLink parses /start edit_<channel>_<post> into the post's chat and message IDs.
@@ -281,8 +354,6 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 	tg := telegramAPI{b: b}
 
 	switch a.name {
-	case editField:
-		return h.ed.Field(ctx, tg, userID, a.id, a.field)
 	case editDefault:
 		return h.ed.Value(ctx, tg, userID, editStep(a.field, a.id), h.ed.Default(a.field, lang))
 	case editAsk, editYes, editAskFinish, editYesFinish, editNo:
@@ -379,28 +450,25 @@ func (h editHandler) prompt(ctx context.Context, b *bot.Bot, userID int64, lang,
 	}
 }
 
-// fieldsPerRow is how many field buttons share a row of the field menu.
-const fieldsPerRow = 2
-
-// menu sends the field menu of giveaway id: a button per field, two to a row, then Move, then
-// Finish now and Cancel for a published giveaway or Publish for a cancelled one.
+// menu sends the HTML field menu of giveaway id, with a link per field in the text, and the
+// buttons Move, then Finish now and Cancel for a published giveaway or Publish for a cancelled
+// one.
 func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang string, id uint) {
-	text, published, err := h.ed.Menu(ctx, id, lang)
+	name, err := botUsername(ctx, b)
+
+	var (
+		text      string
+		published bool
+	)
+	if err == nil {
+		text, published, err = h.ed.Menu(ctx, id, lang, name)
+	}
+
 	if err != nil {
 		h.log.ErrorContext(ctx, "build giveaway edit menu", "user_id", userID, "giveaway_id", id, "error", err)
 		send(ctx, b, h.log, &bot.SendMessageParams{ChatID: userID, Text: h.texts.Text(lang, i18n.EditFailed)})
 
 		return
-	}
-
-	menuFields := []struct {
-		field string
-		label i18n.Key
-	}{
-		{FieldEndDate, i18n.EditFieldEndDate},
-		{FieldEndTime, i18n.EditFieldEndTime},
-		{FieldWinners, i18n.EditFieldWinners},
-		{FieldButtonText, i18n.EditFieldButtonText},
 	}
 
 	rawID := strconv.FormatUint(uint64(id), 10)
@@ -420,14 +488,7 @@ func (h editHandler) menu(ctx context.Context, b *bot.Bot, userID int64, lang st
 		}
 	}
 
-	fields := make([]models.InlineKeyboardButton, 0, len(menuFields))
-	for _, f := range menuFields {
-		fields = append(fields, models.InlineKeyboardButton{
-			Text: h.texts.Text(lang, f.label), CallbackData: editData(editField, f.field, rawID),
-		})
-	}
-
-	h.ask(ctx, b, userID, text, append(slices.Collect(slices.Chunk(fields, fieldsPerRow)), tail...))
+	showHTML(ctx, b, h.kb, h.tapped, userID, text, tail)
 }
 
 // ask shows text with an inline keyboard of rows in place of the previous one.

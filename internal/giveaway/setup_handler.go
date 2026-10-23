@@ -280,6 +280,25 @@ func show(
 	kb.Replace(ctx, b, userID, tapped, text, rows)
 }
 
+// showHTML is show for an HTML text, shown without link previews.
+func showHTML(
+	ctx context.Context,
+	b *bot.Bot,
+	kb *keyboard.Tracker,
+	tapped int,
+	userID int64,
+	text string,
+	rows [][]models.InlineKeyboardButton,
+) {
+	if tapped == 0 {
+		kb.SendHTML(ctx, b, userID, text, rows)
+
+		return
+	}
+
+	kb.ReplaceHTML(ctx, b, userID, tapped, text, rows)
+}
+
 // notify sends a notice without a sound: it reports on an action the user just took, in a
 // chat the user is looking at.
 func notify(ctx context.Context, b *bot.Bot, log *slog.Logger, userID int64, text string) {
@@ -292,6 +311,15 @@ func typing(ctx context.Context, b *bot.Bot, log *slog.Logger, chatID int64) {
 	_, err := b.SendChatAction(ctx, &bot.SendChatActionParams{ChatID: chatID, Action: models.ChatActionTyping})
 	if err != nil {
 		log.WarnContext(ctx, "show typing", "chat_id", chatID, "error", err)
+	}
+}
+
+// dropLinkTap deletes the /start message a tap on a bot link sent for the user, so the chat
+// keeps only what the user typed.
+func dropLinkTap(ctx context.Context, b *bot.Bot, log *slog.Logger, msg *models.Message) {
+	_, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: msg.Chat.ID, MessageID: msg.ID})
+	if err != nil {
+		log.WarnContext(ctx, "delete link tap", "chat_id", msg.Chat.ID, "error", err)
 	}
 }
 
