@@ -3,6 +3,7 @@ package giveaway
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/go-telegram/bot"
@@ -104,6 +105,41 @@ func TestJoinText(t *testing.T) {
 	for _, tt := range tests {
 		if got := joinText(tt.result); got != tt.want {
 			t.Errorf("joinText(%v) = %q, want %q", tt.result, got, tt.want)
+		}
+	}
+}
+
+func TestParsePage(t *testing.T) {
+	tests := []struct {
+		data string
+		page int
+		ok   bool
+	}{
+		{FinishedCallbackPrefix + "1", 1, true},
+		{FinishedCallbackPrefix + "12", 12, true},
+		{FinishedCallbackPrefix + "0", 0, false},
+		{FinishedCallbackPrefix + "-1", 0, false},
+		{FinishedCallbackPrefix + "x", 0, false},
+		{FinishedCallbackPrefix + "99999999999", 0, false},
+	}
+	for _, tt := range tests {
+		if page, ok := parsePage(tt.data, FinishedCallbackPrefix); page != tt.page || ok != tt.ok {
+			t.Errorf("parsePage(%q) = %d, %v; want %d, %v", tt.data, page, ok, tt.page, tt.ok)
+		}
+	}
+}
+
+func TestPageCallbackPrefixes(t *testing.T) {
+	others := []string{EditCallbackPrefix, SetupCallbackPrefix, ReviewCallbackPrefix, JoinCallback}
+	for _, prefix := range []string{FinishedCallbackPrefix} {
+		for _, other := range append(others, FinishedCallbackPrefix) {
+			if other != prefix && (strings.HasPrefix(other, prefix) || strings.HasPrefix(prefix, other)) {
+				t.Errorf("page prefix %q and %q overlap", prefix, other)
+			}
+		}
+
+		if data := prefix + "2147483647"; len(data) > 64 {
+			t.Errorf("callback data %q is %d bytes, over Telegram's 64", data, len(data))
 		}
 	}
 }

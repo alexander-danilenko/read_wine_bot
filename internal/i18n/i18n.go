@@ -128,6 +128,13 @@ const (
 	ReviewWaiting         Key = "review.waiting"
 	EditListResults       Key = "edit.list_results"
 	EditListMarkResults   Key = "edit.list_mark_results"
+	CommandListFinished   Key = "command.list_finished"
+	FinishedList          Key = "finished.list"
+	FinishedItem          Key = "finished.item"
+	FinishedReview        Key = "finished.review"
+	FinishedEmpty         Key = "finished.empty"
+	PagePrev              Key = "page.prev"
+	PageNext              Key = "page.next"
 )
 
 // ErrMissingDefault means locales/ has no file for DefaultLang.

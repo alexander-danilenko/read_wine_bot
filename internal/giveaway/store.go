@@ -278,29 +278,28 @@ func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, e
 // Participants returns the number of participants of each giveaway in ids. A giveaway
 // without participants is missing from the map, which reads as 0.
 func (s *Store) Participants(ctx context.Context, ids []uint) (map[uint]int, error) {
-	counts := map[uint]int{}
-	if len(ids) == 0 {
-		return counts, nil
-	}
+	return s.count(ctx, ids, "TRUE", "participants")
+}
 
-	var rows []struct {
-		GiveawayID uint
-		Count      int
-	}
+// WinnerCounts returns the number of current winners of each giveaway in ids. A giveaway
+// without winners is missing from the map, which reads as 0.
+func (s *Store) WinnerCounts(ctx context.Context, ids []uint) (map[uint]int, error) {
+	return s.count(ctx, ids, colWinner, "winners")
+}
 
-	err := s.db.WithContext(ctx).Model(&Participant{}).
-		Select("giveaway_id, count(*) AS count").
-		Where("giveaway_id IN ?", ids).
-		Group("giveaway_id").Scan(&rows).Error
+// Finished returns up to limit of the user's finished giveaways after the first offset, the
+// latest draw first.
+func (s *Store) Finished(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, error) {
+	var gs []Giveaway
+
+	err := s.db.WithContext(ctx).
+		Where("created_by = ? AND finished_at IS NOT NULL", userID).
+		Order(colFinished + " DESC").Order("id DESC").Offset(offset).Limit(limit).Find(&gs).Error
 	if err != nil {
-		return nil, fmt.Errorf("count participants of giveaways %v: %w", ids, err)
+		return nil, fmt.Errorf("list finished giveaways of user %d: %w", userID, err)
 	}
 
-	for _, r := range rows {
-		counts[r.GiveawayID] = r.Count
-	}
-
-	return counts, nil
+	return gs, nil
 }
 
 // Finish marks the winners of giveaway id at places 1, 2, … in the order of winnerIDs, sets
@@ -539,4 +538,32 @@ func (s *Store) PendingResults(ctx context.Context) ([]Giveaway, error) {
 	}
 
 	return gs, nil
+}
+
+// count returns the number of participants that match where in each giveaway in ids; what
+// names them in the error.
+func (s *Store) count(ctx context.Context, ids []uint, where, what string) (map[uint]int, error) {
+	counts := map[uint]int{}
+	if len(ids) == 0 {
+		return counts, nil
+	}
+
+	var rows []struct {
+		GiveawayID uint
+		Count      int
+	}
+
+	err := s.db.WithContext(ctx).Model(&Participant{}).
+		Select("giveaway_id, count(*) AS count").
+		Where("giveaway_id IN ?", ids).Where(where).
+		Group("giveaway_id").Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("count %s of giveaways %v: %w", what, ids, err)
+	}
+
+	for _, r := range rows {
+		counts[r.GiveawayID] = r.Count
+	}
+
+	return counts, nil
 }

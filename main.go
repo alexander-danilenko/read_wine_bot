@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "0.11.0"
+const version = "0.12.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -164,7 +164,7 @@ func handlers(
 	log *slog.Logger,
 ) []bot.Option {
 	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
-	editor := giveaway.NewEditor(giveaways, store, store, store, store, store)
+	editor := giveaway.NewEditor(giveaways, store, store, store, store, store, store)
 	kb := keyboard.NewTracker(users, log)
 
 	return slices.Concat([]bot.Option{
@@ -224,7 +224,7 @@ func handlers(
 	}, menuHandlers(texts, users, kb, giveaways, editor, log))
 }
 
-// menuHandlers wires the commands of the command menu.
+// menuHandlers wires the commands of the command menu and the page buttons of /list_finished.
 func menuHandlers(
 	texts *i18n.Catalog,
 	users *user.Store,
@@ -234,14 +234,25 @@ func menuHandlers(
 	log *slog.Logger,
 ) []bot.Option {
 	handlers := map[string]bot.HandlerFunc{
-		command.New:      giveaway.StartHandler(giveaways, texts, users, kb, log),
-		command.Edit:     giveaway.EditStartHandler(editor, texts, users, kb, log),
-		command.List:     giveaway.ListHandler(editor, texts, users, log),
-		command.Language: language.PromptHandler(texts, users, kb, log),
-		command.Cancel:   command.CancelHandler(texts, users, log),
+		command.New:          giveaway.StartHandler(giveaways, texts, users, kb, log),
+		command.Edit:         giveaway.EditStartHandler(editor, texts, users, kb, log),
+		command.List:         giveaway.ListHandler(editor, texts, users, log),
+		command.ListFinished: giveaway.ListFinishedHandler(editor, texts, users, kb, log),
+		command.Language:     language.PromptHandler(texts, users, kb, log),
+		command.Cancel:       command.CancelHandler(texts, users, log),
 	}
 
-	opts := make([]bot.Option, 0, len(handlers))
+	pageButtons := []bot.Option{
+		bot.WithCallbackQueryDataHandler(
+			giveaway.FinishedCallbackPrefix,
+			bot.MatchTypePrefix,
+			giveaway.FinishedCallbackHandler(editor, texts, users, kb, log),
+		),
+	}
+
+	opts := make([]bot.Option, 0, len(pageButtons)+len(handlers))
+	opts = append(opts, pageButtons...)
+
 	for name, h := range handlers {
 		opts = append(opts, bot.WithMessageTextHandler(name, bot.MatchTypeCommandStartOnly, h))
 	}

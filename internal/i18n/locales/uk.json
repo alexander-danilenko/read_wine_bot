@@ -102,5 +102,12 @@
   "review.not_pending": "Цей розіграш уже закрито: підсумки опубліковано або пропущено.",
   "review.waiting": "🏁 <a href=\"%[1]s\">Розіграш</a> завершено. Його підсумки чекають на перевірку в /list.",
   "edit.list_results": "- %[1]s <a href=\"%[2]s\">Пост</a> <a href=\"%[3]s\">[📣 Перевірити підсумки]</a> · підсумки не опубліковано",
-  "edit.list_mark_results": "📣"
+  "edit.list_mark_results": "📣",
+  "command.list_finished": "🏁 Завершені розіграші",
+  "finished.list": "Ваші завершені розіграші:",
+  "finished.item": "%[1]d. <a href=\"%[2]s\">Пост</a> · %[3]s · 👥 %[4]d · 📣 %[5]d",
+  "finished.review": " · <a href=\"%[1]s\">[📣 Перевірити]</a>",
+  "finished.empty": "У вас немає завершених розіграшів.",
+  "page.prev": "< Сторінка %[1]d",
+  "page.next": "Сторінка %[1]d >"
 }

@@ -125,13 +125,23 @@ type Editor struct {
 	mover     Mover
 	pending   PendingLister
 	counter   Counter
+	finished  FinishedLister
 }
 
 // NewEditor returns an Editor that reuses svc's steps, texts, clock and parsers.
 func NewEditor(
-	svc *Service, giveaways Giveaways, writer Writer, mover Mover, pending PendingLister, counter Counter,
+	svc *Service,
+	giveaways Giveaways,
+	writer Writer,
+	mover Mover,
+	pending PendingLister,
+	counter Counter,
+	finished FinishedLister,
 ) *Editor {
-	return &Editor{svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending, counter: counter}
+	return &Editor{
+		svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending, counter: counter,
+		finished: finished,
+	}
 }
 
 // BeginEdit starts an edit for the user: the bot now waits for a forwarded post.

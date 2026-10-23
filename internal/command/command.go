@@ -17,12 +17,13 @@ import (
 
 // Commands, without the slash. Every command but Start is in the command menu.
 const (
-	Start    = "start"    // shows the greeting; Telegram sends it when a user first opens the bot
-	New      = "new"      // starts a giveaway setup
-	Edit     = "edit"     // starts editing a giveaway
-	List     = "list"     // lists the user's running giveaways
-	Language = "language" // shows the language buttons
-	Cancel   = "cancel"   // leaves any unfinished step
+	Start        = "start"         // shows the greeting; Telegram sends it when a user first opens the bot
+	New          = "new"           // starts a giveaway setup
+	Edit         = "edit"          // starts editing a giveaway
+	List         = "list"          // lists the user's running giveaways
+	ListFinished = "list_finished" // lists the user's finished giveaways page by page
+	Language     = "language"      // shows the language buttons
+	Cancel       = "cancel"        // leaves any unfinished step
 )
 
 // entry is one command in the command menu.
@@ -37,6 +38,7 @@ func menu() []entry {
 		{New, i18n.CommandNew},
 		{Edit, i18n.CommandEdit},
 		{List, i18n.CommandList},
+		{ListFinished, i18n.CommandListFinished},
 		{Language, i18n.CommandLanguage},
 		{Cancel, i18n.CommandCancel},
 	}

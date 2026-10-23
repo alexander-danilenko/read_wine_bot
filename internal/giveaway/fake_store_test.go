@@ -24,6 +24,7 @@ type memStore struct {
 	mu           sync.Mutex
 	rows         map[uint]*giveaway.Giveaway
 	participants map[uint]map[int64]bool
+	winners      map[uint]int // current winner count per giveaway, set by tests
 	nextID       uint
 }
 
@@ -31,7 +32,9 @@ type memStore struct {
 var errConstraint = errors.New("constraint violated")
 
 func newMemStore() *memStore {
-	return &memStore{rows: map[uint]*giveaway.Giveaway{}, participants: map[uint]map[int64]bool{}}
+	return &memStore{
+		rows: map[uint]*giveaway.Giveaway{}, participants: map[uint]map[int64]bool{}, winners: map[uint]int{},
+	}
 }
 
 func isDraft(g *giveaway.Giveaway) bool { return !g.Published && g.CancelledAt == nil }
@@ -167,6 +170,47 @@ func (f *memStore) ByID(_ context.Context, id uint) (giveaway.Giveaway, error) {
 	}
 
 	return giveaway.Giveaway{}, giveaway.ErrNotFound
+}
+
+// Finished sorts by finish time, latest first, then by ID, latest first, as Store.Finished.
+func (f *memStore) Finished(_ context.Context, userID int64, offset, limit int) ([]giveaway.Giveaway, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var gs []giveaway.Giveaway
+
+	for _, id := range f.ids() {
+		if g := f.rows[id]; g.CreatedBy == userID && g.FinishedAt != nil {
+			gs = append(gs, *g)
+		}
+	}
+
+	slices.SortFunc(gs, func(a, b giveaway.Giveaway) int {
+		if c := b.FinishedAt.Compare(*a.FinishedAt); c != 0 {
+			return c
+		}
+
+		return int(b.ID) - int(a.ID)
+	})
+
+	gs = gs[min(offset, len(gs)):]
+
+	return gs[:min(limit, len(gs))], nil
+}
+
+func (f *memStore) WinnerCounts(_ context.Context, ids []uint) (map[uint]int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	counts := map[uint]int{}
+
+	for _, id := range ids {
+		if n := f.winners[id]; n > 0 {
+			counts[id] = n
+		}
+	}
+
+	return counts, nil
 }
 
 // Running sorts giveaways without an end time last, as Postgres sorts NULLs in ascending order.

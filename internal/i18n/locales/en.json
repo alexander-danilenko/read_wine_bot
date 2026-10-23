@@ -102,5 +102,12 @@
   "review.not_pending": "This giveaway is already closed: its results are published or skipped.",
   "review.waiting": "🏁 The <a href=\"%[1]s\">giveaway</a> is over. Its results wait for your review in /list.",
   "edit.list_results": "- %[1]s <a href=\"%[2]s\">Post</a> <a href=\"%[3]s\">[📣 Review results]</a> · results not published",
-  "edit.list_mark_results": "📣"
+  "edit.list_mark_results": "📣",
+  "command.list_finished": "🏁 Finished giveaways",
+  "finished.list": "Your finished giveaways:",
+  "finished.item": "%[1]d. <a href=\"%[2]s\">Post</a> · %[3]s · 👥 %[4]d · 📣 %[5]d",
+  "finished.review": " · <a href=\"%[1]s\">[📣 Review]</a>",
+  "finished.empty": "You have no finished giveaways.",
+  "page.prev": "< Page %[1]d",
+  "page.next": "Page %[1]d >"
 }
