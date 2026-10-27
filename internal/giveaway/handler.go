@@ -148,9 +148,7 @@ func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, 
 		ChatID:    chatID,
 		MessageID: int(messageID),
 		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-			{Text: label, CallbackData: JoinCallback, Style: "success"},
-		}, {
-			{Text: "@read_wine", URL: "https://t.me/read_wine"},
+			{Text: label, CallbackData: JoinCallback},
 		}}},
 	})
 
