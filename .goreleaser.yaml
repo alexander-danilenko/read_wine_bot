@@ -13,7 +13,7 @@ builds:
 archives:
   - formats: [zip]
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ replace .Os "darwin" "macos" }}_{{ .Arch }}'
-    files: [README.md, .env.example]
+    files: [README.md, LICENSE, .env.example]
 
 checksum:
   name_template: checksums.txt

@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white" alt="Go 1.27">
   <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 18">
   <img src="https://img.shields.io/badge/languages-🇺🇦%20uk%20·%20🇬🇧%20en-8B1E3F" alt="Languages: Ukrainian, English">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
 </p>
 
 # 🍷 read_wine_bot
@@ -131,3 +132,7 @@ The bot checks every setting, the database and the token before it starts, and i
 | [GLOSSARY.md](GLOSSARY.md) | Domain terms: giveaway, winner draw, results review, reroll and more |
 | [docs/adr/](docs/adr/) | Architecture decisions and why they were made |
 | [docs/telegram-ux.md](docs/telegram-ux.md) | Rules for everything the user sees in Telegram |
+
+## 📄 License
+
+[MIT](LICENSE)
