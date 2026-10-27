@@ -13,7 +13,7 @@ Use issue references without being asked:
 - Before starting work, find its issue (`gh issue list --search`), or propose one. Check its blockers first: work on an issue whose blockers are still open only after the owner agrees.
 - Record every dependency as a native "blocked by" link, never only in prose: `gh api -X POST repos/alexander-danilenko/read_wine_bot/issues/<N>/dependencies/blocked_by -F issue_id=<blocker's id from gh api repos/.../issues/<M> --jq .id>`. When you file several related issues, set the links between them in the same step. When work turns out to depend on something new, file that issue and link it.
 - Reference the issue in plans (frontmatter or first line), in commit message footers (`Refs #N`, or `Closes #N` on the commit that finishes it), and in PR bodies.
-- Move the issue's project status as the work moves: In progress when you start, In review when a review or PR is open, Done when it ships.
+- Move the issue's project status as the work moves: In progress when you start, In review when a review or PR is open, Done when it ships. `gh project item-edit 2 --owner alexander-danilenko --url <issue URL> --field Status --value "In progress"`.
 
 ## Commands
 
@@ -43,6 +43,8 @@ Follows go.dev's "Organizing a Go module" for a single command: the main package
 internal/<name>/  # every other package, one responsibility each
 docs/plans/       # Compound Engineering plans
 docs/channel-analytics.md  # ready SQL over the channel audience log
+docs/telegram-ux.md        # rules for everything the user sees in Telegram
+docs/adr/         # architecture decisions, one file each: NNNN-<slug>.md
 docs/solutions/   # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
 CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
 ```
@@ -61,10 +63,9 @@ The linter is the style guide: `.golangci.yml` enables every linter except a sho
 
 - Fix findings. Never weaken `.golangci.yml` to get a pass.
 - `//nolint` only for a confirmed false positive, naming the linter and the reason: `//nolint:gosec // G404: not security-sensitive`.
-- Log with `log/slog` and key-value attributes. No `fmt.Print*` or `log.Print*`.
+- Log with `log/slog` and key-value attributes.
 - Wrap errors with context: `fmt.Errorf("open db: %w", err)`. Declare sentinel errors as package variables and compare with `errors.Is`. No `panic` outside `main`.
 - `context.Context` is the first parameter of every function that does I/O. Never store it in a struct.
-- No package-level mutable state and no `init()`.
 - Package names are short, lowercase and singular, and name what the package provides. Never `util`, `common`, `helpers` or `models`.
 
 ## Fail fast
@@ -119,25 +120,12 @@ Before writing a GORM model, a `Store` query or anything else that changes the s
 
 ## Telegram UX
 
-The chat is the bot's only UI. Keep it clean and keep every button working.
-
-- One live message with buttons per private chat. Send inline buttons only through `keyboard.Tracker`: `Send` deletes the previous message with buttons and remembers the new one in `users.keyboard_message_id`. Any command deletes it too (`user.Middleware`). Notices without buttons stay as the history of what happened.
-- A tap whose next step is another prompt edits the tapped message in place (`Tracker.Replace`). A tap that ends in a notice deletes the tapped message, and the notice goes below.
-- A tap on a bot link (`t.me/<bot>?start=<payload>`) sends `/start <payload>` as the user. Its handler deletes that message first (`dropLinkTap`), and its next prompt is a new message, because the command already deleted the live message with buttons. A link that no longer applies answers with a notice: a message shows no popup.
-- Notices about the user's own action go without a sound (`disable_notification`). Before a reply that waits on Telegram, such as checking a forwarded post, show "typing…" (`sendChatAction`).
-- `/cancel` leaves any step, like every command does. Register every command with `setMyCommands` in every locale (`command.Register`), at startup.
-- Answer every callback query, even when nothing changes, or Telegram keeps a spinner on the button. A button whose action no longer applies gets the `GiveawayOutdated` popup.
-- Every step that waits for input has a Cancel button. An action that cannot be undone asks for confirmation first, and a second tap on the same confirmation is stale, not a repeat.
-- Offer the likely value as a button. A typed value that does not parse keeps the step and names the expected format.
-- Every text the user sees comes from `internal/i18n` in every locale. Error texts say what to do next and never show internals.
-- Callback data fits Telegram's 64 bytes and starts with its handler's prefix, which overlaps no other prefix. Start-link payloads follow the same rule within Telegram's 64 characters of `A-Za-z0-9_-`. Tests enforce both.
-- Messages with links use HTML parse mode and disable link previews.
-- Main actions live in Telegram's command menu (≡ next to the message field), each with an emoji at the start of its description so the eye finds it. `/start` lists them as tappable commands. The bot sends no reply keyboard.
+Before changing a handler, a button, a command or a text the user sees, read [docs/telegram-ux.md](docs/telegram-ux.md): the rules that keep the chat clean and every button working.
 
 ## Gotchas
 
-- Store SQL has no automated tests. After changing a query in a `Store`, run the bot against a real `DATABASE_URL` and exercise the flow by hand.
-- Hooks (`.claude/hooks/`, loaded when a session starts): after every `.go` edit, `go-lint-fix.sh` formats and autofixes that package and shows remaining findings. Before your turn ends, `go-lint-gate.sh` runs the full lint and blocks the stop until it passes, at most three times in a row before it hands the findings to the owner. Fix the finding; do not work around the hook.
+- Store SQL has no automated tests. After changing a query in a `Store`, run it against the local database with a throwaway program: [docs/solutions/conventions/hand-check-store-sql.md](docs/solutions/conventions/hand-check-store-sql.md).
+- CI (`.github/workflows/check.yml`) runs build, tests, `golangci-lint` and markdownlint on every push. Hooks (`.claude/hooks/`, loaded when a session starts): after every `.go` edit, `go-lint-fix.sh` formats and autofixes that package and shows remaining findings. Before your turn ends, `go-lint-gate.sh` runs the full lint and blocks the stop until it passes, at most three times in a row before it hands the findings to the owner. Fix the finding; do not work around the hook.
 - Write an import and its first use in the same edit. An unused import stops the package compiling, and the per-edit hook cannot autofix a package that does not compile.
 - Markdown: one line per paragraph (no hard wrapping) and `-` bullets. `markdownlint-fix.sh` runs `markdownlint-cli2 --fix` on every edited `.md` file.
 
