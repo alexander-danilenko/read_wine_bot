@@ -14,6 +14,9 @@
 
 [@read_wine_bot](https://t.me/read_wine_bot) is a Telegram bot that runs giveaways on channel posts. It was built for the [@read_wine](https://t.me/read_wine) channel and works in any channel that adds it as an admin.
 
+> [!WARNING]
+> The hosted [@read_wine_bot](https://t.me/read_wine_bot) comes with no guarantees: it can go down, lose data or change at any time. For your own channel, [host it yourself](#-run-your-own) with your own bot token.
+
 | | |
 | --- | --- |
 | **What** | Giveaways on Telegram channel posts, with an admin review before results go live |
