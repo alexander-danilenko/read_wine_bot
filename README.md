@@ -15,20 +15,20 @@
 [@read_wine_bot](https://t.me/read_wine_bot) is a Telegram bot that runs giveaways on channel posts. It was built for the [@read_wine](https://t.me/read_wine) channel and works in any channel that adds it as an admin.
 
 > [!WARNING]
-> The hosted [@read_wine_bot](https://t.me/read_wine_bot) comes with no guarantees: it can go down, lose data or change at any time. For your own channel, [host it yourself](#-run-your-own) with your own bot token.
+> The hosted [@read_wine_bot](https://t.me/read_wine_bot) has no guarantees. It can stop, lose data or change at any time. For your own channel, [host it yourself](#-run-your-own) with your own bot token.
 
 | | |
 | --- | --- |
-| **What** | Giveaways on Telegram channel posts, with an admin review before results go live |
+| **What** | Giveaways on Telegram channel posts, with an admin review before the bot publishes the results |
 | **Who** | Channel owners, their admins and giveaway partners |
 | **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user with `/language` |
-| **Stack** | Go 1.27, PostgreSQL 18, one static binary for Linux and macOS |
+| **Stack** | Go 1.27, PostgreSQL 18, one static binary for Windows, macOS and Linux |
 
 ## ✨ What it does
 
 - 🎟️ **Join button.** Adds a join button under a channel post and collects participants.
 - 🎲 **Random draw.** Draws winners at random when the giveaway ends.
-- 🔍 **Review before posting.** Channel admins check which channels each winner is subscribed to, replace a winner, then publish the results under the post or close the giveaway quietly.
+- 🔍 **Review before publishing.** Channel admins see which channels each winner is subscribed to, and can replace a winner. Then they publish the results under the post, or close the giveaway without results.
 
 ## 🔄 How a giveaway works
 
@@ -40,7 +40,7 @@ flowchart LR
     D --> E["⏰ End time:<br/>random draw"]
     E --> F["🔍 Admins review<br/>and replace winners"]
     F --> G["📣 Publish results<br/>under the post"]
-    F --> H["🤫 Or close<br/>without posting"]
+    F --> H["🤫 Or close<br/>without publishing"]
 ```
 
 ## 👥 Who uses the bot
@@ -49,7 +49,7 @@ flowchart LR
 | --- | --- | --- |
 | 👑 Channel owner | Adds the bot to the channel as an admin. | The giveaway rights below. |
 | 🛠️ Channel admin | Creates, edits and reviews giveaways in a private chat with the bot. | Nothing. Telegram tells the bot who the channel's admins are. |
-| 🤝 Giveaway partner | Runs a giveaway together with a channel owner. Winners are expected to subscribe to the partner's channel too. | The partner rights below. |
+| 🤝 Giveaway partner | Runs a giveaway together with a channel owner. Winners must also subscribe to the partner's channel. | The partner rights below. |
 | 🎉 Participant | Taps the join button under the giveaway post. | Nothing. |
 
 ## 🔐 Rights to grant
@@ -59,16 +59,16 @@ flowchart LR
 
 ### 📢 Channel that runs giveaways
 
-In the channel, go to **Administrators → Add Admin → @read_wine_bot** and turn on:
+In the channel, go to **Administrators → Add Admin → @read_wine_bot** and enable:
 
 | Right | Why the bot needs it |
 | --- | --- |
-| ✅ **Manage messages → Post messages** | Posts the giveaway results as a reply to the giveaway post. |
-| ✅ **Manage messages → Edit messages of others** | Adds the join button under your post, and removes it when the giveaway ends. |
+| ✅ **Manage messages → Post messages** | Publishes the giveaway results as a reply to the giveaway post. |
+| ✅ **Manage messages → Edit messages of others** | Adds the join button under your post. Removes the button when the giveaway ends. |
 
-The bot checks both rights when an admin starts a giveaway, and stops the setup if either is missing.
+When an admin starts a giveaway, the bot checks both rights. If one right is missing, the bot stops the setup.
 
-Being an admin also lets the bot check winner subscriptions. Telegram does not share them with bots that are not admins.
+As an admin, the bot can also check winner subscriptions. Telegram does not give them to bots that are not admins.
 
 <details>
 <summary>🚫 Rights to leave off (the bot does not use them)</summary>
@@ -87,14 +87,14 @@ Being an admin also lets the bot check winner subscriptions. Telegram does not s
 
 ### 🤝 Giveaway partner
 
-A partner's channel needs **no rights at all**. Add @read_wine_bot as an admin and turn every toggle off. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
+A partner's channel needs **no rights at all**. Add @read_wine_bot as an admin and disable every toggle. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
 
-With no rights, the bot cannot post, edit, delete or ban anything in your channel. It also cannot run giveaways there, because that needs Edit messages of others.
+With no rights, the bot cannot post, edit, delete or ban anything in your channel. It also cannot run giveaways there, because giveaways need the Edit messages of others right.
 
 > [!NOTE]
 > Your channel appears in the results review of every giveaway the bot runs, in every channel. The review lists each winner's subscriptions to it. Admins of other channels see these subscriptions.
 
-To end a partnership, remove the bot from your admins. It stops checking your channel right away.
+To end a partnership, remove the bot from your admins. The bot then stops checking your channel immediately.
 
 ## 🗄️ What the bot stores
 
@@ -104,7 +104,7 @@ The bot keeps its data in its own PostgreSQL database:
 | --- | --- |
 | 👤 **Users the bot sees** | Telegram ID, first and last name, username, Telegram app language, Premium flag, and whether the account is a bot. When any of these change, the bot saves a new revision and keeps the old ones. |
 | 🎁 **Giveaways** | The channel post, end time, number of winners, button text, participants, winners and replaced winners. |
-| 📺 **Channels** | Which channels the bot is an admin of. Titles and usernames are not stored; the bot reads them from Telegram when it shows them. |
+| 📺 **Channels** | Which channels the bot is an admin of. The bot does not store titles and usernames. It reads them from Telegram when it shows them. |
 
 ## 🚀 Run your own
 
@@ -113,37 +113,39 @@ You need:
 - 🐘 a PostgreSQL database (tested with PostgreSQL 18). The bot creates its tables on the first start.
 - 🔑 a bot token from [@BotFather](https://t.me/BotFather).
 
-Then:
+Then, on Windows, macOS or Linux:
 
-1. Download the archive for your system from [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) and unpack it: `unzip read_wine_bot_*_linux_amd64.zip`
-2. `cp .env.example .env`, then set `TELEGRAM_BOT_TOKEN` and `DATABASE_URL` (`postgres://user:password@host:5432/database`).
-3. `./read_wine_bot` from the same folder.
+1. Download the zip for your system from [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases). The name holds the system (`windows`, `macos` or `linux`) and the processor (`amd64` for Intel and AMD, `arm64` for ARM and Apple Silicon).
+2. Extract the zip to a folder.
+3. In that folder, copy `.env.example` to `.env`.
+4. In `.env`, set the values that `.env.example` describes.
+5. Open a terminal in that folder and run the bot: `.\read_wine_bot.exe` on Windows, `./read_wine_bot` on macOS and Linux.
 
 > [!IMPORTANT]
-> Start the bot from the folder that holds `.env`. It reads `.env` from the current directory and its parents, not from next to the binary. Environment variables work too and win over the file.
+> Start the bot from the folder that holds `.env`. It reads `.env` from the current directory and its parents, not from next to the binary. You can also use environment variables. They override the values in the file.
 
-The bot checks every setting, the database and the token before it starts, and it exits with an error that names the problem.
+Before it starts, the bot checks every setting, the database and the token. If a check fails, the bot stops with an error that names the problem.
 
 > [!TIP]
-> On macOS, a binary downloaded in a browser is blocked until you run `xattr -d com.apple.quarantine read_wine_bot`.
+> If the system blocks the downloaded binary, unblock it once: `Unblock-File .\read_wine_bot.exe` in PowerShell on Windows, `xattr -d com.apple.quarantine read_wine_bot` on macOS.
 
-### 🐹 Or install with Go
+### 🐹 With `go install`
 
-With Go 1.27 or newer, skip the download:
+If you have Go 1.27 or newer, you can install the bot with one command instead of the download:
 
 ```sh
 go install github.com/alexander-danilenko/read_wine_bot@latest
 ```
 
-The binary lands in `$(go env GOPATH)/bin`. This way ships no `.env.example`: create `.env` with the keys from [.env.example](.env.example), then run `read_wine_bot` from its folder.
+Go puts the binary in `$(go env GOPATH)/bin`. This method does not install `.env.example`. Create `.env` with the keys from [.env.example](.env.example), then run `read_wine_bot` from the folder that holds `.env`.
 
 ## 🧭 Where to read next
 
 | File | What is in it |
 | --- | --- |
 | [CLAUDE.md](CLAUDE.md) | Developer notes, commands and conventions, for humans and coding agents |
-| [GLOSSARY.md](GLOSSARY.md) | Domain terms: giveaway, winner draw, results review, reroll and more |
-| [docs/adr/](docs/adr/) | Architecture decisions and why they were made |
+| [GLOSSARY.md](GLOSSARY.md) | Domain terms, for example giveaway, winner draw, results review and reroll |
+| [docs/adr/](docs/adr/) | Architecture decisions and the reasons for them |
 | [docs/telegram-ux.md](docs/telegram-ux.md) | Rules for everything the user sees in Telegram |
 
 ## 📄 License
