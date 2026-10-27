@@ -103,8 +103,8 @@ func Register(ctx context.Context, b *bot.Bot, texts *i18n.Catalog) error {
 	return nil
 }
 
-// reply returns a handler that answers a command in a private chat with the text for the
-// language the user chose, or else the language of their Telegram app. The reply also takes
+// reply returns a handler that answers a command in a private chat with the HTML text for
+// the language the user chose, or else the language of their Telegram app. The reply also takes
 // away the menu keyboard that older versions of the bot sent. It ignores the command in
 // groups and channels.
 func reply(langs language.Reader, log *slog.Logger, text func(lang string) string) bot.HandlerFunc {
@@ -117,9 +117,11 @@ func reply(langs language.Reader, log *slog.Logger, text func(lang string) strin
 		lang := language.UserLanguage(ctx, langs, log, msg.From)
 
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:      msg.Chat.ID,
-			Text:        text(lang),
-			ReplyMarkup: &models.ReplyKeyboardRemove{RemoveKeyboard: true},
+			ChatID:             msg.Chat.ID,
+			Text:               text(lang),
+			ParseMode:          models.ParseModeHTML,
+			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
+			ReplyMarkup:        &models.ReplyKeyboardRemove{RemoveKeyboard: true},
 		})
 		if err != nil {
 			log.ErrorContext(ctx, "reply to command", "chat_id", msg.Chat.ID, "command", msg.Text, "error", err)
