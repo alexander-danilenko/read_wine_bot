@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.0.0"
+const version = "1.1.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -92,8 +92,8 @@ func run() error {
 		return err
 	}
 
-	if err := command.Register(ctx, b, texts); err != nil {
-		return fmt.Errorf("register commands: %w", err)
+	if err := describeBot(ctx, b, texts); err != nil {
+		return err
 	}
 
 	drawer := newDrawer(store, users, reviewer, texts, log)
@@ -107,6 +107,20 @@ func run() error {
 	b.Start(ctx)
 	wg.Wait()
 	slog.InfoContext(ctx, "bot stopped")
+
+	return nil
+}
+
+// describeBot tells Telegram what the bot offers and needs: the command menu, and the admin
+// rights Telegram pre-selects when an admin adds the bot to a channel.
+func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog) error {
+	if err := command.Register(ctx, b, texts); err != nil {
+		return fmt.Errorf("register commands: %w", err)
+	}
+
+	if err := giveaway.RequestRights(ctx, b); err != nil {
+		return fmt.Errorf("request channel admin rights: %w", err)
+	}
 
 	return nil
 }

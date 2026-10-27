@@ -137,8 +137,43 @@ func (t telegramAPI) CanRunGiveaways(ctx context.Context, chatID int64) (bool, e
 	return canRunGiveaways(*m), nil
 }
 
-// canRunGiveaways reports whether the bot's status in a channel has both rights a giveaway
-// needs: Edit messages of others for the join button and Post messages for the results.
+// requiredRights returns the only admin rights a giveaway needs in its channel: Edit messages of
+// others for the join button and Post messages for the results.
+func requiredRights() models.ChatAdministratorRights {
+	return models.ChatAdministratorRights{CanEditMessages: true, CanPostMessages: true}
+}
+
+// RequestRights makes Telegram pre-select requiredRights, and no other right, when an admin
+// adds the bot to a channel. The admin can still change them.
+func RequestRights(ctx context.Context, b *bot.Bot) error {
+	rights := requiredRights()
+
+	_, err := b.SetMyDefaultAdministratorRights(ctx, &bot.SetMyDefaultAdministratorRightsParams{
+		Rights:      &rights,
+		ForChannels: true,
+	})
+	if err != nil {
+		return fmt.Errorf("set default channel admin rights: %w", err)
+	}
+
+	return nil
+}
+
+// AddToChannelLink returns the link that opens Telegram's channel picker for the bot named
+// botUsername, with requiredRights already enabled.
+func AddToChannelLink(botUsername string) string {
+	return "https://t.me/" + botUsername + "?startchannel&admin=post_messages+edit_messages"
+}
+
+// AddToPartnerChannelLink returns the link that opens Telegram's channel picker for the bot
+// named botUsername with no right the bot uses. A channel link must ask for at least one right;
+// manage_chat is the one every admin has anyway.
+func AddToPartnerChannelLink(botUsername string) string {
+	return "https://t.me/" + botUsername + "?startchannel&admin=manage_chat"
+}
+
+// canRunGiveaways reports whether the bot's status in a channel has both rights in
+// requiredRights.
 func canRunGiveaways(m models.ChatMember) bool {
 	return m.Administrator != nil && m.Administrator.CanEditMessages && m.Administrator.CanPostMessages
 }

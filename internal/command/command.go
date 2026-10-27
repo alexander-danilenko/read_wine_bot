@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
@@ -67,9 +68,29 @@ func StartHandler(texts *i18n.Catalog, langs language.Reader, version string, lo
 }
 
 // HelpHandler returns a handler that answers /help: how a giveaway works and the channel
-// rights the bot needs.
+// rights the bot needs, with links that add the bot to a channel with those rights or, for a
+// partner channel, with none. Only getMe tells the bot's username, so the handler asks for it
+// on every /help.
 func HelpHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
-	return reply(langs, log, func(lang string) string { return texts.Text(lang, i18n.Help) })
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		me, err := b.GetMe(ctx)
+		if err != nil {
+			log.ErrorContext(ctx, "get bot username for /help", "error", err)
+
+			return
+		}
+
+		link, partner := giveaway.AddToChannelLink(me.Username), giveaway.AddToPartnerChannelLink(me.Username)
+		reply(
+			langs,
+			log,
+			func(lang string) string { return texts.Text(lang, i18n.Help, link, partner) },
+		)(
+			ctx,
+			b,
+			update,
+		)
+	}
 }
 
 // CancelHandler returns a handler that answers /cancel. user.Middleware has already left the

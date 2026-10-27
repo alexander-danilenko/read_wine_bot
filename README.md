@@ -59,7 +59,9 @@ flowchart LR
 
 ### 📢 Channel that runs giveaways
 
-In the channel, go to **Administrators → Add Admin → @read_wine_bot** and enable:
+Open [t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages](https://t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages) and select your channel. Telegram then adds the bot as an admin with the two permissions below already enabled. For your own bot, put its username in the link.
+
+You can also go to **Administrators → Add Admin → @read_wine_bot** in the channel. Telegram enables the same two permissions there by default. Make sure that these permissions are enabled:
 
 | Permission | Why the bot needs it |
 | --- | --- |
@@ -87,7 +89,7 @@ As an admin, the bot can also check winner subscriptions. Telegram does not give
 
 ### 🤝 Giveaway partner
 
-A partner's channel needs **no permissions at all**. Add @read_wine_bot as an admin and disable every toggle. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
+A partner's channel needs **no permissions at all**. Open [t.me/read_wine_bot?startchannel&admin=manage_chat](https://t.me/read_wine_bot?startchannel&admin=manage_chat) and select your channel. Telegram requires at least one permission in this link. The link asks for `manage_chat`, which every admin has anyway. Then make sure that every other toggle is disabled. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
 
 With no permissions, the bot cannot post, edit, delete or ban anything in your channel. It also cannot run giveaways there, because giveaways need the Edit messages of others permission.
 
