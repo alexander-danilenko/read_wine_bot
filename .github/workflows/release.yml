@@ -1,0 +1,52 @@
+# Publishes a GitHub Release when check passes on a main commit whose const version in main.go
+# has no tag yet. main.go is the one source of the version: nobody tags by hand.
+name: release
+
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # GoReleaser builds the changelog from the previous tag
+
+      - name: Tag the version unless it is already released
+        id: tag
+        run: |
+          version=$(sed -n 's/^const version = "\(.*\)"$/\1/p' main.go)
+          if [ -z "$version" ]; then
+            echo "no const version in main.go" >&2
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already released"
+            exit 0
+          fi
+          git tag "v$version"
+          git push origin "v$version"
+          echo "new=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.tag.outputs.new == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - if: steps.tag.outputs.new == 'true'
+        # Pinned to a commit: this job can write to the repo, so a moved tag must not change what runs.
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          version: v2.16.0 # the version .goreleaser.yaml was checked with
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -14,3 +14,6 @@
 .claude/worktrees/
 
 /read_wine_bot
+
+# GoReleaser output
+/dist/
