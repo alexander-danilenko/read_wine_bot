@@ -6,7 +6,6 @@
   <a href="https://t.me/read_wine_bot"><img src="https://img.shields.io/badge/Telegram-@read__wine__bot-26A5E4?logo=telegram&logoColor=white" alt="Telegram: @read_wine_bot"></a>
   <img src="https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white" alt="Go 1.27">
   <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 18">
-  <img src="https://img.shields.io/badge/Docker-static%20image-2496ED?logo=docker&logoColor=white" alt="Docker: static image">
   <img src="https://img.shields.io/badge/languages-🇺🇦%20uk%20·%20🇬🇧%20en-8B1E3F" alt="Languages: Ukrainian, English">
 </p>
 
@@ -19,7 +18,7 @@
 | **What** | Giveaways on Telegram channel posts, with an admin review before results go live |
 | **Who** | Channel owners, their admins and giveaway partners |
 | **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user with `/language` |
-| **Stack** | Go 1.27, PostgreSQL 18, one static binary in Docker |
+| **Stack** | Go 1.27, PostgreSQL 18, one static binary for Linux and macOS |
 
 ## ✨ What it does
 
@@ -105,16 +104,24 @@ The bot keeps its data in its own PostgreSQL database:
 
 ## 🚀 Run your own
 
-You need Go 1.27, Docker and a bot token from [@BotFather](https://t.me/BotFather). Prebuilt binaries for Linux and macOS are on the [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) page.
+You need:
 
-1. `cp .env.example .env`, then set `TELEGRAM_BOT_TOKEN`.
-2. `docker compose up -d` starts PostgreSQL 18.
-3. `go run .` starts the bot.
+- 🐘 a PostgreSQL database (tested with PostgreSQL 18). The bot creates its tables on the first start.
+- 🔑 a bot token from [@BotFather](https://t.me/BotFather).
 
-The bot reads settings only from environment variables and `.env` files. It checks every setting, the database and the token before it starts, and it exits with an error that names the problem.
+Then:
+
+1. Download the archive for your system from [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) and unpack it: `tar -xzf read_wine_bot_*_linux_amd64.tar.gz`
+2. `cp .env.example .env`, then set `TELEGRAM_BOT_TOKEN` and `DATABASE_URL` (`postgres://user:password@host:5432/database`).
+3. `./read_wine_bot` from the same folder.
+
+> [!IMPORTANT]
+> Start the bot from the folder that holds `.env`. It reads `.env` from the current directory and its parents, not from next to the binary. Environment variables work too and win over the file.
+
+The bot checks every setting, the database and the token before it starts, and it exits with an error that names the problem.
 
 > [!TIP]
-> In production, set `DATABASE_URL` to an external PostgreSQL and run the image from the `Dockerfile` with `docker run --env-file .env`.
+> On macOS, a binary downloaded in a browser is blocked until you run `xattr -d com.apple.quarantine read_wine_bot`.
 
 ## 🧭 Where to read next
 
