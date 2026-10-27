@@ -47,31 +47,31 @@ flowchart LR
 
 | Who | What they do | What they grant |
 | --- | --- | --- |
-| 👑 Channel owner | Adds the bot to the channel as an admin. | The giveaway rights below. |
+| 👑 Channel owner | Adds the bot to the channel as an admin. | The giveaway permissions below. |
 | 🛠️ Channel admin | Creates, edits and reviews giveaways in a private chat with the bot. | Nothing. Telegram tells the bot who the channel's admins are. |
-| 🤝 Giveaway partner | Runs a giveaway together with a channel owner. Winners must also subscribe to the partner's channel. | The partner rights below. |
+| 🤝 Giveaway partner | Runs a giveaway together with a channel owner. Winners must also subscribe to the partner's channel. | The partner permissions below. |
 | 🎉 Participant | Taps the join button under the giveaway post. | Nothing. |
 
-## 🔐 Rights to grant
+## 🔐 Permissions to grant
 
 > [!IMPORTANT]
-> Grant only the rights listed here and leave every other toggle off. The bot never asks for more.
+> Grant only the permissions listed here and disable every other toggle. The bot never asks for more.
 
 ### 📢 Channel that runs giveaways
 
 In the channel, go to **Administrators → Add Admin → @read_wine_bot** and enable:
 
-| Right | Why the bot needs it |
+| Permission | Why the bot needs it |
 | --- | --- |
 | ✅ **Manage messages → Post messages** | Publishes the giveaway results as a reply to the giveaway post. |
 | ✅ **Manage messages → Edit messages of others** | Adds the join button under your post. Removes the button when the giveaway ends. |
 
-When an admin starts a giveaway, the bot checks both rights. If one right is missing, the bot stops the setup.
+When an admin starts a giveaway, the bot checks both permissions. If one permission is missing, the bot stops the setup.
 
 As an admin, the bot can also check winner subscriptions. Telegram does not give them to bots that are not admins.
 
 <details>
-<summary>🚫 Rights to leave off (the bot does not use them)</summary>
+<summary>🚫 Permissions to keep disabled (the bot does not use them)</summary>
 
 - Manage messages → Delete messages of others
 - Change channel info
@@ -87,9 +87,9 @@ As an admin, the bot can also check winner subscriptions. Telegram does not give
 
 ### 🤝 Giveaway partner
 
-A partner's channel needs **no rights at all**. Add @read_wine_bot as an admin and disable every toggle. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
+A partner's channel needs **no permissions at all**. Add @read_wine_bot as an admin and disable every toggle. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
 
-With no rights, the bot cannot post, edit, delete or ban anything in your channel. It also cannot run giveaways there, because giveaways need the Edit messages of others right.
+With no permissions, the bot cannot post, edit, delete or ban anything in your channel. It also cannot run giveaways there, because giveaways need the Edit messages of others permission.
 
 > [!NOTE]
 > Your channel appears in the results review of every giveaway the bot runs, in every channel. The review lists each winner's subscriptions to it. Admins of other channels see these subscriptions.
