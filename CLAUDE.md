@@ -4,6 +4,17 @@ General-purpose Telegram bot for the @read_wine channel. Planned features: givea
 
 The owner reads code well but is not a Go developer. When a change relies on a non-obvious Go idiom, name it in one line in your summary.
 
+## Issue tracker
+
+The private GitHub Project [Read Wine Bot](https://github.com/users/alexander-danilenko/projects/2) (#2, linked to this repo) is the primary tracker. File work as issues in `alexander-danilenko/read_wine_bot` and add them to it: `gh issue create ... --project "Read Wine Bot"`. Statuses: Backlog, Ready, In progress, In review, Done.
+
+Use issue references without being asked:
+
+- Before starting work, find its issue (`gh issue list --search`), or propose one. Check its blockers first: work on an issue whose blockers are still open only after the owner agrees.
+- Record every dependency as a native "blocked by" link, never only in prose: `gh api -X POST repos/alexander-danilenko/read_wine_bot/issues/<N>/dependencies/blocked_by -F issue_id=<blocker's id from gh api repos/.../issues/<M> --jq .id>`. When you file several related issues, set the links between them in the same step. When work turns out to depend on something new, file that issue and link it.
+- Reference the issue in plans (frontmatter or first line), in commit message footers (`Refs #N`, or `Closes #N` on the commit that finishes it), and in PR bodies.
+- Move the issue's project status as the work moves: In progress when you start, In review when a review or PR is open, Done when it ships.
+
 ## Commands
 
 | Command | Purpose |
