@@ -42,7 +42,7 @@ func TestFinishedLine(t *testing.T) {
 	}
 
 	want := "Your finished giveaways:\n\n" +
-		`1. <a href="https://t.me/c/1234567890/42">Post</a> · 2026-10-30 19:00 · 👥 2 · 📣 1` +
+		`1. <a href="https://t.me/c/1234567890/42">🔗 Post</a> · 2026-10-30 19:00 · 👥 2 · 📣 1` +
 		` · <a href="https://t.me/test_bot?start=results_1234567890_42">[📣 Review]</a>`
 	if got != want || more {
 		t.Errorf("Finished = %q, more %v; want %q, no more", got, more, want)
