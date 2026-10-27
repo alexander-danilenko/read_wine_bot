@@ -10,6 +10,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	"github.com/alexander-danilenko/read_wine_bot/internal/channel"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
@@ -107,6 +108,24 @@ func (t telegramAPI) IsChannelAdmin(ctx context.Context, chatID, userID int64) (
 	}
 
 	return m.Type == models.ChatMemberTypeOwner || m.Type == models.ChatMemberTypeAdministrator, nil
+}
+
+func (t telegramAPI) Channel(ctx context.Context, chatID int64) (ChannelInfo, error) {
+	c, err := t.b.GetChat(ctx, &bot.GetChatParams{ChatID: chatID})
+	if err != nil {
+		return ChannelInfo{}, err //nolint:wrapcheck // Reviewer logs it with the chat ID
+	}
+
+	return ChannelInfo{ID: c.ID, Title: c.Title, Username: c.Username}, nil
+}
+
+func (t telegramAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bool, error) {
+	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: userID})
+	if err != nil {
+		return false, err //nolint:wrapcheck // Reviewer logs it with the chat and user IDs
+	}
+
+	return channel.Subscribed(*m), nil
 }
 
 func (t telegramAPI) CanEditPosts(ctx context.Context, chatID int64) (bool, error) {

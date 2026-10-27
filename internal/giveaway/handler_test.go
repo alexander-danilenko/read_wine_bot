@@ -766,6 +766,7 @@ func TestLinkTapDeletesStart(t *testing.T) {
 					store,
 					store,
 					store,
+					noChannels{},
 					giveaway.AcceptAll,
 					rand.Shuffle,
 					h.texts,

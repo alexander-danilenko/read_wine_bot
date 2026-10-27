@@ -106,7 +106,7 @@ func isService(msg *models.Message) bool {
 // classify returns what a status change means for the subscription, and false when it moves
 // the user neither in nor out: a promotion, a restriction, an unban.
 func classify(old, upd models.ChatMember) (Kind, bool) {
-	was, is := subscribed(old), subscribed(upd)
+	was, is := Subscribed(old), Subscribed(upd)
 
 	switch {
 	case !was && is:
@@ -120,8 +120,8 @@ func classify(old, upd models.ChatMember) (Kind, bool) {
 	}
 }
 
-// subscribed reports whether the status counts the user among the channel's subscribers.
-func subscribed(m models.ChatMember) bool {
+// Subscribed reports whether the status counts the user among the channel's subscribers.
+func Subscribed(m models.ChatMember) bool {
 	switch m.Type {
 	case models.ChatMemberTypeOwner, models.ChatMemberTypeAdministrator, models.ChatMemberTypeMember:
 		return true

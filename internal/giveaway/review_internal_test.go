@@ -308,6 +308,7 @@ func newLoggedReviewer(
 		store,
 		store,
 		store,
+		fixedChannels{},
 		filter,
 		shuffle,
 		texts,
@@ -366,7 +367,7 @@ func TestRerollWithoutReplacementLeavesFewerWinners(t *testing.T) {
 		t.Fatalf("winners = %+v, want none", r.Results.Winners)
 	}
 
-	text, rows := reviewView(rv, "en", r)
+	text, rows := reviewView(rv, "en", r, Subscriptions{})
 	if text != rv.texts.Text("en", i18n.ReviewNoWinners, postLink(drawChannel, drawPost)) {
 		t.Errorf("review text = %q, want the no-winners text", text)
 	}
@@ -657,7 +658,7 @@ func TestReviewFitsOneMessageWithMostWinners(t *testing.T) {
 	rv := newTestReviewer(t, store)
 
 	r := rv.Show(t.Context(), newAdmins(), creatorID, reviewID)
-	text, rows := reviewView(rv, "en", r)
+	text, rows := reviewView(rv, "en", r, Subscriptions{})
 
 	if n := visibleLen(text); n > maxMessageLen {
 		t.Errorf("review is %d UTF-16 code units long, over %d", n, maxMessageLen)
@@ -683,7 +684,7 @@ func TestReviewNamesWinnerToReroll(t *testing.T) {
 	rv := newTestReviewer(t, store)
 
 	r := rv.AskReroll(t.Context(), newAdmins(), creatorID, reviewID, bob().TelegramID)
-	text, rows := reviewView(rv, "en", r)
+	text, rows := reviewView(rv, "en", r, Subscriptions{})
 
 	if !strings.Contains(text, "2") || !strings.Contains(text, `href="tg://user?id=2">Bob</a>`) {
 		t.Errorf("confirmation = %q, want winner 2, Bob", text)

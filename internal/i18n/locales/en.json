@@ -101,6 +101,7 @@
   "review.not_admin": "Only admins of the giveaway's channel can review its results.",
   "review.not_pending": "This giveaway is already closed: its results are published or skipped.",
   "review.waiting": "🏁 The <a href=\"%[1]s\">giveaway</a> is over. Its results wait for your review in /list.",
+  "review.channels": "✅ subscribed to the giveaway's channel, ⚠️ not subscribed, ❔ couldn't check. Channels: %[1]s",
   "edit.list_results": "- %[1]s <a href=\"%[2]s\">Post</a> <a href=\"%[3]s\">[📣 Review results]</a> · results not published",
   "edit.list_mark_results": "📣",
   "command.list_finished": "🏁 Finished giveaways",

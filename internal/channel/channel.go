@@ -52,3 +52,13 @@ type Post struct {
 func (Post) TableName() string {
 	return "channel_posts"
 }
+
+// BotChannel is one row of the bot_channels table: a channel the bot was added to, and
+// whether the bot is an admin there now. The row stays when the bot is removed. Titles and
+// usernames are not stored: Telegram sends no update when they change, so the bot reads them
+// when it shows them.
+type BotChannel struct {
+	ChatID     int64     `gorm:"primaryKey;autoIncrement:false;comment:Telegram ID of the channel"`
+	BotIsAdmin bool      `gorm:"not null;comment:Whether the bot is an admin of the channel now"`
+	ChangedAt  time.Time `gorm:"not null;comment:When Telegram reported the bot's status (to the second), or when the startup check read it. A report older than this one is ignored"`
+}

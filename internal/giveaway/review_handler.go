@@ -100,8 +100,11 @@ func parseReviewData(data string) (reviewAction, bool) {
 	return a, true
 }
 
-// reviewView returns the text and buttons of the screen r shows.
-func reviewView(rv *Reviewer, lang string, r ReviewReply) (string, [][]models.InlineKeyboardButton) {
+// reviewView returns the text and buttons of the screen r shows. subs are shown on the
+// results screen.
+func reviewView(
+	rv *Reviewer, lang string, r ReviewReply, subs Subscriptions,
+) (string, [][]models.InlineKeyboardButton) {
 	texts := rv.texts
 	button := func(text, data string) models.InlineKeyboardButton {
 		return models.InlineKeyboardButton{Text: text, CallbackData: data}
@@ -153,7 +156,7 @@ func reviewView(rv *Reviewer, lang string, r ReviewReply) (string, [][]models.In
 		},
 	)
 
-	return rv.ReviewText(lang, r.Giveaway, r.Results), rows
+	return rv.ReviewText(lang, r.Giveaway, r.Results, subs), rows
 }
 
 // reviewHandler translates results review updates into Reviewer calls and their replies
@@ -176,7 +179,12 @@ func (h reviewHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang
 		return
 	}
 
-	text, rows := reviewView(h.rv, lang, r)
+	var subs Subscriptions
+	if r.Screen == ResultsScreen {
+		subs = h.rv.Subscriptions(ctx, telegramAPI{b: b}, r.Giveaway, r.Results.Winners)
+	}
+
+	text, rows := reviewView(h.rv, lang, r, subs)
 	showHTML(ctx, b, h.kb, tapped, userID, text, rows)
 }
 

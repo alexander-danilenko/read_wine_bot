@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "0.13.0"
+const version = "0.14.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -80,7 +80,7 @@ func run() error {
 	store := giveaway.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	reviewer := newReviewer(store, texts, log)
+	reviewer := newReviewer(store, channel.NewStore(conn), texts, log)
 	opts := append(handlers(users, store, reviewer, texts, kyiv, log), bot.WithAllowedUpdates(allowedUpdates()))
 
 	b, err := bot.New(cfg.TelegramBotToken, opts...)
@@ -88,7 +88,9 @@ func run() error {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
 
-	registerAudienceLog(b, channel.NewStore(conn), users, log)
+	if err := registerChannelLog(ctx, b, channel.NewStore(conn), users, log); err != nil {
+		return err
+	}
 
 	if err := command.Register(ctx, b, texts); err != nil {
 		return fmt.Errorf("register commands: %w", err)
@@ -109,10 +111,13 @@ func run() error {
 	return nil
 }
 
-// registerAudienceLog wires the channel's audience log. go-telegram/bot has no option for
-// handlers matched by update type, so they are registered on the bot; they match no update
-// the handlers from handlers take.
-func registerAudienceLog(b *bot.Bot, audience *channel.Store, users *user.Store, log *slog.Logger) {
+// registerChannelLog wires the channel's audience log and the log of the channels where the
+// bot is an admin, then checks the bot's status in every known channel. go-telegram/bot has
+// no option for handlers matched by update type, so they are registered on the bot; they
+// match no update the handlers from handlers take.
+func registerChannelLog(
+	ctx context.Context, b *bot.Bot, audience *channel.Store, users *user.Store, log *slog.Logger,
+) error {
 	b.RegisterHandlerMatchFunc(
 		func(u *models.Update) bool { return u.ChatMember != nil },
 		channel.MemberHandler(audience, users, log),
@@ -121,6 +126,16 @@ func registerAudienceLog(b *bot.Bot, audience *channel.Store, users *user.Store,
 		func(u *models.Update) bool { return u.ChannelPost != nil },
 		channel.PostHandler(audience, log),
 	)
+	b.RegisterHandlerMatchFunc(
+		func(u *models.Update) bool { return u.MyChatMember != nil },
+		channel.BotHandler(audience, log),
+	)
+
+	if err := channel.CheckBotChannels(ctx, b, audience, time.Now(), log); err != nil {
+		return fmt.Errorf("check channels where the bot is an admin: %w", err)
+	}
+
+	return nil
 }
 
 // allowedUpdates lists the update types the bot asks Telegram for. Telegram sends chat_member
@@ -150,8 +165,10 @@ func newDrawer(
 
 // newReviewer returns the results review rules. A replacement winner is picked with the
 // draw's filter and shuffle.
-func newReviewer(store *giveaway.Store, texts *i18n.Catalog, log *slog.Logger) *giveaway.Reviewer {
-	return giveaway.NewReviewer(store, store, store, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
+func newReviewer(
+	store *giveaway.Store, channels *channel.Store, texts *i18n.Catalog, log *slog.Logger,
+) *giveaway.Reviewer {
+	return giveaway.NewReviewer(store, store, store, channels, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
 }
 
 // handlers wires every update the bot handles to the package that handles it.

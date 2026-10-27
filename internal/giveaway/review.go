@@ -78,6 +78,7 @@ type Reviewer struct {
 	store    ReviewStore
 	rerolls  RerollStore
 	publish  PublishStore
+	channels Channels
 	filter   Filter
 	shuffle  func(n int, swap func(i, j int))
 	texts    *i18n.Catalog
@@ -87,14 +88,15 @@ type Reviewer struct {
 }
 
 // NewReviewer returns a Reviewer. filter and shuffle are the winner draw's, so a replacement
-// is picked the way the draw picks winners.
+// is picked the way the draw picks winners. channels lists the channels whose subscriptions
+// the review shows next to each winner.
 func NewReviewer(
-	store ReviewStore, rerolls RerollStore, publish PublishStore,
+	store ReviewStore, rerolls RerollStore, publish PublishStore, channels Channels,
 	filter Filter, shuffle func(n int, swap func(i, j int)),
 	texts *i18n.Catalog, now func() time.Time, log *slog.Logger,
 ) *Reviewer {
 	return &Reviewer{
-		store: store, rerolls: rerolls, publish: publish, filter: filter, shuffle: shuffle,
+		store: store, rerolls: rerolls, publish: publish, channels: channels, filter: filter, shuffle: shuffle,
 		texts: texts, now: now, log: log, maxWidth: maxMessageLen,
 	}
 }
@@ -303,29 +305,49 @@ func (r *Reviewer) Results(ctx context.Context, g Giveaway) (ReviewReply, error)
 	return ReviewReply{Screen: ResultsScreen, Giveaway: g, Results: res}, nil
 }
 
-// ReviewText returns the results review of g as HTML: a header and one numbered line per
-// winner. Names are shortened as needed so the text fits one Telegram message.
-func (r *Reviewer) ReviewText(lang string, g Giveaway, res Results) string {
+// ReviewText returns the results review of g as HTML: a header, the channels of subs and
+// one numbered line per winner with the winner's subscription mark, name and channels.
+// Names are shortened as needed so the text fits one Telegram message; when that would
+// leave them too short, the winner lines drop their channels.
+func (r *Reviewer) ReviewText(lang string, g Giveaway, res Results, subs Subscriptions) string {
 	link := postLink(g.ChatID, g.MessageID)
 	if len(res.Winners) == 0 {
 		return r.texts.Text(lang, i18n.ReviewNoWinners, link)
 	}
 
 	header := r.texts.Text(lang, i18n.ReviewResults, link)
-	lines := make([]string, 0, len(res.Winners))
+	if len(subs.Channels) > 0 {
+		list, _ := subs.list()
+		header += "\n" + r.texts.Text(lang, i18n.ReviewChannels, list)
+	}
+
 	// The header's markup counts as visible here, which only leaves the names more room
 	// than they need.
 	room := r.maxWidth - utf16Len(header) - 1
+	prefixes := make([]string, len(res.Winners))
+	suffixes := make([]string, len(res.Winners))
+	suffixLen := 0
 
 	for i, w := range res.Winners {
-		prefix := "\n" + strconv.Itoa(place(w, i)) + ". "
-		room -= utf16Len(prefix)
-		lines = append(lines, prefix)
+		prefixes[i] = "\n" + strconv.Itoa(place(w, i)) + ". " + subs.mark(g, w.TelegramID) + " "
+		room -= utf16Len(prefixes[i])
+
+		var n int
+		suffixes[i], n = subs.line(w.TelegramID)
+		suffixLen += n
+	}
+
+	if (room-suffixLen)/len(res.Winners) < minNameWidth {
+		clear(suffixes)
+	} else {
+		room -= suffixLen
 	}
 
 	width := max(1, room/len(res.Winners))
+	lines := make([]string, 0, len(res.Winners))
+
 	for i, w := range res.Winners {
-		lines[i] += userLink(w.User, width)
+		lines = append(lines, prefixes[i]+userLink(w.User, width)+suffixes[i])
 	}
 
 	return header + "\n" + strings.Join(lines, "")

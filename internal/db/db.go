@@ -18,7 +18,7 @@ import (
 func models() []any {
 	return []any{
 		&user.User{}, &user.Revision{}, &giveaway.Giveaway{}, &giveaway.Participant{},
-		&channel.Event{}, &channel.Post{},
+		&channel.Event{}, &channel.Post{}, &channel.BotChannel{},
 	}
 }
 
@@ -38,6 +38,7 @@ func descriptions() []string {
 		`COMMENT ON TABLE channel_member_events IS 'Every subscribe, unsubscribe and removal in the channel since logging started. Rows are only added'`,
 		`COMMENT ON INDEX idx_channel_member_events_once IS 'One row per event, so an update Telegram delivers twice is saved once'`,
 		`COMMENT ON TABLE channel_posts IS 'Time of every channel post since logging started, to compare unsubscribes with posts. Rows are only added'`,
+		`COMMENT ON TABLE bot_channels IS 'Channels the bot was added to and whether it is an admin there now, to check winner subscriptions. Rows stay when the bot is removed'`,
 	}
 }
 

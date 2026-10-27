@@ -33,10 +33,25 @@ func (resultsStore) ClaimResults(context.Context, uint, int) error { return give
 
 func (resultsStore) ReleaseResults(context.Context, uint) error { return nil }
 
+// noChannels is a bot that is an admin of no channel but the giveaway's own.
+type noChannels struct{}
+
+func (noChannels) AdminChannels(context.Context) ([]int64, error) { return nil, nil }
+
 func (h *handlerSetup) notifier(results giveaway.Results) *giveaway.ReviewNotifier {
 	store := resultsStore{memStore: h.store, results: results}
 	log := slog.New(slog.DiscardHandler)
-	rv := giveaway.NewReviewer(store, store, store, giveaway.AcceptAll, rand.Shuffle, h.texts, time.Now, log)
+	rv := giveaway.NewReviewer(
+		store,
+		store,
+		store,
+		noChannels{},
+		giveaway.AcceptAll,
+		rand.Shuffle,
+		h.texts,
+		time.Now,
+		log,
+	)
 
 	return giveaway.NewReviewNotifier(rv, h.users, h.texts, h.kb, log)
 }

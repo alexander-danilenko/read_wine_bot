@@ -126,6 +126,7 @@ const (
 	ReviewNotAdmin        Key = "review.not_admin"
 	ReviewNotPending      Key = "review.not_pending"
 	ReviewWaiting         Key = "review.waiting"
+	ReviewChannels        Key = "review.channels"
 	EditListResults       Key = "edit.list_results"
 	EditListMarkResults   Key = "edit.list_mark_results"
 	CommandListFinished   Key = "command.list_finished"
