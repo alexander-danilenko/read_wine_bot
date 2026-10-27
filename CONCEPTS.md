@@ -44,6 +44,10 @@ A giveaway whose winners are recorded. Passing the end time does not finish a gi
 
 A Telegram channel where the bot is an admin. The bot was built for @read_wine and can serve several channels. A giveaway belongs to the channel of its post: the giveaway's channel. Its audience takes part in giveaways.
 
+### Giveaway partner
+
+A channel that runs giveaways together with a giveaway's creator: winners are expected to subscribe to it as well. The bot is an admin there without the rights to run giveaways, only so it can check winner subscriptions. Like every channel, a partner shows in the results review of every giveaway, not only the shared ones.
+
 ### Winner subscriptions
 
 The channels a winner is subscribed to, shown to admins in results review next to each winner. The bot checks them each time it shows the review, so a winner who unsubscribes after the draw shows up before the results are published. A channel whose check fails is shown as unknown, never as not subscribed. Every admin in results review sees every channel, including channels they do not administer.
