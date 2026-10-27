@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse hook on Bash: blocks a `git commit` that changes the bot but not `const version` in
-# main.go (exit 2, reason shown to Claude). Markdown, docs/, tests and .claude/ do not change the
-# bot, so a commit of only those passes. See "Version" in CLAUDE.md.
+# main.go (exit 2, reason shown to Claude). The bot is what ships: non-test Go files, go.mod,
+# go.sum, the files internal/i18n embeds, and the Dockerfile. Every bump on main is a GitHub
+# Release, so a commit of anything else passes without one. See "Version" in CLAUDE.md.
 set -euo pipefail
 
 input="$(cat)"
@@ -29,9 +30,10 @@ rg -q '\scommit\b.*\s(-[a-zA-Z]*a|--all)\b' <<<"$command" && diff=(git -C "$repo
 # Diffs are captured, not piped into rg: rg -q stops reading at the first match, and under
 # pipefail the SIGPIPE that git then gets would fail the test.
 files="$("${diff[@]}" --name-only 2>/dev/null)" || exit 0
-[[ -n $files ]] && rg -qv '(\.md$|_test\.go$|^docs/|^\.claude/)' <<<"$files" || exit 0
+shipped="$(rg -v '_test\.go$' <<<"$files" | rg '(\.go$|^go\.(mod|sum)$|^Dockerfile$|^internal/i18n/(schema|locales/[^/]+)\.json$)' || true)"
+[[ -n $shipped ]] || exit 0
 rg -qx 'main.go' <<<"$files" && rg -q '^\+const version = ' <<<"$("${diff[@]}" -- main.go)" && exit 0
 
 current="$(rg -o --no-filename 'const version = "[^"]*"' "$repo_root/main.go" || echo unknown)"
-echo "This commit changes the bot but not the version (${current} in main.go). Bump it per \"Version\" in CLAUDE.md (feat: minor, everything else: patch), stage main.go, then commit again." >&2
+echo "This commit changes the bot but not the version (${current} in main.go). Bump it per \"Version\" in CLAUDE.md (feat: minor, everything else: patch), stage main.go, then commit again. Stage it in a separate Bash call before the commit: this hook reads the index before your command runs." >&2
 exit 2
