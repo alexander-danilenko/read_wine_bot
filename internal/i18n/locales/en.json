@@ -7,6 +7,8 @@
   "command.language": "🌐 Change language",
   "command.cancel": "✖️ Cancel the current action",
   "command.cancelled": "OK, cancelled. Pick the next action from the ≡ menu next to the message field.",
+  "command.help": "ℹ️ How the bot works",
+  "help": "ℹ️ How it works\n\n1. Add me to your channel as an admin with two rights: “Post messages” and “Edit messages of others”. Leave every other right off.\n2. Send /new and forward me the giveaway post, or send its link. I add a join button under it.\n3. When the giveaway ends, I draw the winners and send them to you for review: ✅ means the winner is subscribed to your channel, ⚠️ means not. Replace a winner with 🔄, then publish the results under the post.\n\n🤝 Giveaway with a partner channel? Its owner adds me as an admin with every right off. That's enough for me to check that the winners are subscribed there too.",
   "language.prompt": "Choose your language:",
   "language.selected": "Language selected: %[1]s",
   "giveaway.prompt": "Starting a new giveaway. Forward me the channel post it should run on, or send its link.",

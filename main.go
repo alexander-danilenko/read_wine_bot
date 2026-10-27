@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "0.14.1"
+const version = "0.15.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -256,6 +256,7 @@ func menuHandlers(
 		command.List:         giveaway.ListHandler(editor, texts, users, kb, log),
 		command.ListFinished: giveaway.ListFinishedHandler(editor, texts, users, kb, log),
 		command.Language:     language.PromptHandler(texts, users, kb, log),
+		command.Help:         command.HelpHandler(texts, users, log),
 		command.Cancel:       command.CancelHandler(texts, users, log),
 	}
 

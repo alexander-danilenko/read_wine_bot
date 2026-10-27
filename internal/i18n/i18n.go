@@ -29,6 +29,8 @@ const (
 	CommandLanguage  Key = "command.language"
 	CommandCancel    Key = "command.cancel"
 	CommandCancelled Key = "command.cancelled"
+	CommandHelp      Key = "command.help"
+	Help             Key = "help"
 	LanguagePrompt   Key = "language.prompt"
 	LanguageSelected Key = "language.selected"
 

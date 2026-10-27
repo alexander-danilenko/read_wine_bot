@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -23,6 +24,7 @@ const (
 	List         = "list"          // lists the user's running giveaways
 	ListFinished = "list_finished" // lists the user's finished giveaways page by page
 	Language     = "language"      // shows the language buttons
+	Help         = "help"          // explains how the bot works and the channel rights it needs
 	Cancel       = "cancel"        // leaves any unfinished step
 )
 
@@ -40,21 +42,34 @@ func menu() []entry {
 		{List, i18n.CommandList},
 		{ListFinished, i18n.CommandListFinished},
 		{Language, i18n.CommandLanguage},
+		{Help, i18n.CommandHelp},
 		{Cancel, i18n.CommandCancel},
 	}
 }
 
 // StartHandler returns a handler that answers /start with the greeting, the command menu as
-// tappable commands and the bot's version, so the owner can see which build is deployed.
+// tappable commands with /help first, so a new user starts there, and the bot's version, so
+// the owner can see which build is deployed.
 func StartHandler(texts *i18n.Catalog, langs language.Reader, version string, log *slog.Logger) bot.HandlerFunc {
+	entries := append(
+		[]entry{{Help, i18n.CommandHelp}},
+		slices.DeleteFunc(menu(), func(e entry) bool { return e.command == Help })...,
+	)
+
 	return reply(langs, log, func(lang string) string {
-		lines := make([]string, 0, len(menu()))
-		for _, e := range menu() {
+		lines := make([]string, 0, len(entries))
+		for _, e := range entries {
 			lines = append(lines, "/"+e.command+" — "+texts.Text(lang, e.description))
 		}
 
 		return texts.Text(lang, i18n.Greeting) + "\n\n" + strings.Join(lines, "\n") + "\n\nv" + version
 	})
+}
+
+// HelpHandler returns a handler that answers /help: how a giveaway works and the channel
+// rights the bot needs.
+func HelpHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
+	return reply(langs, log, func(lang string) string { return texts.Text(lang, i18n.Help) })
 }
 
 // CancelHandler returns a handler that answers /cancel. user.Middleware has already left the
