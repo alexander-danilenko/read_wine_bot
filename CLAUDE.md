@@ -98,7 +98,7 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 `const version` in `main.go` holds the bot's [semver](https://semver.org) version. The startup log (`bot started version=…`) and the `/start` reply show it, so the owner can check which build is deployed.
 
 - Every commit that changes what ships bumps it, in that same commit: non-test `.go` files, `go.mod`, `go.sum`, the files `internal/i18n` embeds, or the `Dockerfile`. Any other commit leaves it alone, since each bump publishes a release.
-- `feat` -> minor (`0.1.1` -> `0.2.0`), patch reset to 0. Every other type -> patch (`0.1.0` -> `0.1.1`). A breaking change (`!`) -> major once at `1.0.0` or later; before `1.0.0` it bumps minor.
+- `feat` -> minor (`1.1.1` -> `1.2.0`), patch reset to 0. Every other type -> patch (`1.1.0` -> `1.1.1`). A breaking change (`!`) -> major (`1.4.2` -> `2.0.0`).
 - The `version-bump-gate.sh` hook (PreToolUse on Bash) blocks a `git commit` that breaks this rule. Bump, stage `main.go` and commit again; do not work around the hook.
 - A bump reaching `main` is a release: once `check` passes, `.github/workflows/release.yml` tags `v<version>` and GoReleaser (`.goreleaser.yaml`) publishes a GitHub Release with binaries and a changelog from the Conventional Commit types. Never tag by hand. Try the config locally with `goreleaser release --snapshot --clean --skip=publish`.
 
