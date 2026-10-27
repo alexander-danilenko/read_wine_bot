@@ -34,7 +34,7 @@
     "giveaway.exists": { "type": "string", "description": "Sent when the forwarder's own published or cancelled giveaway is on the forwarded post; points to the edit button." },
     "giveaway.taken": { "type": "string", "description": "Sent when another admin's published or cancelled giveaway is on the forwarded post." },
     "giveaway.not_admin": { "type": "string", "description": "Sent when the forwarder is not an admin of the post's channel." },
-    "giveaway.no_rights": { "type": "string", "description": "Sent when the bot cannot edit the post; names the admin right the bot needs." },
+    "giveaway.no_rights": { "type": "string", "description": "Sent when the bot lacks the channel rights a giveaway needs; names both: Post messages and Edit messages of others." },
     "giveaway.failed": { "type": "string", "description": "Sent when the setup fails for another reason." },
     "giveaway.button": { "type": "string", "description": "Default label of the join button under the channel post." },
     "giveaway.joined": { "type": "string", "description": "Popup after a user taps the join button for the first time." },

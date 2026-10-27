@@ -92,8 +92,8 @@ func fakeResult(method string, sends int) string {
 	case "answerCallbackQuery", "deleteMessage":
 		return "true"
 	case "getChatMember":
-		// Everyone, the bot included, is a channel admin who may edit posts.
-		return `{"status":"administrator","user":{"id":1,"is_bot":false,"first_name":"A"},"can_edit_messages":true}`
+		// Everyone, the bot included, is a channel admin who may edit and post messages.
+		return `{"status":"administrator","user":{"id":1,"is_bot":false,"first_name":"A"},"can_edit_messages":true,"can_post_messages":true}`
 	case "getMe":
 		return `{"id":123,"is_bot":true,"first_name":"Bot","username":"test_bot"}`
 	case "getChat":

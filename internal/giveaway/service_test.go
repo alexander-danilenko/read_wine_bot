@@ -78,7 +78,7 @@ func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, erro
 	return f.admin, f.adminErr
 }
 
-func (f *fakeTelegram) CanEditPosts(context.Context, int64) (bool, error) { return !f.noEdit, nil }
+func (f *fakeTelegram) CanRunGiveaways(context.Context, int64) (bool, error) { return !f.noEdit, nil }
 
 func (f *fakeTelegram) AttachButton(_ context.Context, _, messageID int64, label string) error {
 	if f.attachErr != nil {

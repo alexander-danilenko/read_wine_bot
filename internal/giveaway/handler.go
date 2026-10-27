@@ -128,13 +128,19 @@ func (t telegramAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bo
 	return channel.Subscribed(*m), nil
 }
 
-func (t telegramAPI) CanEditPosts(ctx context.Context, chatID int64) (bool, error) {
+func (t telegramAPI) CanRunGiveaways(ctx context.Context, chatID int64) (bool, error) {
 	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: t.b.ID()})
 	if err != nil {
 		return false, err //nolint:wrapcheck // Service logs it with the chat ID
 	}
 
-	return m.Administrator != nil && m.Administrator.CanEditMessages, nil
+	return canRunGiveaways(*m), nil
+}
+
+// canRunGiveaways reports whether the bot's status in a channel has both rights a giveaway
+// needs: Edit messages of others for the join button and Post messages for the results.
+func canRunGiveaways(m models.ChatMember) bool {
+	return m.Administrator != nil && m.Administrator.CanEditMessages && m.Administrator.CanPostMessages
 }
 
 func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, label string) error {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
@@ -142,5 +143,36 @@ func TestPageCallbackPrefixes(t *testing.T) {
 		if data := prefix + "2147483647"; len(data) > 64 {
 			t.Errorf("callback data %q is %d bytes, over Telegram's 64", data, len(data))
 		}
+	}
+}
+
+func TestCanRunGiveaways(t *testing.T) {
+	admin := func(edit, post bool) models.ChatMember {
+		return models.ChatMember{
+			Type:          models.ChatMemberTypeAdministrator,
+			Administrator: &models.ChatMemberAdministrator{CanEditMessages: edit, CanPostMessages: post},
+		}
+	}
+
+	tests := []struct {
+		name string
+		m    models.ChatMember
+		want bool
+	}{
+		{"both rights", admin(true, true), true},
+		{"no post right", admin(true, false), false},
+		{"no edit right", admin(false, true), false},
+		{
+			"not an admin",
+			models.ChatMember{Type: models.ChatMemberTypeMember, Member: &models.ChatMemberMember{}},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canRunGiveaways(tt.m); got != tt.want {
+				t.Errorf("canRunGiveaways() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

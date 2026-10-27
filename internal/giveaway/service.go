@@ -63,8 +63,9 @@ var ErrPostGone = errors.New("channel post not found")
 type Telegram interface {
 	// IsChannelAdmin reports whether the user is the creator or an administrator of the channel.
 	IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error)
-	// CanEditPosts reports whether the bot may edit the channel's posts.
-	CanEditPosts(ctx context.Context, chatID int64) (bool, error)
+	// CanRunGiveaways reports whether the bot may edit the channel's posts, to attach the join
+	// button, and post in it, to publish the results.
+	CanRunGiveaways(ctx context.Context, chatID int64) (bool, error)
 	// AttachButton puts a join button with label and a link to the @read_wine channel under
 	// the channel post. A post that already carries those buttons counts as success; a deleted
 	// post returns ErrPostGone.
@@ -151,8 +152,8 @@ func (s *Service) checkPost(ctx context.Context, tg Telegram, adminID, chatID, m
 	return s.checkAdmin(ctx, tg, adminID, chatID)
 }
 
-// checkAdmin checks that the admin is an admin of the channel and that the bot may edit its
-// posts. It returns the failed outcome and false, or Created and true when both hold.
+// checkAdmin checks that the admin is an admin of the channel and that the bot may run
+// giveaways there. It returns the failed outcome and false, or Created and true when both hold.
 func (s *Service) checkAdmin(ctx context.Context, tg Telegram, adminID, chatID int64) (StartResult, bool) {
 	log := s.log.With("chat_id", chatID, "user_id", adminID)
 
@@ -167,9 +168,9 @@ func (s *Service) checkAdmin(ctx context.Context, tg Telegram, adminID, chatID i
 		return NotAdmin, false
 	}
 
-	canEdit, err := tg.CanEditPosts(ctx, chatID)
-	if err != nil || !canEdit {
-		log.WarnContext(ctx, "check bot rights", "can_edit", canEdit, "error", err)
+	canRun, err := tg.CanRunGiveaways(ctx, chatID)
+	if err != nil || !canRun {
+		log.WarnContext(ctx, "check bot rights", "can_run_giveaways", canRun, "error", err)
 
 		return NoRights, false
 	}
