@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" width="900" height="240" role="img" aria-labelledby="title desc">
+  <title id="title">read_wine_bot</title>
+  <desc id="desc">A wine glass with gently moving wine and rising bubbles, confetti falling, and the text: read_wine_bot, giveaways for Telegram channels.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a0a14"/>
+      <stop offset="0.55" stop-color="#4a0f22"/>
+      <stop offset="1" stop-color="#6b1631"/>
+    </linearGradient>
+    <linearGradient id="wine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c2185b"/>
+      <stop offset="1" stop-color="#7b0d2e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff8fb1" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ff8fb1" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="bowl">
+      <path d="M108,58 L192,58 Q196,142 150,164 Q104,142 108,58 Z"/>
+    </clipPath>
+    <clipPath id="card">
+      <rect width="900" height="240" rx="20"/>
+    </clipPath>
+    <style>
+      .wave { animation: slosh 3s linear infinite; }
+      .bubble { animation: rise 3.2s ease-in infinite; opacity: 0; }
+      .b2 { animation-delay: 1.1s; }
+      .b3 { animation-delay: 2.1s; }
+      .confetti { animation: fall 6s linear infinite; }
+      .c2 { animation-delay: -1.5s; animation-duration: 7s; }
+      .c3 { animation-delay: -3s; animation-duration: 5.5s; }
+      .c4 { animation-delay: -4.5s; animation-duration: 6.5s; }
+      .c5 { animation-delay: -2.2s; animation-duration: 8s; }
+      .c6 { animation-delay: -5.1s; animation-duration: 6.2s; }
+      .twinkle { animation: twinkle 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+      .t2 { animation-delay: 1.2s; }
+      .glass { animation: sway 6s ease-in-out infinite; transform-origin: 150px 218px; }
+      @keyframes slosh { from { transform: translateX(0); } to { transform: translateX(-80px); } }
+      @keyframes rise {
+        0% { transform: translateY(0); opacity: 0; }
+        20% { opacity: 0.8; }
+        100% { transform: translateY(-46px); opacity: 0; }
+      }
+      @keyframes fall {
+        from { transform: translateY(-30px) rotate(0deg); }
+        to { transform: translateY(280px) rotate(540deg); }
+      }
+      @keyframes twinkle { 0%, 100% { opacity: 0.2; transform: scale(0.6); } 50% { opacity: 1; transform: scale(1); } }
+      @keyframes sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .wave, .bubble, .confetti, .twinkle, .glass { animation: none; }
+        .bubble { opacity: 0.6; }
+      }
+    </style>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <rect width="900" height="240" fill="url(#bg)"/>
+    <circle cx="150" cy="120" r="110" fill="url(#glow)"/>
+
+    <!-- confetti -->
+    <g transform="translate(330 0)"><rect class="confetti" width="8" height="14" rx="2" fill="#ffd166"/></g>
+    <g transform="translate(470 0)"><rect class="confetti c2" width="7" height="12" rx="2" fill="#ff8fb1"/></g>
+    <g transform="translate(610 0)"><rect class="confetti c3" width="9" height="9" rx="4.5" fill="#f4f1de"/></g>
+    <g transform="translate(720 0)"><rect class="confetti c4" width="8" height="14" rx="2" fill="#ffd166"/></g>
+    <g transform="translate(820 0)"><rect class="confetti c5" width="7" height="12" rx="2" fill="#ff8fb1"/></g>
+    <g transform="translate(40 0)"><rect class="confetti c6" width="8" height="8" rx="4" fill="#f4f1de"/></g>
+
+    <!-- wine glass -->
+    <g class="glass">
+      <g clip-path="url(#bowl)">
+        <path class="wave" fill="url(#wine)" d="M40,104 q20,-9 40,0 t40,0 t40,0 t40,0 t40,0 t40,0 V170 H40 Z"/>
+        <circle class="bubble" cx="138" cy="150" r="3" fill="#ffd6e3"/>
+        <circle class="bubble b2" cx="158" cy="154" r="2.5" fill="#ffd6e3"/>
+        <circle class="bubble b3" cx="148" cy="146" r="2" fill="#ffd6e3"/>
+      </g>
+      <path d="M108,58 L192,58 Q196,142 150,164 Q104,142 108,58 Z" fill="none" stroke="#f4f1de" stroke-opacity="0.85" stroke-width="3"/>
+      <path d="M118,70 Q116,118 134,146" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="4" stroke-linecap="round"/>
+      <rect x="147" y="164" width="6" height="48" rx="3" fill="#f4f1de" fill-opacity="0.85"/>
+      <ellipse cx="150" cy="214" rx="34" ry="6" fill="#f4f1de" fill-opacity="0.85"/>
+    </g>
+
+    <!-- sparkles -->
+    <path class="twinkle" d="M222,52 l4,10 l10,4 l-10,4 l-4,10 l-4,-10 l-10,-4 l10,-4 Z" fill="#ffd166"/>
+    <path class="twinkle t2" d="M84,170 l3,7 l7,3 l-7,3 l-3,7 l-3,-7 l-7,-3 l7,-3 Z" fill="#ffd166"/>
+
+    <!-- text -->
+    <text x="280" y="112" fill="#f4f1de" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="-1">read_wine_bot</text>
+    <text x="282" y="152" fill="#ffb3c9" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="22" font-weight="500">Giveaways for Telegram channels</text>
+    <text x="282" y="186" fill="#f4f1de" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">join  ·  draw  ·  review  ·  publish</text>
+  </g>
+</svg>

@@ -36,3 +36,7 @@ config:
   # stops the linter counting the frontmatter field as a second top-level heading.
   MD025:
     front_matter_title: ""
+  # Inline HTML only for what Markdown cannot do on GitHub: a centered header image and badge row,
+  # and a collapsible section. Every other tag still fails.
+  MD033:
+    allowed_elements: [p, a, img, details, summary]

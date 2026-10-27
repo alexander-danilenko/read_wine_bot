@@ -16,4 +16,4 @@ Every reviewing admin sees every channel where the bot is an admin. The bot exis
 
 - An automated security review flags `Reviewer.Subscriptions` (`internal/giveaway/subscriptions.go`) as cross-tenant disclosure. That is this decision, not a bug.
 - If the bot ever serves channels with unrelated owners, revisit it: filter `AdminChannels` by whether the viewer is an admin of each channel, or group channels by owner in `bot_channels`.
-- The audience log also covers every channel where the bot is an admin, partners included. The README discloses this to partners.
+- The audience log also covers every channel where the bot is an admin, partners included. The README does not mention it, by the owner's choice (2026-10-27); a partner learns it only from the code.
