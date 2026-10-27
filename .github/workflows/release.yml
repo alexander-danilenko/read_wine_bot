@@ -16,7 +16,7 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0 # GoReleaser builds the changelog from the previous tag
@@ -38,7 +38,7 @@ jobs:
           echo "new=true" >> "$GITHUB_OUTPUT"
 
       - if: steps.tag.outputs.new == 'true'
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 

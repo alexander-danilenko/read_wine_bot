@@ -27,7 +27,7 @@ Use issue references without being asked:
 | `golangci-lint run --fix ./internal/<pkg>/` | Autofix and format one package |
 | `go mod tidy` | Sync `go.mod` and `go.sum` after changing imports |
 | `markdownlint-cli2 --fix "**/*.md"` | Format all Markdown |
-| `actionlint` | Lint `.github/workflows`; CI also requires every `uses:` pinned to a commit SHA |
+| `actionlint` | Lint `.github/workflows`; CI requires every third-party `uses:` pinned to a commit SHA; GitHub's `actions/*` stay on their latest major tag |
 
 Tools: `brew install go golangci-lint markdownlint-cli2 jq actionlint`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
