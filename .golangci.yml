@@ -37,6 +37,11 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
+    forbidigo:
+      forbid:
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$ # forbidigo's default, restated because forbid replaces it
+        - pattern: ^log\.(Print|Fatal|Panic)(|f|ln)$
+          msg: log with log/slog and key-value attributes
   exclusions:
     generated: strict
     presets:
