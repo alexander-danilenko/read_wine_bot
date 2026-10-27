@@ -27,8 +27,9 @@ Use issue references without being asked:
 | `golangci-lint run --fix ./internal/<pkg>/` | Autofix and format one package |
 | `go mod tidy` | Sync `go.mod` and `go.sum` after changing imports |
 | `markdownlint-cli2 --fix "**/*.md"` | Format all Markdown |
+| `actionlint` | Lint `.github/workflows`; CI also requires every `uses:` pinned to a commit SHA |
 
-Tools: `brew install go golangci-lint markdownlint-cli2 jq`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
+Tools: `brew install go golangci-lint markdownlint-cli2 jq actionlint`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
 Config comes only from environment variables and `.env` files (the bot ships as a Docker container): copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result, see Fail fast. A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot. In Docker, pass settings with `docker run --env-file .env` or Compose `env_file:`.
 
