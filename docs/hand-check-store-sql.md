@@ -1,17 +1,3 @@
----
-title: Hand-check Store SQL against the local database
-date: 2026-10-27
-category: conventions
-module: internal/channel, internal/giveaway, internal/user, internal/db
-problem_type: convention
-component: database
-severity: low
-applies_when:
-  - Adding or changing a query in any Store
-  - Adding a model, constraint or upsert that AutoMigrate creates
-tags: [postgres, gorm, store, manual-check]
----
-
 # Hand-check Store SQL against the local database
 
 ## Context

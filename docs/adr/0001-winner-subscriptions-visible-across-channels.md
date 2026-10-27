@@ -4,7 +4,7 @@ Status: accepted, 2026-10-27. Issue: #21.
 
 ## Context
 
-Results review shows, next to each winner, which channels where the bot is an admin the winner is subscribed to (see Winner subscriptions in `CONCEPTS.md`). Any current admin of the giveaway's channel can open the review. So an admin of channel A sees whether a winner is subscribed to channel B, even when that admin has no role in B.
+Results review shows, next to each winner, which channels where the bot is an admin the winner is subscribed to (see Winner subscriptions in `GLOSSARY.md`). Any current admin of the giveaway's channel can open the review. So an admin of channel A sees whether a winner is subscribed to channel B, even when that admin has no role in B.
 
 The alternative was to list only the channels where the viewer is also an admin: one more `getChatMember` per channel per review redraw, and no cross-channel disclosure.
 

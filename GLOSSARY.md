@@ -1,6 +1,6 @@
-# Concepts
+# Glossary
 
-Shared domain vocabulary for this project: entities, named processes, and status concepts with project-specific meaning. Seeded with the terms known at bootstrap; it grows as ce-compound and ce-compound-refresh process learnings, and direct edits are fine. Glossary only, not a spec.
+Shared domain vocabulary for this project: entities, named processes, and status concepts with project-specific meaning. It grows as terms are resolved (`/grill-with-docs`, `/domain-modeling`); direct edits are fine. Glossary only, not a spec.
 
 ## Giveaways
 

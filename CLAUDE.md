@@ -41,12 +41,12 @@ Follows go.dev's "Organizing a Go module" for a single command: the main package
 ```text
 *.go              # main package in the repo root: wiring only (config, logger, DB, bot, shutdown), no business logic
 internal/<name>/  # every other package, one responsibility each
-docs/plans/       # Compound Engineering plans
 docs/channel-analytics.md  # ready SQL over the channel audience log
 docs/telegram-ux.md        # rules for everything the user sees in Telegram
-docs/adr/         # architecture decisions, one file each: NNNN-<slug>.md
-docs/solutions/   # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
-CONCEPTS.md       # domain glossary; use its terms in code, identifiers and docs
+docs/hand-check-store-sql.md  # how to check a Store query against the local database
+docs/adr/         # architecture decisions, one file each: NNNN-<slug>.md; read the ones that touch the area you change
+docs/agents/      # how agent skills use the issue tracker and domain docs
+GLOSSARY.md       # domain glossary; use its terms in code, identifiers and docs
 ```
 
 ## Dependencies: standard library first
@@ -124,7 +124,7 @@ Before changing a handler, a button, a command or a text the user sees, read [do
 
 ## Gotchas
 
-- Store SQL has no automated tests. After changing a query in a `Store`, run it against the local database with a throwaway program: [docs/solutions/conventions/hand-check-store-sql.md](docs/solutions/conventions/hand-check-store-sql.md).
+- Store SQL has no automated tests. After changing a query in a `Store`, run it against the local database with a throwaway program: [docs/hand-check-store-sql.md](docs/hand-check-store-sql.md).
 - CI (`.github/workflows/check.yml`) runs build, tests, `golangci-lint` and markdownlint on every push. Hooks (`.claude/hooks/`, loaded when a session starts): after every `.go` edit, `go-lint-fix.sh` formats and autofixes that package and shows remaining findings. Before your turn ends, `go-lint-gate.sh` runs the full lint and blocks the stop until it passes, at most three times in a row before it hands the findings to the owner. Fix the finding; do not work around the hook.
 - Write an import and its first use in the same edit. An unused import stops the package compiling, and the per-edit hook cannot autofix a package that does not compile.
 - Markdown: one line per paragraph (no hard wrapping) and `-` bullets. `markdownlint-fix.sh` runs `markdownlint-cli2 --fix` on every edited `.md` file.
@@ -136,7 +136,7 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 - Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`.
 - Scope is the package or area touched, e.g. `feat(giveaway): pick winners at random`.
 - Mark a breaking change with `!` after the type or a `BREAKING CHANGE:` footer.
-- Never open a pull request without the owner's explicit permission in the current conversation. This includes `/lfg` and every other Compound Engineering pipeline: stop after the local commits, report, and ask. A pipeline's default shipping step is not permission.
+- Never open a pull request without the owner's explicit permission in the current conversation. This includes every skill that ends in a PR: stop after the local commits, report, and ask. A skill's default shipping step is not permission.
 
 ## Version
 
@@ -146,6 +146,9 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 - `feat` -> minor (`0.1.1` -> `0.2.0`), patch reset to 0. Every other type -> patch (`0.1.0` -> `0.1.1`). A breaking change (`!`) -> major once at `1.0.0` or later; before `1.0.0` it bumps minor.
 - The `version-bump-gate.sh` hook (PreToolUse on Bash) blocks a `git commit` that breaks this rule. Bump, stage `main.go` and commit again; do not work around the hook.
 
-## Compound Engineering
+## Agent skills
 
-After a solved, verified problem, offer once to invoke the `ce-compound` skill at the completion checkpoint only when the work produced durable project reasoning that is not readily recoverable from the final code, tests, types, comments, or existing documentation, and losing it would plausibly cause recurrence, material risk, or substantial rediscovery. Apply this counterfactual: if the learning document disappeared, would a future engineer reading the final implementation still be likely to repeat the mistake or redo substantial investigation? If not, do not offer. Completion, effort, and diff size alone are not enough. Offer at the checkpoint so a qualifying learning can ship in the PR that produced it, and only where the repository treats captured learnings as tracked, committed knowledge.
+The owner drives work with Matt Pocock's engineering skills, one step at a time; no skill chains into the next on its own. Compound Engineering (`ce-*`, `/lfg`) is retired in this repo.
+
+- **Issue tracker:** GitHub issues in `alexander-danilenko/read_wine_bot`, on the Read Wine Bot project (see Issue tracker above). See `docs/agents/issue-tracker.md`.
+- **Domain docs:** single-context, `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.

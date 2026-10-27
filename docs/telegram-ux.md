@@ -25,3 +25,26 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 | `can_restrict_members` | Ban users | Блокувати користувачів |
 
 - Main actions live in Telegram's command menu (≡ next to the message field), each with an emoji at the start of its description so the eye finds it. `/start` lists them as tappable commands. The bot sends no reply keyboard.
+
+## How it is wired
+
+The only state kept between a user's messages is `users.pending_command`. Each rule below is small, but forgetting one gives a silent bug: a handler that never fires, a tap that runs twice, or a Cancel that deletes the wrong draft. The database side of the same flows is in [ADR 0006](adr/0006-button-first-then-row.md) and [ADR 0007](adr/0007-giveaway-states-in-one-table.md).
+
+### Commands
+
+- Adding a command means a constant and a `menu()` entry in `internal/command`, an `i18n` description key in every locale, and a `menuHandlers` line in `main.go`. Miss `main.go` and the command shows in the menu but falls through to the default handler.
+- `user.Middleware` runs before every handler. A private message starting with `/` clears `pending_command` and deletes the live message with buttons, so a command ends any setup or edit. A setup or edit value can therefore never start with `/`.
+- Bot links arrive as `/start <payload>`. Their handlers are registered before the greeting handler, because go-telegram/bot runs the first handler that matches, and no payload prefix may start another (`TestStartLinkPrefixes`).
+
+### Callback data
+
+- Each feature owns one namespace (`giveaway:join`, `giveaway-setup:`, `giveaway-edit:`, `giveaway-review:`, `language:`). No namespace may be a prefix of another: a prefix handler for `giveaway:` would take every join tap.
+- Callback data is client input. Parse it strictly and treat anything unknown, including buttons from an older bot version, as stale. Never trust it for authorization: every action reloads the giveaway and re-checks the creator, its state and the admin and bot rights (`Editor.load`, `Editor.check`), read-only buttons included.
+
+### Pending command and stale taps
+
+- `pending_command` holds the step the bot waits for: a setup step (`giveaway:<step>`) or an edit step (`edit:<field>:<giveaway ID>`, `edit:move:<giveaway ID>`). Edit steps start with `edit:`, outside the setup prefix, so a setup Cancel tapped during an edit never deletes an unrelated draft.
+- A tap or message that moves a step claims it with one conditional `UPDATE … WHERE pending_command = <from>` (`Store.MovePendingCommand` through `Service.claim`). Of two taps on the same button, exactly one moves the step.
+- A step that has passed returns `Reply{Stale: true}`: the popup on the callback path, nothing at all on the message path. A step that waits for a forwarded post or typed text must answer a changed situation, such as a passed end time, with a notice instead.
+- `claim` moves the step to its target, usually `""`. A branch that fails after the claim and wants the user to send again must save the step back, as `Editor.move` does in its `retry` closure; otherwise the prompt keeps its Cancel button but the next message is dropped.
+- Pseudo steps `menu`, `cancel` and `finish` name a screen to show and are never saved.

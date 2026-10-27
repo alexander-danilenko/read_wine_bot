@@ -82,4 +82,4 @@ You need Go 1.27, Docker and a bot token from [@BotFather](https://t.me/BotFathe
 
 The bot reads settings only from environment variables and `.env` files. It checks every setting, the database and the token before it starts, and it exits with an error that names the problem. In production, set `DATABASE_URL` to an external PostgreSQL and run the image from the `Dockerfile` with `docker run --env-file .env`.
 
-Developer notes, commands and conventions are in [CLAUDE.md](CLAUDE.md). The domain terms are in [CONCEPTS.md](CONCEPTS.md).
+Developer notes, commands and conventions are in [CLAUDE.md](CLAUDE.md). The domain terms are in [GLOSSARY.md](GLOSSARY.md).
