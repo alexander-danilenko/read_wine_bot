@@ -124,6 +124,16 @@ The bot checks every setting, the database and the token before it starts, and i
 > [!TIP]
 > On macOS, a binary downloaded in a browser is blocked until you run `xattr -d com.apple.quarantine read_wine_bot`.
 
+### 🐹 Or install with Go
+
+With Go 1.27 or newer, skip the download:
+
+```sh
+go install github.com/alexander-danilenko/read_wine_bot@latest
+```
+
+The binary lands in `$(go env GOPATH)/bin`. This way ships no `.env.example`: create `.env` with the keys from [.env.example](.env.example), then run `read_wine_bot` from its folder.
+
 ## 🧭 Where to read next
 
 | File | What is in it |
