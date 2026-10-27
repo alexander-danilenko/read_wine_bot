@@ -5,13 +5,14 @@ version: 2
 builds:
   - env:
       - CGO_ENABLED=0 # static binary, same as the Dockerfile
-    goos: [linux, darwin]
+    goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags: [-s -w]
 
 archives:
-  - formats: [tar.gz]
+  - formats: [zip]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ replace .Os "darwin" "macos" }}_{{ .Arch }}'
     files: [README.md, .env.example]
 
 checksum:

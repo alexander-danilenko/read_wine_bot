@@ -111,7 +111,7 @@ You need:
 
 Then:
 
-1. Download the archive for your system from [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) and unpack it: `tar -xzf read_wine_bot_*_linux_amd64.tar.gz`
+1. Download the archive for your system from [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) and unpack it: `unzip read_wine_bot_*_linux_amd64.zip`
 2. `cp .env.example .env`, then set `TELEGRAM_BOT_TOKEN` and `DATABASE_URL` (`postgres://user:password@host:5432/database`).
 3. `./read_wine_bot` from the same folder.
 
