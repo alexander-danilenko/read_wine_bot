@@ -1,12 +1,14 @@
-# Local PostgreSQL for the bot. Settings come from .env; copy .env.example to .env first.
+# Local PostgreSQL for the bot. The bot connects with DATABASE_URL from .env.example.
+# The credentials apply only when the data volume is first created; to change them later,
+# run `docker compose down -v` (deletes the data).
 services:
   db:
     image: postgres:18
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: read_wine_bot
     ports:
       - "127.0.0.1:5432:5432" # reachable from this machine only
     volumes:
@@ -25,7 +27,7 @@ services:
 #    env_file: .env
 #    environment:
 #      # Inside compose the database host is the service name, not localhost.
-#      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+#      DATABASE_URL: postgres://postgres:postgres@db:5432/read_wine_bot?sslmode=disable
 #    depends_on:
 #      db:
 #        condition: service_healthy
