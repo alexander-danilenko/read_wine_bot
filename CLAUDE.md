@@ -31,7 +31,7 @@ Use issue references without being asked:
 
 Tools: `brew install go golangci-lint markdownlint-cli2 jq actionlint`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
-Config comes only from environment variables and `.env` files (the bot ships as a Docker container): copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result, see Fail fast. A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot. In Docker, pass settings with `docker run --env-file .env` or Compose `env_file:`.
+Config comes only from environment variables and `.env` files (the bot ships as a Docker container): copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result (Fail fast in [CODING_STANDARDS.md](CODING_STANDARDS.md)). A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot. In Docker, pass settings with `docker run --env-file .env` or Compose `env_file:`.
 
 Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
 
@@ -45,9 +45,11 @@ internal/<name>/  # every other package, one responsibility each
 docs/channel-analytics.md  # ready SQL over the channel audience log
 docs/telegram-ux.md        # rules for everything the user sees in Telegram
 docs/hand-check-store-sql.md  # how to check a Store query against the local database
+docs/schema-challenge.md      # checks every schema or Store change must pass first
 docs/adr/         # architecture decisions, one file each: NNNN-<slug>.md; read the ones that touch the area you change
 docs/agents/      # how agent skills use the issue tracker and domain docs
 GLOSSARY.md       # domain glossary; use its terms in code, identifiers and docs
+CODING_STANDARDS.md  # Go style, fail-fast and SOLID rules that /code-review enforces
 ```
 
 ## Dependencies: standard library first
@@ -56,37 +58,7 @@ GLOSSARY.md       # domain glossary; use its terms in code, identifiers and docs
 - Approved modules: `gorm.io/gorm`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
 - Keep `CGO_ENABLED=0` builds working: the Docker image is static.
-- Tests use the standard `testing` package only: table-driven, hand-written fakes, no testify or mock generators. Tests never open a database, real or embedded: test the code above a store with in-memory fakes of its interfaces.
-
-## Code style
-
-The linter is the style guide: `.golangci.yml` enables every linter except a short list, each disabled with a reason.
-
-- Fix findings. Never weaken `.golangci.yml` to get a pass.
-- `//nolint` only for a confirmed false positive, naming the linter and the reason: `//nolint:gosec // G404: not security-sensitive`.
-- Log with `log/slog` and key-value attributes.
-- Wrap errors with context: `fmt.Errorf("open db: %w", err)`. Declare sentinel errors as package variables and compare with `errors.Is`. No `panic` outside `main`.
-- `context.Context` is the first parameter of every function that does I/O. Never store it in a struct.
-- Package names are short, lowercase and singular, and name what the package provides. Never `util`, `common`, `helpers` or `models`.
-
-## Fail fast
-
-A misconfigured bot must not start. Validate first: `main` checks everything it can before the bot handles its first update, and exits with an error that names the problem.
-
-- `internal/config` validates every setting as it loads: required values present, formats and ranges correct. It reports all invalid settings in one error with `errors.Join`, so one run shows every problem.
-- Check each external dependency at startup, not on first use: ping the database, call Telegram `getMe` with the token.
-- No silent defaults for required settings. A setting gets a default only when that default is safe in production.
-- Errors name the setting, never its value, so the bot token stays out of the logs.
-- Packages return errors; only `main` logs them with `slog.Error` and calls `os.Exit(1)`.
-
-## SOLID, the Go way
-
-- **Single responsibility:** one package, one reason to change. Telegram handlers translate updates into calls to domain code; they hold no giveaway rules and no queries.
-- **Open/closed:** extend with new types and composition, not with boolean flags on existing functions.
-- **Liskov substitution:** every implementation of an interface honours the same contract for errors, nil values and context cancellation.
-- **Interface segregation:** interfaces have 1-3 methods and are declared in the package that uses them, not the one that implements them.
-- **Dependency inversion:** constructors take dependencies as parameters (`NewService(store Store, log *slog.Logger)`). Accept interfaces, return concrete types. Wiring happens only in the root `main` package.
-- Do not create an interface for a single implementation unless a test needs a fake.
+- Tests never open a database, real or embedded: test the code above a store with in-memory fakes of its interfaces.
 
 ## Database
 
@@ -95,29 +67,11 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - Describe every column with a `comment:` in its `gorm` tag, and every table and named index in `descriptions()` in `internal/db/db.go`, so database tools show what each holds. `TestEverythingDescribed` enforces it.
 - `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
 - Store Telegram user and chat IDs as `int64`.
+- Before writing a GORM model, a `Store` query or anything else that changes the shape of data, run the challenge protocol in [docs/schema-challenge.md](docs/schema-challenge.md).
 
-### Challenge protocol (mandatory before any schema change)
+## Coding standards
 
-Before writing a GORM model, a `Store` query or anything else that changes the shape of data:
-
-1. State the access patterns it serves: the queries, the write paths and the expected row counts.
-2. Check these rules. A rejected change is not implemented as asked.
-   - A `jsonb` or array column whose data is filtered, joined, grows without limit or has its own lifecycle -> propose a table.
-   - A relationship without a foreign key ("we validate in the app") -> reject. In GORM, declare it with an association field, as `Giveaway.Creator` does.
-   - A uniqueness rule or invariant enforced only in Go -> propose a unique index or a `CHECK` constraint.
-   - A nullable column whose `comment:` does not say what NULL means -> flag.
-   - A polymorphic association (`entity_type` + `entity_id`) -> reject, propose separate foreign keys or a supertype table.
-   - An EAV table (key/value rows for attributes) -> reject, unless users really define the attributes.
-   - Money in `float`/`real` -> reject, use `numeric` or an integer of minor units.
-   - Event time as `timestamp` without time zone -> reject, use `timestamptz` (GORM's default for `time.Time`).
-   - A copied (denormalized) column without a named sync mechanism (same transaction, trigger) -> reject.
-   - A query that loads rows and filters them in Go when a `WHERE` or an index can do it -> reject, propose the index or a new shape.
-   - A row updated more than about once per second, sustained -> reject (row-lock contention), propose insert-only rows aggregated on read.
-   - One write that fans out to many rows with no cap on how many -> flag.
-   - A change that makes `AutoMigrate` rewrite or lock a large table (type change, new index on a big table: `AutoMigrate` cannot `CREATE INDEX CONCURRENTLY`) -> require an expand/contract plan.
-   - A new `CHECK` or unique constraint -> first query production for rows that break it and fix them, or `AutoMigrate` cannot add the constraint and the bot fails at startup. Mirror the constraint in the store's in-memory fake, or tests pass on data the database rejects.
-3. On a violation, reply with the rule, the concrete failure in production and the alternative. Implement only after the owner explicitly picks one option.
-4. Every accepted rule break gets an ADR in `docs/adr/` (`NNNN-<slug>.md`: context, decision, consequences).
+[CODING_STANDARDS.md](CODING_STANDARDS.md) holds the Go style, fail-fast and SOLID rules. Read it before writing Go; `/code-review` checks every diff against it.
 
 ## Telegram UX
 
@@ -150,7 +104,7 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 
 ## Agent skills
 
-The owner drives work with Matt Pocock's engineering skills, one step at a time; no skill chains into the next on its own. Compound Engineering (`ce-*`, `/lfg`) is retired in this repo.
+The owner drives work with Matt Pocock's engineering skills, one step at a time.
 
 - **Issue tracker:** GitHub issues in `alexander-danilenko/read_wine_bot`, on the Read Wine Bot project (see Issue tracker above). See `docs/agents/issue-tracker.md`.
 - **Domain docs:** single-context, `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
