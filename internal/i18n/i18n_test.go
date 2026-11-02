@@ -22,7 +22,7 @@ func TestEveryKeyTranslated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, key := range []i18n.Key{i18n.Greeting, i18n.LanguagePrompt, i18n.LanguageSelected} {
+	for _, key := range []i18n.Key{i18n.Greeting, i18n.CommandList, i18n.ScreenHelp} {
 		if got := c.Text(i18n.DefaultLang, key, "x"); got == string(key) {
 			t.Errorf("key %q has no text in %s.json", key, i18n.DefaultLang)
 		}
@@ -40,14 +40,14 @@ func TestText(t *testing.T) {
 		lang string
 		want string
 	}{
-		{name: "exact language", lang: "uk", want: "Мову обрано: English"},
-		{name: "region suffix dropped", lang: "en-US", want: "Language selected: English"},
-		{name: "unknown language falls back", lang: "de", want: "Мову обрано: English"},
-		{name: "empty language falls back", lang: "", want: "Мову обрано: English"},
+		{name: "exact language", lang: "uk", want: "📋 Мої розіграші"},
+		{name: "region suffix dropped", lang: "en-US", want: "📋 My giveaways"},
+		{name: "unknown language falls back", lang: "de", want: "📋 Мої розіграші"},
+		{name: "empty language falls back", lang: "", want: "📋 Мої розіграші"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := c.Text(tt.lang, i18n.LanguageSelected, "English"); got != tt.want {
+			if got := c.Text(tt.lang, i18n.CommandList); got != tt.want {
 				t.Errorf("Text(%q) = %q, want %q", tt.lang, got, tt.want)
 			}
 		})

@@ -25,7 +25,6 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
-	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 	"github.com/alexander-danilenko/read_wine_bot/internal/webapp"
 )
@@ -33,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "2.5.0"
+const version = "2.6.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -267,7 +266,7 @@ func newGiveawayRules(
 
 // handlers wires every update the bot handles to the package that handles it, and asks
 // Telegram for those updates only. Giveaways are managed in the Mini App; the chat keeps
-// /start, /help, the language menu and the join button.
+// /start, the commands that open the app's screens and the join button.
 func handlers(
 	users *user.Store, giveaways *giveaway.Service, texts *i18n.Catalog, appURL string, log *slog.Logger,
 ) []bot.Option {
@@ -283,15 +282,24 @@ func handlers(
 			command.StartHandler(texts, users, kb, appURL, version, log),
 		),
 		bot.WithMessageTextHandler(
-			command.Help, bot.MatchTypeCommandStartOnly, command.HelpHandler(texts, users, log),
+			command.Help,
+			bot.MatchTypeCommandStartOnly,
+			command.ScreenHandler(command.Help, texts, users, kb, appURL, log),
 		),
 		bot.WithMessageTextHandler(
-			command.Language, bot.MatchTypeCommandStartOnly, language.PromptHandler(texts, users, kb, log),
+			command.List,
+			bot.MatchTypeCommandStartOnly,
+			command.ScreenHandler(command.List, texts, users, kb, appURL, log),
 		),
-		bot.WithCallbackQueryDataHandler(
-			language.CallbackPrefix,
-			bot.MatchTypePrefix,
-			language.ButtonHandler(texts, users, kb, log),
+		bot.WithMessageTextHandler(
+			command.New,
+			bot.MatchTypeCommandStartOnly,
+			command.ScreenHandler(command.New, texts, users, kb, appURL, log),
+		),
+		bot.WithMessageTextHandler(
+			command.Language,
+			bot.MatchTypeCommandStartOnly,
+			command.ScreenHandler(command.Language, texts, users, kb, appURL, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.JoinCallback,

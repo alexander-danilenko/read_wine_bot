@@ -144,3 +144,155 @@ func TestSetMenuButton(t *testing.T) {
 		t.Errorf("menu_button = %v, want a web_app button to %s", got, appURL)
 	}
 }
+
+func TestScreenCommandsOpenTheApp(t *testing.T) {
+	texts, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		command string
+		wantURL string
+	}{
+		{command.Help, appURL + "?help"},
+		{command.Language, appURL + "?settings"},
+		{command.List, appURL},
+		{command.New, appURL + "?new"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.command, func(t *testing.T) {
+			sent := &sentMessage{}
+			h := command.ScreenHandler(
+				tc.command,
+				texts,
+				savedLanguage("en"),
+				sent,
+				appURL,
+				slog.New(slog.DiscardHandler),
+			)
+			h(t.Context(), nil, &models.Update{Message: &models.Message{
+				From: &models.User{
+					ID: 42,
+				},
+				Chat: models.Chat{ID: 42, Type: models.ChatTypePrivate},
+				Text: "/" + tc.command,
+			}})
+
+			if sent.userID != 42 || sent.text == "" {
+				t.Fatalf("sent %+v, want a text to user 42", sent)
+			}
+
+			if len(sent.rows) != 1 || len(sent.rows[0]) != 1 {
+				t.Fatalf("rows = %+v, want one button", sent.rows)
+			}
+
+			if b := sent.rows[0][0]; b.WebApp == nil || b.WebApp.URL != tc.wantURL || b.Text == "" {
+				t.Errorf("button = %+v, want a web_app button to %s", b, tc.wantURL)
+			}
+		})
+	}
+}
+
+func TestScreenCommandUsesSavedLanguage(t *testing.T) {
+	texts, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	en, uk := &sentMessage{}, &sentMessage{}
+	msg := &models.Update{Message: &models.Message{
+		From: &models.User{ID: 42, LanguageCode: "en"}, Chat: models.Chat{ID: 42, Type: models.ChatTypePrivate},
+	}}
+	log := slog.New(slog.DiscardHandler)
+
+	command.ScreenHandler(command.Help, texts, savedLanguage(""), en, appURL, log)(t.Context(), nil, msg)
+	command.ScreenHandler(command.Help, texts, savedLanguage("uk"), uk, appURL, log)(t.Context(), nil, msg)
+
+	if en.text == uk.text || en.rows[0][0].Text == uk.rows[0][0].Text {
+		t.Errorf("en %q and uk %q replies match, want the saved uk to win over the app's en", en.text, uk.text)
+	}
+}
+
+func TestScreenCommandIgnoresGroups(t *testing.T) {
+	texts, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sent := &sentMessage{}
+	h := command.ScreenHandler(command.New, texts, savedLanguage(""), sent, appURL, slog.New(slog.DiscardHandler))
+	h(t.Context(), nil, &models.Update{Message: &models.Message{
+		From: &models.User{ID: 42}, Chat: models.Chat{ID: -5, Type: models.ChatTypeGroup}, Text: "/new",
+	}})
+
+	if sent.userID != 0 {
+		t.Errorf("sent %+v in a group, want nothing", sent)
+	}
+}
+
+// commandsAPI is a Bot API server that answers setMyCommands and keeps the command names it
+// got for each language_code.
+type commandsAPI struct {
+	t   *testing.T
+	got map[string][]string
+}
+
+func (a *commandsAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	//nolint:gosec // G120: the body is capped by MaxBytesReader above
+	if err := r.ParseMultipartForm(1 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+
+		return
+	}
+
+	var commands []models.BotCommand
+	if err := json.Unmarshal([]byte(r.FormValue("commands")), &commands); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+
+		return
+	}
+
+	names := make([]string, 0, len(commands))
+	for _, c := range commands {
+		names = append(names, c.Command)
+	}
+
+	a.got[r.FormValue("language_code")] = names
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if _, err := w.Write([]byte(`{"ok":true,"result":true}`)); err != nil {
+		a.t.Error(err)
+	}
+}
+
+func TestRegisterListsEveryCommand(t *testing.T) {
+	texts, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	api := &commandsAPI{t: t, got: map[string][]string{}}
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	b, err := bot.New("123:test", bot.WithServerURL(srv.URL), bot.WithSkipGetMe())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := command.Register(t.Context(), b, texts); err != nil {
+		t.Fatal(err)
+	}
+
+	want := strings.Join([]string{command.Help, command.List, command.New, command.Language}, ",")
+	for _, lang := range append([]string{""}, texts.Langs()...) {
+		if got := strings.Join(api.got[lang], ","); got != want {
+			t.Errorf("commands for %q = %s, want %s", lang, got, want)
+		}
+	}
+}

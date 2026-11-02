@@ -6,35 +6,42 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
-// Commands, without the slash. Every command but Start is in the command menu. Giveaways are
-// managed in the Mini App, which the menu button opens.
+// Commands, without the slash. Every command but Start is in the command menu and opens a
+// screen of the Mini App, where giveaways are managed.
 const (
 	Start    = "start"    // shows the greeting and the button that opens the Mini App
-	Language = "language" // shows the language buttons
-	Help     = "help"     // explains how the bot works and the channel rights it needs
+	Help     = "help"     // opens Help: how the bot works and the channel rights it needs
+	List     = "list"     // opens the giveaway list
+	New      = "new"      // opens the new-giveaway form
+	Language = "language" // opens Settings: the language and the user's channels
 )
 
-// entry is one command in the command menu.
+// entry is one command in the command menu and the Mini App screen it opens.
 type entry struct {
 	command     string
 	description i18n.Key // starts with an emoji, so the eye finds the command
+	query       string   // the screen, as a query added to the Mini App's URL
+	text        i18n.Key // the reply above the button
+	button      i18n.Key // the button that opens the screen
 }
 
 // menu returns the command menu in display order, /help first, so a new user starts there.
 func menu() []entry {
 	return []entry{
-		{Help, i18n.CommandHelp},
-		{Language, i18n.CommandLanguage},
+		{Help, i18n.CommandHelp, "?help", i18n.ScreenHelp, i18n.ScreenHelpButton},
+		{List, i18n.CommandList, "", i18n.ScreenList, i18n.ScreenListButton},
+		{New, i18n.CommandNew, "?new", i18n.ScreenNew, i18n.ScreenNewButton},
+		{Language, i18n.CommandLanguage, "?settings", i18n.ScreenSettings, i18n.ScreenSettingsButton},
 	}
 }
 
@@ -91,29 +98,32 @@ func SetMenuButton(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL 
 	return nil
 }
 
-// HelpHandler returns a handler that answers /help: how a giveaway works and the channel
-// rights the bot needs, with links that add the bot to a channel with those rights or, for a
-// partner channel, with none. Only getMe tells the bot's username, so the handler asks for it
-// on every /help.
-func HelpHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		me, err := b.GetMe(ctx)
-		if err != nil {
-			log.ErrorContext(ctx, "get bot username for /help", "error", err)
+// ScreenHandler returns a handler that answers command, one of the menu's, in a private chat
+// with one line and a button that opens the command's screen of the Mini App at appURL. The
+// texts are in the language the user chose, or else the language of their Telegram app. A
+// command outside the menu is a wiring mistake, so it panics at startup.
+func ScreenHandler(
+	command string, texts *i18n.Catalog, langs language.Reader, kb Sender, appURL string, log *slog.Logger,
+) bot.HandlerFunc {
+	i := slices.IndexFunc(menu(), func(e entry) bool { return e.command == command })
+	if i < 0 {
+		panic("command: /" + command + " opens no screen")
+	}
 
+	e := menu()[i]
+
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		msg := update.Message
+		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
 			return
 		}
 
-		link, partner := giveaway.AddToChannelLink(me.Username), giveaway.AddToPartnerChannelLink(me.Username)
-		reply(
-			langs,
-			log,
-			func(lang string) string { return texts.Text(lang, i18n.Help, link, partner) },
-		)(
-			ctx,
-			b,
-			update,
-		)
+		lang := language.UserLanguage(ctx, langs, log, msg.From)
+		open := models.InlineKeyboardButton{
+			Text:   texts.Text(lang, e.button),
+			WebApp: &models.WebAppInfo{URL: appURL + e.query},
+		}
+		kb.SendHTML(ctx, b, msg.From.ID, texts.Text(lang, e.text), [][]models.InlineKeyboardButton{{open}})
 	}
 }
 
@@ -140,30 +150,4 @@ func Register(ctx context.Context, b *bot.Bot, texts *i18n.Catalog) error {
 	}
 
 	return nil
-}
-
-// reply returns a handler that answers a command in a private chat with the HTML text for
-// the language the user chose, or else the language of their Telegram app. The reply also takes
-// away the menu keyboard that older versions of the bot sent. It ignores the command in
-// groups and channels.
-func reply(langs language.Reader, log *slog.Logger, text func(lang string) string) bot.HandlerFunc {
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.Chat.Type != models.ChatTypePrivate {
-			return
-		}
-
-		lang := language.UserLanguage(ctx, langs, log, msg.From)
-
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:             msg.Chat.ID,
-			Text:               text(lang),
-			ParseMode:          models.ParseModeHTML,
-			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
-			ReplyMarkup:        &models.ReplyKeyboardRemove{RemoveKeyboard: true},
-		})
-		if err != nil {
-			log.ErrorContext(ctx, "reply to command", "chat_id", msg.Chat.ID, "command", msg.Text, "error", err)
-		}
-	}
 }
