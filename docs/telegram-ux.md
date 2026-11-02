@@ -25,12 +25,12 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 | `can_restrict_members` | Ban users | Блокувати користувачів |
 
 - Main actions live in Telegram's command menu (≡ next to the message field), each with an emoji at the start of its description so the eye finds it. `/start` lists them as tappable commands. The bot sends no reply keyboard.
-- The Mini App opens from three places, all with an inline `web_app` button or the menu button, which are the launch types that carry signed `initData` ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)): the chat's menu button (`command.SetMenuButton`), the button under the `/start` reply, and "Review in the app" under the results review sent after a draw (`APP_URL?review=<id>`). Never open it from a reply-keyboard `web_app` button: Telegram sends that launch no `initData`.
+- The Mini App opens only with an inline `web_app` button or the menu button, the launch types that carry signed `initData` ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)): the chat's menu button (`command.SetMenuButton`), the button under the `/start` reply, the buttons under the replies to `/help` (`APP_URL?help`), `/list` (`APP_URL`), `/new` (`APP_URL?new`) and `/language` (`APP_URL?settings`) (`command.ScreenHandler`), and "Review in the app" under the results review sent after a draw (`APP_URL?review=<id>`). Never open it from a reply-keyboard `web_app` button: Telegram sends that launch no `initData`.
 - Inline `web_app` buttons work only in private chats, so a channel post never carries one; the join button stays a callback button.
 
 ## How it is wired
 
-The chat keeps `/start`, `/help`, the language menu and the join button; everything else happens in the Mini App, whose API trusts only Telegram's signed launch data ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)). The database side of giveaway changes is in [ADR 0006](adr/0006-button-first-then-row.md) and [ADR 0007](adr/0007-giveaway-states-in-one-table.md).
+The chat keeps `/start`, the commands that open a Mini App screen and the join button; everything else, help and the language included, happens in the Mini App, whose API trusts only Telegram's signed launch data ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)). The database side of giveaway changes is in [ADR 0006](adr/0006-button-first-then-row.md) and [ADR 0007](adr/0007-giveaway-states-in-one-table.md).
 
 ### Commands
 

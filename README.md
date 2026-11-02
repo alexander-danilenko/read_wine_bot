@@ -21,7 +21,7 @@
 | --- | --- |
 | **What** | Giveaways on Telegram channel posts, with an admin review before the bot publishes the results |
 | **Who** | Channel owners, their admins and giveaway partners |
-| **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user with `/language` |
+| **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user in the Mini App's settings (`/language` opens them) |
 | **Stack** | Go 1.27, PostgreSQL 18, one static binary for Windows, macOS and Linux |
 
 ## ✨ What it does
@@ -29,7 +29,7 @@
 - 🎟️ **Join button.** Adds a join button under a channel post and collects participants.
 - 🎲 **Random draw.** Draws winners at random when the giveaway ends.
 - 🔍 **Review before publishing.** Channel admins see which channels each winner is subscribed to, and can replace a winner. Then they publish the results under the post, or close the giveaway without results.
-- 📱 **Mini App.** Admins create, edit and review giveaways in a Telegram Mini App that opens from the chat with the bot.
+- 📱 **Mini App.** Admins create, edit and review giveaways in a Telegram Mini App that opens from the chat with the bot. Its Help explains the bot and adds it to a channel; its Settings change the language and list your channels.
 
 ## 🔄 How a giveaway works
 
