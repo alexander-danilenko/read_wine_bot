@@ -1,9 +1,6 @@
 package webapp
 
-import (
-	"context"
-	"net/http"
-)
+import "context"
 
 type meOutput struct {
 	Body struct {
@@ -13,9 +10,9 @@ type meOutput struct {
 }
 
 func (o *Operations) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
-	c, ok := CallerFrom(ctx)
-	if !ok {
-		return nil, problem(http.StatusUnauthorized, CodeUnauthorized)
+	c, err := caller(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	out := &meOutput{}

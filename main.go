@@ -33,7 +33,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "2.0.0"
+const version = "2.0.1"
 
 func main() {
 	if err := run(); err != nil {
@@ -51,7 +51,6 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// A binary built without the Mini App stops here.
 	static, err := webapp.NewStatic(webapp.Built())
 	if err != nil {
 		return fmt.Errorf("load mini app: %w", err)
@@ -131,11 +130,14 @@ func serve(
 		return fmt.Errorf("start mini app server: %w", err)
 	}
 
-	var wg sync.WaitGroup
+	var (
+		wg     sync.WaitGroup
+		srvErr error // set by the server's goroutine; read only after wg.Wait
+	)
 
 	wg.Go(func() { cron.Every(ctx, time.Minute, func(ctx context.Context) { drawer.DrawDue(ctx, b) }) })
 	wg.Go(func() {
-		if err = srv.Run(ctx); err != nil {
+		if srvErr = srv.Run(ctx); srvErr != nil {
 			stop()
 		}
 	})
@@ -145,16 +147,16 @@ func serve(
 	wg.Wait()
 	slog.InfoContext(ctx, "bot stopped")
 
-	if err != nil {
-		return fmt.Errorf("mini app server: %w", err)
+	if srvErr != nil {
+		return fmt.Errorf("mini app server: %w", srvErr)
 	}
 
 	return nil
 }
 
 // describeBot tells Telegram what the bot offers and needs: the command menu, the menu button
-// that opens the Mini App, and the admin
-// rights Telegram pre-selects when an admin adds the bot to a channel.
+// that opens the Mini App, and the admin rights Telegram pre-selects when an admin adds the
+// bot to a channel.
 func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL string) error {
 	if err := command.Register(ctx, b, texts); err != nil {
 		return fmt.Errorf("register commands: %w", err)
@@ -274,7 +276,22 @@ func handlers(
 			giveaway.JoinHandler(giveaways, texts, users, log),
 		),
 		// Any other message gets no answer. Without this, go-telegram logs every unmatched update.
-		bot.WithDefaultHandler(func(context.Context, *bot.Bot, *models.Update) {}),
+		bot.WithDefaultHandler(answerStaleButton(log)),
 		bot.WithAllowedUpdates(allowedUpdates()),
+	}
+}
+
+// answerStaleButton answers a tap on a button no handler matches, such as one left from the
+// chat-managed giveaways of 1.x, so Telegram stops its spinner. Any other update is ignored.
+func answerStaleButton(log *slog.Logger) bot.HandlerFunc {
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		if update.CallbackQuery == nil {
+			return
+		}
+
+		_, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: update.CallbackQuery.ID})
+		if err != nil {
+			log.ErrorContext(ctx, "answer stale button", "user_id", update.CallbackQuery.From.ID, "error", err)
+		}
 	}
 }

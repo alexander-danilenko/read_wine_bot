@@ -1,6 +1,7 @@
 package webapp
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -60,7 +61,24 @@ func NewMux(static http.Handler, auth *Auth, ops *Operations, version string) *h
 
 	mux := http.NewServeMux()
 	mux.Handle("/", static)
-	mux.Handle("/api/", auth.Wrap(apiMux))
+	mux.Handle("/api/", auth.Wrap(finishWrites(apiMux)))
 
 	return mux
+}
+
+// finishWrites lets a request that changes data run to the end even if the client goes away:
+// a giveaway write is several Telegram and database steps that must not stop halfway.
+func finishWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			next.ServeHTTP(w, r)
+
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), writeTimeout)
+		defer cancel()
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

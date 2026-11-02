@@ -1,11 +1,10 @@
-import Add from "@mui/material/SvgIcon";
-import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
+import SvgIcon from "@mui/material/SvgIcon";
 import Paper from "@mui/material/Paper";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
@@ -14,22 +13,11 @@ import { useState } from "react";
 import { api, must, type Giveaway } from "../api/client";
 import { useT, type T } from "../i18n";
 import { formatEnd } from "../time";
-import { ErrorText, Loading, useLoad } from "../ui";
+import { ErrorText, Loading, Section, statusColor, useLoad } from "../ui";
 
 const pageSize = 25;
 
-export function statusColor(status: Giveaway["status"]) {
-  switch (status) {
-    case "active":
-      return "success";
-    case "review":
-      return "warning";
-    case "cancelled":
-      return "default";
-    default:
-      return "info";
-  }
-}
+const plusPath = <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />;
 
 function GiveawayRow({ g, t, onOpen }: { g: Giveaway; t: T; onOpen: () => void }) {
   return (
@@ -56,7 +44,7 @@ function Running({ onOpen, onReview, onNew }: Props) {
 
   const { giveaways, review } = list.data;
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <Section>
       {review.length > 0 && (
         <Paper>
           <List subheader={<ListSubheader sx={{ bgcolor: "transparent" }}>{t("list.review")}</ListSubheader>}>
@@ -79,14 +67,12 @@ function Running({ onOpen, onReview, onNew }: Props) {
           {t("list.empty")}
         </Typography>
       )}
-      <Button variant="contained" size="large" onClick={onNew} startIcon={<Add>{plusPath}</Add>} fullWidth>
+      <Button variant="contained" size="large" onClick={onNew} startIcon={<SvgIcon>{plusPath}</SvgIcon>} fullWidth>
         {t("list.new")}
       </Button>
-    </Box>
+    </Section>
   );
 }
-
-const plusPath = <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />;
 
 function Finished({ onOpen, onReview }: Props) {
   const t = useT();
@@ -107,7 +93,7 @@ function Finished({ onOpen, onReview }: Props) {
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <Section>
       <Paper>
         <List>
           {list.data.giveaways.map((g) => (
@@ -125,7 +111,7 @@ function Finished({ onOpen, onReview }: Props) {
           {t("list.more")}
         </Button>
       )}
-    </Box>
+    </Section>
   );
 }
 
@@ -138,7 +124,7 @@ interface Props {
 export default function GiveawayList(props: Props & { tab: number; onTab: (tab: number) => void }) {
   const t = useT();
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <Section>
       <Tabs value={props.tab} onChange={(_, v: number) => props.onTab(v)} variant="fullWidth">
         <Tab label={t("list.running")} id="tab-0" aria-controls="tabpanel-0" />
         <Tab label={t("list.finished")} id="tab-1" aria-controls="tabpanel-1" />
@@ -146,6 +132,6 @@ export default function GiveawayList(props: Props & { tab: number; onTab: (tab: 
       <div role="tabpanel" id={`tabpanel-${props.tab}`} aria-labelledby={`tab-${props.tab}`}>
         {props.tab === 0 ? <Running {...props} /> : <Finished {...props} />}
       </div>
-    </Box>
+    </Section>
   );
 }

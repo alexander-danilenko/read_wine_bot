@@ -8,7 +8,7 @@ const kyivParts = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-// defaultEnd is a week from today in Kyiv at 19:00, as the chat setup suggested.
+// defaultEnd is a week from today in Kyiv at 19:00.
 export function defaultEnd(now = new Date()): string {
   const inAWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   return `${kyivParts.format(inAWeek)}T19:00`;

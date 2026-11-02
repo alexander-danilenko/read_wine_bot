@@ -53,7 +53,7 @@ func (p *AppError) Error() string {
 	return p.Code + ": " + p.Field
 }
 
-// noticeProblems maps the failure notices of the chat rules to Mini App problems.
+// noticeProblems maps the failure notices of the Editor rules to Mini App problems.
 func noticeProblems() map[i18n.Key]AppError {
 	return map[i18n.Key]AppError{
 		i18n.EditNotFound:              {Code: CodeNotFound},
@@ -69,12 +69,12 @@ func noticeProblems() map[i18n.Key]AppError {
 	}
 }
 
-// successNotices are the notices the chat rules send when an action worked.
+// successNotices are the notices the Editor rules return when an action worked.
 func successNotices() []i18n.Key {
 	return []i18n.Key{i18n.GiveawayCreated, i18n.EditCancelled, i18n.EditRestored, i18n.EditFinishing, i18n.EditMoved}
 }
 
-// replyErr returns the AppError a chat rule's Reply stands for, or nil when the action worked.
+// replyErr returns the AppError a rule's Reply stands for, or nil when the action worked.
 func replyErr(r Reply) error {
 	if r.Stale {
 		return &AppError{Code: CodeStale}
@@ -173,8 +173,8 @@ type ManagedLister interface {
 	Managed(ctx context.Context, userID int64) ([]Giveaway, error)
 }
 
-// App runs the giveaway rules for the Mini App. It reuses the chat rules' checks, so both
-// enforce the same things: only the creator changes a giveaway, button first, then row.
+// App runs the giveaway rules for the Mini App: only the creator changes a giveaway, and the
+// join button changes before the row (ADR 0006).
 type App struct {
 	ed       *Editor
 	reviewer *Reviewer
@@ -200,17 +200,13 @@ func (a *App) List(ctx context.Context, tg Telegram, userID int64) ([]View, []Vi
 		return nil, nil, err
 	}
 
-	mineViews, err := a.views(ctx, mine)
+	// One participant count for both lists.
+	views, err := a.views(ctx, slices.Concat(mine, review))
 	if err != nil {
 		return nil, nil, err
 	}
 
-	reviewViews, err := a.views(ctx, review)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return mineViews, reviewViews, nil
+	return views[:len(mine)], views[len(mine):], nil
 }
 
 // Finished returns up to limit of the creator's finished giveaways after the first offset,
@@ -231,7 +227,7 @@ func (a *App) Finished(ctx context.Context, userID int64, offset, limit int) ([]
 // as for a missing ID, so the answer does not reveal which IDs exist.
 func (a *App) Get(ctx context.Context, userID int64, id uint) (View, error) {
 	g, err := a.ed.giveaways.ByID(ctx, id)
-	if errors.Is(err, ErrNotFound) || (err == nil && (g.CreatedBy != userID || !g.Published && g.CancelledAt == nil)) {
+	if errors.Is(err, ErrNotFound) {
 		return View{}, &AppError{Code: CodeNotFound}
 	}
 
@@ -239,10 +235,15 @@ func (a *App) Get(ctx context.Context, userID int64, id uint) (View, error) {
 		return View{}, err //nolint:wrapcheck // Store already names the giveaway
 	}
 
+	isDraft := !g.Published && g.CancelledAt == nil
+	if g.CreatedBy != userID || isDraft {
+		return View{}, &AppError{Code: CodeNotFound}
+	}
+
 	return a.view(ctx, g)
 }
 
-// Create puts a new giveaway on the post f links to, with the checks of the chat setup. The
+// Create puts a new giveaway on the post f links to, after the post, admin and rights checks. The
 // draft row is only a step inside this call (ADR 0006: button first, then row): the user's
 // earlier draft is deleted, the new one saved, the button attached and the row published. A
 // failure deletes the draft again, so an abandoned form leaves no row.
@@ -296,7 +297,7 @@ func (a *App) Create(ctx context.Context, tg AppTelegram, userID int64, lang str
 	return a.Get(ctx, userID, saved.ID)
 }
 
-// checkWinners accepts the winner counts the chat setup accepts.
+// checkWinners accepts minWinners to maxWinners winners.
 func checkWinners(n int) error {
 	if n < minWinners || n > maxWinners {
 		return &AppError{Code: CodeInvalidWinners, Field: FieldWinners}

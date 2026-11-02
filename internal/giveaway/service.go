@@ -41,7 +41,7 @@ type Storage interface {
 	Join(ctx context.Context, giveawayID uint, telegramID int64) (bool, error)
 }
 
-// Drafts saves the unpublished giveaways of unfinished setups. *Store implements it.
+// Drafts saves the unpublished giveaways that App.Create saves before it attaches the button. *Store implements it.
 type Drafts interface {
 	SaveDraft(ctx context.Context, g *Giveaway) error
 	Draft(ctx context.Context, userID int64) (Giveaway, error)

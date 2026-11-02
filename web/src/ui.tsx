@@ -8,7 +8,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { Failure } from "./api/client";
+import { Failure, type Giveaway } from "./api/client";
 import { useT } from "./i18n";
 
 export function Loading() {
@@ -98,6 +98,20 @@ export const NotifyContext = createContext<(message: string) => void>(() => {});
 
 export function useNotify() {
   return useContext(NotifyContext);
+}
+
+// statusColor is the chip color of a giveaway status.
+export function statusColor(status: Giveaway["status"]) {
+  switch (status) {
+    case "active":
+      return "success";
+    case "review":
+      return "warning";
+    case "cancelled":
+      return "default";
+    default:
+      return "info";
+  }
 }
 
 export function Section({ children }: { children: ReactNode }) {

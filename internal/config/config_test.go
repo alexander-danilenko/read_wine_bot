@@ -10,7 +10,7 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 )
 
-const appURL = "https://bot.example/app"
+const appURL = "https://bot.example/"
 
 // The .env walk continues above t.TempDir() into the real filesystem, so these tests assume no
 // .env file sits in the system temp directory or its parents.
@@ -173,7 +173,9 @@ func TestLoadAppURLAndListenAddr(t *testing.T) {
 		wantListen string
 		wantErr    error
 	}{
-		{name: "https with path", appURL: appURL, wantListen: ":8080"},
+		{name: "https root", appURL: appURL, wantListen: ":8080"},
+		{name: "https without slash", appURL: "https://bot.example", wantListen: ":8080"},
+		{name: "with path", appURL: "https://bot.example/app", wantErr: config.ErrInvalidAppURL},
 		{name: "listen addr set", appURL: appURL, listenAddr: "127.0.0.1:9000", wantListen: "127.0.0.1:9000"},
 		{name: "app url missing", wantErr: config.ErrMissingAppURL},
 		{name: "http scheme", appURL: "http://bot.example/app", wantErr: config.ErrInvalidAppURL},

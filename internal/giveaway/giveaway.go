@@ -9,14 +9,14 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
-// Giveaway is one row of the giveaways table: a channel post that carries, or during the
-// setup will carry, the join button. An unpublished row without a cancel mark is the admin's
-// unfinished setup; one with the mark is a cancelled giveaway.
+// Giveaway is one row of the giveaways table: a channel post that carries, or right after a
+// create will carry, the join button. An unpublished row without a cancel mark is a draft that
+// App.Create saves before it attaches the button; one with the mark is a cancelled giveaway.
 type Giveaway struct {
 	ID        uint  `gorm:"primaryKey;comment:Giveaway ID, used in the bot's buttons and commands"`
 	ChatID    int64 `gorm:"not null;uniqueIndex:idx_giveaways_post;comment:Telegram ID of the channel with the post"`
 	MessageID int64 `gorm:"not null;uniqueIndex:idx_giveaways_post;comment:Telegram message ID of the post, numbered per channel"`
-	// The partial unique index allows one setup draft per admin.
+	// The partial unique index allows one draft per admin.
 	CreatedBy int64 `gorm:"not null;uniqueIndex:idx_giveaways_draft,where:published = false AND cancelled_at IS NULL;comment:Telegram user ID (users.telegram_id) of the admin who set the giveaway up"`
 	// Creator only declares the foreign key from created_by to users; it is never loaded.
 	Creator  user.User `gorm:"foreignKey:CreatedBy;references:TelegramID"`
@@ -29,7 +29,7 @@ type Giveaway struct {
 	// FinishedAt is set together with the participants' winner marks; nil until then.
 	FinishedAt *time.Time `gorm:"check:chk_giveaways_finished,finished_at IS NULL OR (published AND cancelled_at IS NULL);comment:When winners were drawn and saved, NULL until then"`
 	// CancelledAt is set when the creator takes a published giveaway off its post: the row is
-	// unpublished again but keeps its participants, so it is no setup draft. Publishing it
+	// unpublished again but keeps its participants, so it is no draft. Publishing it
 	// clears the mark. Nil for drafts and published giveaways.
 	CancelledAt *time.Time `gorm:"check:chk_giveaways_cancelled,cancelled_at IS NULL OR NOT published;comment:When the creator cancelled the giveaway, NULL unless cancelled. Unpublished without this mark means an unfinished setup"`
 	// Published is set once the join button is on the post. The default is true so that

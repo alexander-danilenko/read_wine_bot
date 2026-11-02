@@ -13,8 +13,7 @@ import { api, Failure, must, type Giveaway } from "../api/client";
 import { useT, type TextKey } from "../i18n";
 import { openLink } from "../telegram";
 import { formatEnd } from "../time";
-import { Confirm, ErrorText, Loading, Section, useLoad, useNotify } from "../ui";
-import { statusColor } from "./GiveawayList";
+import { Confirm, ErrorText, Loading, Section, statusColor, useLoad, useNotify } from "../ui";
 
 type Action = "cancel" | "restore" | "finish-now";
 
@@ -100,14 +99,14 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
         </>
       )}
       {running && (
-        <Button variant="outlined" size="large" fullWidth onClick={() => setAsking("finish-now")}>
-          {t("details.finishNow")}
-        </Button>
-      )}
-      {running && (
-        <Button color="error" size="large" fullWidth onClick={() => setAsking("cancel")}>
-          {t("details.cancelGiveaway")}
-        </Button>
+        <>
+          <Button variant="outlined" size="large" fullWidth onClick={() => setAsking("finish-now")}>
+            {t("details.finishNow")}
+          </Button>
+          <Button color="error" size="large" fullWidth onClick={() => setAsking("cancel")}>
+            {t("details.cancelGiveaway")}
+          </Button>
+        </>
       )}
       {giveaway.status === "cancelled" && (
         <Button

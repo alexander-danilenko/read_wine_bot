@@ -24,7 +24,6 @@ type memStore struct {
 	mu           sync.Mutex
 	rows         map[uint]*giveaway.Giveaway
 	participants map[uint]map[int64]bool
-	winners      map[uint]int // current winner count per giveaway, set by tests
 	nextID       uint
 }
 
@@ -33,7 +32,7 @@ var errConstraint = errors.New("constraint violated")
 
 func newMemStore() *memStore {
 	return &memStore{
-		rows: map[uint]*giveaway.Giveaway{}, participants: map[uint]map[int64]bool{}, winners: map[uint]int{},
+		rows: map[uint]*giveaway.Giveaway{}, participants: map[uint]map[int64]bool{},
 	}
 }
 
@@ -198,21 +197,6 @@ func (f *memStore) Finished(_ context.Context, userID int64, offset, limit int) 
 	return gs[:min(limit, len(gs))], nil
 }
 
-func (f *memStore) WinnerCounts(_ context.Context, ids []uint) (map[uint]int, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	counts := map[uint]int{}
-
-	for _, id := range ids {
-		if n := f.winners[id]; n > 0 {
-			counts[id] = n
-		}
-	}
-
-	return counts, nil
-}
-
 // Managed lists the user's unfinished published or cancelled giveaways, as Store.Managed.
 func (f *memStore) Managed(_ context.Context, userID int64) ([]giveaway.Giveaway, error) {
 	f.mu.Lock()
@@ -321,7 +305,7 @@ func (f *memStore) ids() []uint {
 	return ids
 }
 
-// fakeUsers keeps each user's language, pending command and keyboard message in memory.
+// fakeUsers keeps each user's language and keyboard message in memory.
 type fakeUsers struct {
 	mu       sync.Mutex
 	language map[int64]string

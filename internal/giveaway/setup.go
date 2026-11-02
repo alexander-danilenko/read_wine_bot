@@ -12,7 +12,7 @@ import (
 // Limits of a giveaway's inputs.
 const (
 	minWinners        = 1
-	maxWinners        = 98 // kept from the chat review, whose 98 reroll buttons, Publish and Skip filled 100
+	maxWinners        = 98
 	maxButtonTextRune = 64
 )
 

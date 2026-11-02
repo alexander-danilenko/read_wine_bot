@@ -22,7 +22,7 @@ export function themeFrom(scheme: "light" | "dark", p: ThemeParams): Theme {
     },
     shape: { borderRadius: 12 },
     components: {
-      MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { textTransform: "none" } } },
+      MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { textTransform: "none", minHeight: 48 } } },
       MuiTab: { styleOverrides: { root: { textTransform: "none", minHeight: 48 } } },
     },
   });

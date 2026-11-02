@@ -23,7 +23,7 @@ var (
 	// ErrMissingAppURL means APP_URL is not set.
 	ErrMissingAppURL = errors.New("APP_URL is not set")
 	// ErrInvalidAppURL means APP_URL is not an https:// URL with a host and without a query or fragment.
-	ErrInvalidAppURL = errors.New("APP_URL is invalid, want https://host/path without ? or #")
+	ErrInvalidAppURL = errors.New("APP_URL is invalid, want https://host or https://host/ without a path, ? or #")
 	// ErrInvalidListenAddr means LISTEN_ADDR is not a host:port address.
 	ErrInvalidListenAddr = errors.New("LISTEN_ADDR is invalid, want host:port or :port")
 )
@@ -113,14 +113,18 @@ func validateDatabaseURL(raw string) error {
 }
 
 // validateAppURL requires https: Telegram opens Mini Apps only over HTTPS. The bot appends its own
-// query to this URL, so it must not carry one.
+// query to this URL, so it must not carry one, and the app is served only at the root.
 func validateAppURL(raw string) error {
 	if raw == "" {
 		return ErrMissingAppURL
 	}
 
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return ErrInvalidAppURL
+	}
+
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
 		return ErrInvalidAppURL
 	}
 

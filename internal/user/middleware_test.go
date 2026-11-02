@@ -68,7 +68,7 @@ func TestMiddleware(t *testing.T) {
 		want   []string
 	}{
 		{"plain message", privateMessage("hello"), []string{"record Olena Koval 7"}},
-		{"number keeps the step", privateMessage("5"), []string{"record Olena Koval 7"}},
+		{"number is not a command", privateMessage("5"), []string{"record Olena Koval 7"}},
 		{"start clears", privateMessage("/start"), []string{"record Olena Koval 7", "clear 7"}},
 		{
 			"any command clears",
@@ -76,7 +76,7 @@ func TestMiddleware(t *testing.T) {
 			[]string{"record Olena Koval 7", "clear 7"},
 		},
 		{
-			"former menu label keeps the step",
+			"former menu label is not a command",
 			privateMessage("🌐 Змінити мову"),
 			[]string{"record Olena Koval 7"},
 		},

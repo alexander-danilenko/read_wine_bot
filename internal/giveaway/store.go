@@ -18,7 +18,7 @@ var ErrNotFound = errors.New("giveaway not found")
 // ErrExists means a giveaway already runs on the post.
 var ErrExists = errors.New("giveaway already exists")
 
-// draft selects the unfinished setups: unpublished rows without a cancel mark.
+// draft selects the drafts: unpublished rows without a cancel mark.
 const draft = "published = false AND cancelled_at IS NULL"
 
 // managed selects the giveaways a creator manages: published or cancelled, never a draft.
@@ -49,7 +49,7 @@ func NewStore(db *gorm.DB) *Store {
 	return &Store{db: db}
 }
 
-// Publish marks the unpublished giveaway id, a setup draft or a cancelled giveaway, as
+// Publish marks the unpublished giveaway id, a draft or a cancelled giveaway, as
 // published and clears its cancel mark. It returns ErrNotFound when no unpublished giveaway
 // has that id, for example after a second Confirm or Publish.
 func (s *Store) Publish(ctx context.Context, id uint) error {
@@ -142,7 +142,7 @@ func (s *Store) Join(ctx context.Context, giveawayID uint, telegramID int64) (bo
 }
 
 // Post returns the published or cancelled giveaway on the channel post, or ErrNotFound; a
-// setup draft on the post counts as none.
+// draft on the post counts as none.
 func (s *Store) Post(ctx context.Context, chatID, messageID int64) (Giveaway, error) {
 	var g Giveaway
 
@@ -158,7 +158,7 @@ func (s *Store) Post(ctx context.Context, chatID, messageID int64) (Giveaway, er
 	return g, nil
 }
 
-// ByID returns giveaway id, a setup draft included, or ErrNotFound.
+// ByID returns giveaway id, a draft included, or ErrNotFound.
 func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 	var g Giveaway
 
@@ -207,7 +207,7 @@ func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winn
 }
 
 // Move puts the unfinished giveaway id on post messageID of its channel, keeping its participants. It returns ErrNotFound when no such giveaway exists and
-// ErrExists when another giveaway, a setup draft included, is on that post.
+// ErrExists when another giveaway, a draft included, is on that post.
 func (s *Store) Move(ctx context.Context, id uint, messageID int64) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
 		Where("id = ? AND finished_at IS NULL", id).
@@ -280,12 +280,6 @@ func (s *Store) Candidates(ctx context.Context, giveawayID uint) ([]user.User, e
 // without participants is missing from the map, which reads as 0.
 func (s *Store) Participants(ctx context.Context, ids []uint) (map[uint]int, error) {
 	return s.count(ctx, ids, "TRUE", "participants")
-}
-
-// WinnerCounts returns the number of current winners of each giveaway in ids. A giveaway
-// without winners is missing from the map, which reads as 0.
-func (s *Store) WinnerCounts(ctx context.Context, ids []uint) (map[uint]int, error) {
-	return s.count(ctx, ids, colWinner, "winners")
 }
 
 // Finished returns up to limit of the user's finished giveaways after the first offset, the

@@ -7,7 +7,7 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 - A tap on a bot link (`t.me/<bot>?start=<payload>`) sends `/start <payload>` as the user. Its handler deletes that message first (`dropLinkTap`), and its next prompt is a new message, because the command already deleted the live message with buttons. A link that no longer applies answers with a notice: a message shows no popup.
 - Notices about the user's own action go without a sound (`disable_notification`). Before a reply that waits on Telegram, such as checking a forwarded post, show "typing…" (`sendChatAction`).
 - `/cancel` leaves any step, like every command does. Register every command with `setMyCommands` in every locale (`command.Register`), at startup.
-- Answer every callback query, even when nothing changes, or Telegram keeps a spinner on the button. A button whose action no longer applies gets the `GiveawayOutdated` popup.
+- Answer every callback query, even when nothing changes, or Telegram keeps a spinner on the button. The default handler answers buttons no handler matches, such as those left from 1.x.
 - Every step that waits for input has a Cancel button. An action that cannot be undone asks for confirmation first, and a second tap on the same confirmation is stale, not a repeat.
 - Offer the likely value as a button. A typed value that does not parse keeps the step and names the expected format.
 - Every text the user sees comes from `internal/i18n` in every locale. Error texts say what to do next and never show internals.

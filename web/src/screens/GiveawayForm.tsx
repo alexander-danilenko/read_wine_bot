@@ -22,7 +22,7 @@ function changed(g: Giveaway, v: Values): Partial<Values> {
 }
 
 // GiveawayForm creates a giveaway, or edits one when given. A failed submit keeps every value
-// and shows the error next to the field it concerns (R5).
+// and shows the error next to the field it concerns.
 export default function GiveawayForm({ giveaway, onDone }: { giveaway?: Giveaway; onDone: (g: Giveaway) => void }) {
   const t = useT();
   const notify = useNotify();

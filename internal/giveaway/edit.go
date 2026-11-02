@@ -18,7 +18,6 @@ const (
 // FinishedLister reads a creator's finished giveaways page by page. *Store implements it.
 type FinishedLister interface {
 	Finished(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, error)
-	WinnerCounts(ctx context.Context, ids []uint) (map[uint]int, error)
 }
 
 // Giveaways reads the giveaways a creator manages. *Store implements it.
@@ -57,8 +56,7 @@ type ButtonRemover interface {
 
 // Editor holds the rules for changing a published giveaway: who may edit it, how each field
 // is saved, cancelling and publishing it again, and the creator's list. Every action reads
-// the giveaway again and repeats the checks, because the only state between messages is
-// the pending command.
+// the giveaway again and repeats the checks.
 type Editor struct {
 	svc       *Service
 	giveaways Giveaways

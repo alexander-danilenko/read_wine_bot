@@ -27,7 +27,7 @@ function name(w: Winner): string {
 }
 
 // Review is the results review: reroll winners, then publish or close. Publish and close
-// cannot be undone, so each asks first; a review someone else changed reloads (KTD11).
+// cannot be undone, so each asks first; a review someone else changed reloads.
 export default function Review({ id, onClosed }: { id: number; onClosed: () => void }) {
   const t = useT();
   const notify = useNotify();

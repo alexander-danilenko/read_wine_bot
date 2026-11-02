@@ -13,4 +13,4 @@ Every other giveaway action changes the join button on the post first and the ro
 ## Consequences
 
 - A failed Telegram call can never re-roll the winners.
-- If the process dies between `Finish` and the review message, or the message fails, the creator gets nothing. The results stay pending and every channel admin finds them in `/list`. The button may stay on the post. Give the container a stop grace period well above Docker's 10-second default.
+- If the process dies between `Finish` and the review message, or the message fails, the creator gets nothing. The results stay pending and the creator finds them in the Mini App. The button may stay on the post. Give the container a stop grace period well above Docker's 10-second default.
