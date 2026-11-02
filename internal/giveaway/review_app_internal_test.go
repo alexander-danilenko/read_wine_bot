@@ -162,3 +162,16 @@ func TestAppSkipClosesReview(t *testing.T) {
 	_, err := app.Reroll(t.Context(), tg, creatorID, reviewID, 1)
 	wantCode(t, err, CodeStale)
 }
+
+func TestAppSendWinnersCannotMessage(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()})
+	app, tg := newReviewApp(t, store), newReviewTelegram()
+
+	if err := app.SendWinners(t.Context(), tg, creatorID, reviewID); err != nil {
+		t.Fatal(err)
+	}
+
+	tg.sendFails = 2
+	wantCode(t, app.SendWinners(t.Context(), tg, creatorID, reviewID), CodeCannotMessage)
+}

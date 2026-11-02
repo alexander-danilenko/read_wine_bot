@@ -26,7 +26,7 @@ func errorCodes() []string {
 		giveaway.CodeBotNoRights, giveaway.CodePostGone, giveaway.CodeExists, giveaway.CodeTaken,
 		giveaway.CodeInvalidPostLink, giveaway.CodeInvalidEnd, giveaway.CodeEndInPast, giveaway.CodeInvalidWinners,
 		giveaway.CodeInvalidButtonText, giveaway.CodeOtherChannel, giveaway.CodeDue, giveaway.CodeStale,
-		giveaway.CodeFailed, giveaway.CodeReviewClosed, giveaway.CodePublishedPartly,
+		giveaway.CodeFailed, giveaway.CodeReviewClosed, giveaway.CodePublishedPartly, giveaway.CodeCannotMessage,
 	}
 }
 

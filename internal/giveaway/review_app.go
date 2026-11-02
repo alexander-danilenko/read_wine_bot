@@ -10,6 +10,7 @@ import (
 const (
 	CodeReviewClosed    = "review_closed"    // the results were published or skipped already
 	CodePublishedPartly = "published_partly" // some result messages reached the channel, not all
+	CodeCannotMessage   = "cannot_message"   // the bot cannot send the caller a private message
 )
 
 // ReviewTelegramAll is what results review in the Mini App needs from Telegram. BotAPI
@@ -44,6 +45,7 @@ func reviewProblems() map[i18n.Key]AppError {
 		i18n.ReviewNotAdmin:        {Code: CodeNotAdmin},
 		i18n.ReviewPublishFailed:   {Code: CodeBotNoRights},
 		i18n.ReviewPublishedPartly: {Code: CodePublishedPartly},
+		i18n.ReviewSendFailed:      {Code: CodeCannotMessage},
 		i18n.EditNotFound:          {Code: CodeNotFound},
 		i18n.EditFailed:            {Code: CodeFailed},
 	}
@@ -90,6 +92,11 @@ func (a *App) Reroll(ctx context.Context, tg ReviewTelegramAll, userID int64, id
 // still rerolled.
 func (a *App) Publish(ctx context.Context, tg ReviewTelegramAll, userID int64, id uint, rerolled int) error {
 	return reviewErr(a.reviewer.Publish(ctx, tg, userID, id, rerolled), CodeStale)
+}
+
+// SendWinners sends the current winners of giveaway id to the caller in a private message.
+func (a *App) SendWinners(ctx context.Context, tg ReviewTelegramAll, userID int64, id uint) error {
+	return reviewErr(a.reviewer.SendWinners(ctx, tg, userID, id), CodeStale)
 }
 
 // Skip closes the review of giveaway id without posting, if the rerolled-out count is still

@@ -152,6 +152,12 @@ func (f *fakeGiveaways) Skip(
 	return f.err
 }
 
+func (f *fakeGiveaways) SendWinners(_ context.Context, _ giveaway.ReviewTelegramAll, userID int64, _ uint) error {
+	f.userID, f.lastAction = userID, "send winners"
+
+	return f.err
+}
+
 func (f *fakeGiveaways) act(name string, userID int64) (giveaway.View, error) {
 	f.userID, f.lastAction = userID, name
 

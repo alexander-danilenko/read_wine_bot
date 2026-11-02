@@ -1,3 +1,4 @@
+import { Send } from "lucide-react";
 import { useState } from "react";
 import { api, Failure, must, type Review as ReviewData } from "../api/client";
 import { useT, type TextKey } from "../i18n";
@@ -25,7 +26,7 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
   const notify = useNotify();
   const review = useLoad(() => must(api.GET("/api/reviews/{id}", { params: { path: { id } } })), [id]);
   const [asking, setAsking] = useState<"publish" | "skip">();
-  const [busy, setBusy] = useState<number | "close">();
+  const [busy, setBusy] = useState<number | "close" | "send">();
   const [failure, setFailure] = useState<unknown>();
 
   if (review.loading && !review.data) return <Loading />;
@@ -43,6 +44,20 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
     try {
       review.set(await must(api.POST("/api/reviews/{id}/reroll", { params: { path: { id } }, body: { winner_id: w.user_id } })));
       notify(t("review.rerolled"));
+    } catch (err) {
+      failed(err);
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  // sendWinners has the bot message the current winners to the admin, to forward to partners.
+  const sendWinners = async () => {
+    setBusy("send");
+    setFailure(undefined);
+    try {
+      await must(api.POST("/api/reviews/{id}/send-winners", { params: { path: { id } } }));
+      notify(t("review.winnersSent"));
     } catch (err) {
       failed(err);
     } finally {
@@ -105,6 +120,12 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
           </ul>
         )}
       </Card>
+      {data.winners.length > 0 && (
+        <Button variant="outline" full onClick={sendWinners} busy={busy === "send"} disabled={busy !== undefined}>
+          <Send aria-hidden className="size-5" />
+          {t("review.sendWinners")}
+        </Button>
+      )}
       <Button variant="primary" full onClick={() => setAsking("publish")} disabled={busy !== undefined}>
         {t("review.publish")}
       </Button>

@@ -25,6 +25,7 @@ type ReviewActions interface {
 	) (giveaway.ReviewView, error)
 	Publish(ctx context.Context, tg giveaway.ReviewTelegramAll, userID int64, id uint, rerolled int) error
 	Skip(ctx context.Context, tg giveaway.ReviewTelegramAll, userID int64, id uint, rerolled int) error
+	SendWinners(ctx context.Context, tg giveaway.ReviewTelegramAll, userID int64, id uint) error
 }
 
 type channelBody struct {
@@ -112,6 +113,11 @@ func (o *Operations) registerReviews(api huma.API) {
 		OperationID: "skipResults", Method: http.MethodPost, Path: "/api/reviews/{id}/skip",
 		Summary: "Close the review without posting the results", DefaultStatus: http.StatusNoContent,
 	}, o.skip)
+	huma.Register(api, huma.Operation{
+		OperationID: "sendWinners", Method: http.MethodPost, Path: "/api/reviews/{id}/send-winners",
+		Summary:       "Send the caller the current winners in a private message, to forward to partners",
+		DefaultStatus: http.StatusNoContent,
+	}, o.sendWinners)
 }
 
 func (o *Operations) getReview(ctx context.Context, in *idInput) (*reviewOutput, error) {
@@ -156,6 +162,19 @@ func (o *Operations) skip(ctx context.Context, in *closeReviewInput) (*struct{},
 	}
 
 	if err := o.reviewActions.Skip(ctx, o.tg, c.User.ID, in.ID, in.Body.Rerolled); err != nil {
+		return nil, o.apiErr(ctx, err)
+	}
+
+	return &struct{}{}, nil
+}
+
+func (o *Operations) sendWinners(ctx context.Context, in *idInput) (*struct{}, error) {
+	c, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := o.reviewActions.SendWinners(ctx, o.tg, c.User.ID, in.ID); err != nil {
 		return nil, o.apiErr(ctx, err)
 	}
 

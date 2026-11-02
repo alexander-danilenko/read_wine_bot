@@ -3,7 +3,9 @@ package giveaway
 import (
 	"bytes"
 	"context"
+	"html"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -578,6 +580,7 @@ func TestReviewAccess(t *testing.T) {
 				rv.Show(t.Context(), tt.tg, tt.userID, reviewID),
 				rv.Reroll(t.Context(), tt.tg, tt.userID, reviewID, ann().TelegramID),
 				rv.Publish(t.Context(), tt.tg, tt.userID, reviewID, 0),
+				rv.SendWinners(t.Context(), tt.tg, tt.userID, reviewID),
 			} {
 				if r.Notice != tt.want {
 					t.Errorf("reply = %+v, want only notice %q", r, tt.want)
@@ -656,3 +659,87 @@ func TestUserLinkPrefersUsername(t *testing.T) {
 		}
 	}
 }
+
+// Covers R2, R3: the caller gets the winners in a private message, every link by ID.
+func TestSendWinnersMessagesTheCaller(t *testing.T) {
+	store := newFakeReviewStore()
+	withUsername := ann()
+	withUsername.Username = "ann"
+	store.drawn([]user.User{withUsername, bob()})
+	rv := newTestReviewer(t, store)
+	tg := newAdmins()
+
+	if r := rv.SendWinners(t.Context(), tg, otherAdmin, reviewID); r.Notice != "" || r.Stale {
+		t.Errorf("send winners = %+v, want success", r)
+	}
+
+	wantLines := "🏆 " + `<a href="tg://user?id=1">Ann</a>` + "\n🏆 " + `<a href="tg://user?id=2">Bob</a>`
+	if len(tg.sent) != 1 || tg.sent[0].chatID != otherAdmin || tg.sent[0].replyTo != 0 ||
+		!strings.Contains(tg.sent[0].text, postLink(drawChannel, drawPost)) ||
+		!strings.HasSuffix(tg.sent[0].text, "\n\n"+wantLines) {
+		t.Errorf("sent %+v, want one private message linking the post, then Ann and Bob by ID", tg.sent)
+	}
+
+	if !store.pending(t) {
+		t.Error("results not pending after sending the winners")
+	}
+}
+
+// Covers R5.
+func TestSendWinnersRefused(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()})
+	rv := newTestReviewer(t, store)
+	tg := newAdmins()
+	tg.sendFails = 1
+
+	if r := rv.SendWinners(t.Context(), tg, creatorID, reviewID); r.Notice != i18n.ReviewSendFailed {
+		t.Errorf("send winners = %+v, want the send-failed notice", r)
+	}
+}
+
+// Covers R7.
+func TestSendWinnersSplitsLongList(t *testing.T) {
+	store := newFakeReviewStore()
+	long := strings.Repeat("😀", 64)
+	winners := make([]user.User, 0, maxWinners)
+
+	for i := range int64(maxWinners) {
+		winners = append(winners, user.User{TelegramID: i + 1, FirstName: long, LastName: long})
+	}
+
+	store.drawn(winners)
+	rv := newTestReviewer(t, store)
+	tg := newAdmins()
+
+	if r := rv.SendWinners(t.Context(), tg, creatorID, reviewID); r.Notice != "" {
+		t.Fatalf("send winners = %+v, want success", r)
+	}
+
+	links := 0
+	for _, m := range tg.sent {
+		links += strings.Count(m.text, "tg://user?id=")
+		if visible := utf16Len(html.UnescapeString(tags.ReplaceAllString(m.text, ""))); visible > maxMessageLen {
+			t.Errorf("message shows %d code units, want at most %d", visible, maxMessageLen)
+		}
+	}
+
+	if len(tg.sent) < 2 || links != maxWinners {
+		t.Errorf("sent %d messages with %d links, want several messages with %d links", len(tg.sent), links, maxWinners)
+	}
+}
+
+func TestSendWinnersAfterSkipIsStale(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()})
+	rv := newTestReviewer(t, store)
+	tg := newAdmins()
+	rv.Skip(t.Context(), tg, creatorID, reviewID, 0)
+
+	if r := rv.SendWinners(t.Context(), tg, creatorID, reviewID); !r.Stale || len(tg.sent) != 0 {
+		t.Errorf("send winners = %+v, sent %d; want stale and nothing sent", r, len(tg.sent))
+	}
+}
+
+// tags matches HTML tags, to measure the text a message shows.
+var tags = regexp.MustCompile(`<[^>]*>`)

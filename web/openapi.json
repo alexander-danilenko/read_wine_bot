@@ -28,7 +28,8 @@
               "stale",
               "failed",
               "review_closed",
-              "published_partly"
+              "published_partly",
+              "cannot_message"
             ],
             "type": "string"
           },
@@ -1192,6 +1193,41 @@
           }
         },
         "summary": "Replace one winner with another participant"
+      }
+    },
+    "/api/reviews/{id}/send-winners": {
+      "post": {
+        "operationId": "sendWinners",
+        "parameters": [
+          {
+            "description": "Giveaway ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Giveaway ID",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Send the caller the current winners in a private message, to forward to partners"
       }
     },
     "/api/reviews/{id}/skip": {

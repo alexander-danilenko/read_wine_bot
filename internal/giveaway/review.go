@@ -229,6 +229,31 @@ func (r *Reviewer) Publish(ctx context.Context, tg ReviewTelegram, userID int64,
 	return ReviewReply{Notice: i18n.ReviewPublished}
 }
 
+// SendWinners sends the current winners of giveaway id to the user in a private message, for
+// them to forward to partners. Each winner links by Telegram ID, so the links work for
+// winners without a username. Nothing in the review changes.
+func (r *Reviewer) SendWinners(ctx context.Context, tg ReviewTelegram, userID int64, id uint) ReviewReply {
+	log := r.log.With("user_id", userID, "giveaway_id", id)
+
+	g, res, reply, ok := r.load(ctx, tg, userID, id)
+	if !ok {
+		return reply
+	}
+
+	// A user's private chat with the bot has the user's ID.
+	for i, m := range r.winnersListMessages(g, winnerUsers(res)) {
+		if err := tg.SendHTML(ctx, userID, 0, m); err != nil {
+			log.WarnContext(ctx, "send winners to the admin", "part", i+1, "error", err)
+
+			return ReviewReply{Notice: i18n.ReviewSendFailed, Giveaway: g, Results: res}
+		}
+	}
+
+	log.InfoContext(ctx, "winners sent to the admin", "winners", len(res.Winners))
+
+	return ReviewReply{Giveaway: g, Results: res}
+}
+
 // load reads giveaway id and its results and checks that they wait for review and that the
 // user is an admin of its channel. It returns the reply to send instead and false when a
 // check fails.
@@ -297,15 +322,59 @@ func (r *Reviewer) resultMessages(lang string, winners []user.User) []string {
 		return []string{html.EscapeString(r.texts.Text(lang, i18n.DrawNoWinners))}
 	}
 
+	headerKey, congratsKey := i18n.DrawResults, i18n.DrawCongrats
+	if len(winners) == 1 {
+		headerKey, congratsKey = i18n.DrawResultsOne, i18n.DrawCongratsOne
+	}
+
+	return r.split(plain(r.texts.Text(lang, headerKey)), winnerLines(winners, userLink),
+		plain(r.texts.Text(lang, congratsKey)))
+}
+
+// winnersListMessages returns the winners list for the admin to forward as HTML messages,
+// each within Telegram's length limit: the header linking the post, a blank line and one
+// winner per line, each linked by Telegram ID.
+func (r *Reviewer) winnersListMessages(g Giveaway, winners []user.User) []string {
+	header := r.texts.Text(g.Language, i18n.ReviewWinnersList, postLink(g.ChatID, g.MessageID))
+
+	// The header's markup counts as visible too: overcounting only splits earlier.
+	return r.split(part{header, utf16Len(header)}, winnerLines(winners, idLink), part{})
+}
+
+// part is a piece of a message: its HTML and how many UTF-16 code units it shows.
+type part struct {
+	html    string
+	visible int
+}
+
+// plain returns text as a message part, escaped for HTML.
+func plain(text string) part {
+	return part{html.EscapeString(text), utf16Len(text)}
+}
+
+// winnerLines returns one part per winner: the bullet and the winner linked by link.
+func winnerLines(winners []user.User, link func(user.User, int) string) []part {
+	lines := make([]part, 0, len(winners))
+	for _, w := range winners {
+		width := utf16Len(displayName(w))
+		lines = append(lines, part{winnerBullet + link(w, width), utf16Len(winnerBullet) + width})
+	}
+
+	return lines
+}
+
+// split joins header, lines and footer into HTML messages, each within Telegram's length
+// limit: the header, a blank line, one line each, then a blank line and the footer unless
+// it is empty. A split starts a new message without the separator.
+func (r *Reviewer) split(header part, lines []part, footer part) []string {
 	var (
 		messages []string
 		current  string
 		size     int
 	)
 
-	// add appends text, which shows as plain visible characters, to the current message.
-	add := func(sep, text string, visible int) {
-		if current != "" && size+len(sep)+visible > r.maxWidth {
+	add := func(sep string, p part) {
+		if current != "" && size+len(sep)+p.visible > r.maxWidth {
 			messages = append(messages, current)
 			current, size = "", 0
 		}
@@ -315,27 +384,21 @@ func (r *Reviewer) resultMessages(lang string, winners []user.User) []string {
 			size += len(sep)
 		}
 
-		current += text
-		size += visible
+		current += p.html
+		size += p.visible
 	}
 
-	headerKey, congratsKey := i18n.DrawResults, i18n.DrawCongrats
-	if len(winners) == 1 {
-		headerKey, congratsKey = i18n.DrawResultsOne, i18n.DrawCongratsOne
-	}
-
-	header := r.texts.Text(lang, headerKey)
-	add("", html.EscapeString(header), utf16Len(header))
+	add("", header)
 
 	sep := "\n\n"
-	for _, w := range winners {
-		name := displayName(w)
-		add(sep, winnerBullet+userLink(w, utf16Len(name)), utf16Len(winnerBullet)+utf16Len(name))
+	for _, l := range lines {
+		add(sep, l)
 		sep = "\n"
 	}
 
-	congrats := r.texts.Text(lang, congratsKey)
-	add("\n\n", html.EscapeString(congrats), utf16Len(congrats))
+	if footer.html != "" {
+		add("\n\n", footer)
+	}
 
 	return append(messages, current)
 }
@@ -368,11 +431,19 @@ func displayName(u user.User) string {
 // UTF-16 code units. It links to u's username when u has one: Telegram shows a link by ID as
 // plain text when the user's privacy settings hide their account.
 func userLink(u user.User, width int) string {
-	href := "tg://user?id=" + strconv.FormatInt(u.TelegramID, 10)
 	if u.Username != "" {
-		href = "https://t.me/" + u.Username
+		return link("https://t.me/"+u.Username, u, width)
 	}
 
+	return idLink(u, width)
+}
+
+// idLink is userLink by Telegram ID only, which keeps working after a username changes.
+func idLink(u user.User, width int) string {
+	return link("tg://user?id="+strconv.FormatInt(u.TelegramID, 10), u, width)
+}
+
+func link(href string, u user.User, width int) string {
 	return `<a href="` + href + `">` + html.EscapeString(shorten(displayName(u), width)) + "</a>"
 }
 

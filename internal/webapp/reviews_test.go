@@ -75,3 +75,20 @@ func TestReviewActions(t *testing.T) {
 		t.Errorf("closed review: code %d, body %s", rec.Code, rec.Body)
 	}
 }
+
+func TestSendWinners(t *testing.T) {
+	fake := &fakeGiveaways{}
+	mux := newGiveawayMux(t, fake)
+
+	if rec := send(t, mux, http.MethodPost, "/api/reviews/7/send-winners", ""); rec.Code != http.StatusNoContent ||
+		fake.lastAction != "send winners" || fake.userID != 42 {
+		t.Errorf("send winners: code %d, action %q, user %d", rec.Code, fake.lastAction, fake.userID)
+	}
+
+	fake.err = &giveaway.AppError{Code: giveaway.CodeCannotMessage}
+
+	rec := send(t, mux, http.MethodPost, "/api/reviews/7/send-winners", "")
+	if rec.Code != http.StatusConflict || decodeProblem(t, rec).Code != "cannot_message" {
+		t.Errorf("cannot message: code %d, body %s", rec.Code, rec.Body)
+	}
+}

@@ -375,7 +375,7 @@ func appStatus(code string) int {
 		return http.StatusUnprocessableEntity
 	case giveaway.CodeFailed:
 		return http.StatusInternalServerError
-	default: // finished, stale, due, exists, taken, other channel, bot rights, post gone
+	default: // finished, stale, due, exists, taken, other channel, bot rights, post gone, cannot message
 		return http.StatusConflict
 	}
 }

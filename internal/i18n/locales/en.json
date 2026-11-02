@@ -44,6 +44,8 @@
   "review.published_partly": "Only part of the results reached the channel: Telegram refused the rest. Post the missing winners in the channel by hand.",
   "review.skipped": "The giveaway is closed without results in the channel.",
   "review.not_admin": "Only admins of the giveaway's channel can review its results.",
+  "review.winners_list": "🎁 Winners of the giveaway under <a href=\"%[1]s\">this post</a>:",
+  "review.send_failed": "I couldn't send you the winners. Open a chat with me, tap Start, then try again.",
   "app.open": "🎁 Open giveaways",
   "app.menu": "Giveaways",
   "review.open_app": "📱 Review in the app",

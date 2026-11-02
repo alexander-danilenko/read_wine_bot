@@ -73,6 +73,8 @@ const (
 	ReviewPublishedPartly Key = "review.published_partly"
 	ReviewSkipped         Key = "review.skipped"
 	ReviewNotAdmin        Key = "review.not_admin"
+	ReviewWinnersList     Key = "review.winners_list"
+	ReviewSendFailed      Key = "review.send_failed"
 )
 
 // ErrMissingDefault means locales/ has no file for DefaultLang.
