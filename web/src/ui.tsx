@@ -60,6 +60,59 @@ export function Button({
   );
 }
 
+// pagerSlots lists what Pager shows between its arrows: at most five slots, so the bar fits a
+// 320 px phone with 44 px targets. Every page is shown up to five pages; past that, the first,
+// the last and the current page, with "gap" for the pages left out.
+export function pagerSlots(page: number, pages: number): (number | "gap")[] {
+  if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
+  if (page <= 3) return [1, 2, 3, "gap", pages];
+  if (page >= pages - 2) return [1, "gap", pages - 2, pages - 1, pages];
+  return [1, "gap", page, "gap", pages];
+}
+
+// Pager moves between the pages of a list. It shows nothing for a single page.
+export function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (page: number) => void }) {
+  const t = useT();
+  if (pages <= 1) return null;
+
+  const cell = `inline-flex size-11 items-center justify-center rounded-xl ${focus}`;
+  const arrow = (to: number, label: string, glyph: string) => (
+    <li>
+      <button type="button" className={`${cell} text-accent disabled:opacity-30`} disabled={to < 1 || to > pages} aria-label={label} onClick={() => onPage(to)}>
+        <span aria-hidden>{glyph}</span>
+      </button>
+    </li>
+  );
+
+  return (
+    <nav aria-label={t("list.pages")}>
+      <ul className="flex items-center justify-center">
+        {arrow(page - 1, t("list.prev"), "‹")}
+        {pagerSlots(page, pages).map((slot, i) =>
+          slot === "gap" ? (
+            <li key={`gap-${i}`} aria-hidden className={`${cell} text-hint`}>
+              …
+            </li>
+          ) : (
+            <li key={slot}>
+              <button
+                type="button"
+                className={`${cell} ${slot === page ? "bg-accent font-medium text-on-accent" : "text-accent"}`}
+                aria-current={slot === page ? "page" : undefined}
+                aria-label={t("list.page", { n: slot })}
+                onClick={() => onPage(slot)}
+              >
+                {slot}
+              </button>
+            </li>
+          ),
+        )}
+        {arrow(page + 1, t("list.next"), "›")}
+      </ul>
+    </nav>
+  );
+}
+
 // ErrorText shows the text for a failed call, with a retry when given.
 export function ErrorText({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const t = useT();

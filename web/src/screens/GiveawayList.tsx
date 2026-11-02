@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { api, must, type Channel, type Giveaway } from "../api/client";
 import { useT, type T } from "../i18n";
 import { formatEnd } from "../time";
-import { Avatar, Button, Card, ErrorText, Loading, Pill, Section, statusTone, useLoad } from "../ui";
+import { Avatar, Button, Card, ErrorText, Loading, Pager, Pill, Section, statusTone, useLoad } from "../ui";
 
-const pageSize = 25;
+export const pageSize = 10;
 
 function GiveawayRow({ g, channel, t, onOpen }: { g: Giveaway; channel?: Channel; t: T; onOpen: () => void }) {
   const ends = g.ends_at ? t("list.ends", { time: formatEnd(g.ends_at) }) : t("list.noEnd");
@@ -47,22 +47,42 @@ function Empty({ children }: { children: string }) {
   return <p className="py-6 text-center text-hint">{children}</p>;
 }
 
-function Running({ onOpen, onReview, onNew }: Props) {
+// pageCount is how many pages a list of total giveaways fills, at least one.
+function pageCount(total: number) {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+// useLastPage moves to the last page when the asked page is past the end, for example after a
+// cancel or restore shrank the list.
+function useLastPage(rows: number | undefined, total: number | undefined, page: number, onPage: (page: number) => void) {
+  useEffect(() => {
+    if (rows === 0 && total !== undefined && total > 0 && page > 1) onPage(pageCount(total));
+  }, [rows, total, page, onPage]);
+}
+
+function Running({ page, onPage, onOpen, onReview, onNew }: ListProps) {
   const t = useT();
-  const list = useLoad(() => must(api.GET("/api/giveaways")), []);
+  const list = useLoad(
+    () => must(api.GET("/api/giveaways", { params: { query: { offset: (page - 1) * pageSize, limit: pageSize } } })),
+    [page],
+  );
+  useLastPage(list.data?.giveaways.length, list.data?.total, page, onPage);
 
   if (list.loading && !list.data) return <Loading />;
   if (list.error || !list.data) return <ErrorText error={list.error} onRetry={list.reload} />;
 
-  const { giveaways, review, channels } = list.data;
+  const { giveaways, review, channels, total } = list.data;
   return (
     <Section>
-      {review.length > 0 && <Group title={t("list.review")} items={review} channels={channels} t={t} onOpen={(g) => onReview(g.id)} />}
+      {page === 1 && review.length > 0 && (
+        <Group title={t("list.review")} items={review} channels={channels} t={t} onOpen={(g) => onReview(g.id)} />
+      )}
       {giveaways.length > 0 ? (
         <Group title={t("list.mine")} items={giveaways} channels={channels} t={t} onOpen={(g) => onOpen(g.id)} />
       ) : (
         <Empty>{t("list.empty")}</Empty>
       )}
+      <Pager page={page} pages={pageCount(total)} onPage={onPage} />
       <Button variant="primary" full onClick={onNew}>
         <svg aria-hidden viewBox="0 0 24 24" className="size-5 fill-current">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
@@ -73,26 +93,22 @@ function Running({ onOpen, onReview, onNew }: Props) {
   );
 }
 
-function Finished({ onOpen, onReview }: Props) {
+function Archive({ page, onPage, onOpen, onReview }: ListProps) {
   const t = useT();
-  const [pages, setPages] = useState(1);
   const list = useLoad(
-    () => must(api.GET("/api/giveaways/finished", { params: { query: { limit: pages * pageSize } } })),
-    [pages],
+    () => must(api.GET("/api/giveaways/finished", { params: { query: { offset: (page - 1) * pageSize, limit: pageSize } } })),
+    [page],
   );
+  useLastPage(list.data?.giveaways.length, list.data?.total, page, onPage);
 
   if (list.loading && !list.data) return <Loading />;
   if (list.error || !list.data) return <ErrorText error={list.error} onRetry={list.reload} />;
-  if (list.data.giveaways.length === 0) return <Empty>{t("list.finishedEmpty")}</Empty>;
+  if (list.data.giveaways.length === 0) return <Empty>{t("list.archiveEmpty")}</Empty>;
 
   return (
     <Section>
       <Group items={list.data.giveaways} channels={list.data.channels} t={t} onOpen={(g) => (g.status === "review" ? onReview(g.id) : onOpen(g.id))} />
-      {list.data.more && (
-        <Button onClick={() => setPages((p) => p + 1)} busy={list.loading}>
-          {t("list.more")}
-        </Button>
-      )}
+      <Pager page={page} pages={pageCount(list.data.total)} onPage={onPage} />
     </Section>
   );
 }
@@ -103,9 +119,12 @@ interface Props {
   onNew: () => void;
 }
 
-export default function GiveawayList(props: Props & { tab: number; onTab: (tab: number) => void }) {
+// ListProps is what one tab needs: its page and the actions on its rows.
+type ListProps = Props & { page: number; onPage: (page: number) => void };
+
+export default function GiveawayList(props: ListProps & { tab: number; onTab: (tab: number) => void }) {
   const t = useT();
-  const tabs = [t("list.running"), t("list.finished")];
+  const tabs = [t("list.running"), t("list.archive")];
   return (
     <Section>
       <div role="tablist" className="grid grid-cols-2 border-b border-hint/30">
@@ -127,7 +146,7 @@ export default function GiveawayList(props: Props & { tab: number; onTab: (tab: 
         ))}
       </div>
       <div role="tabpanel" id="tabpanel" aria-labelledby={`tab-${props.tab}`}>
-        {props.tab === 0 ? <Running {...props} /> : <Finished {...props} />}
+        {props.tab === 0 ? <Running {...props} /> : <Archive {...props} />}
       </div>
     </Section>
   );

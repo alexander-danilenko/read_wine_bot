@@ -168,9 +168,9 @@ type AppTelegram interface {
 	ResolveChannel(ctx context.Context, chat string) (int64, error)
 }
 
-// ManagedLister lists the giveaways a creator can still change. *Store implements it.
-type ManagedLister interface {
-	Managed(ctx context.Context, userID int64) ([]Giveaway, error)
+// RunningLister reads a creator's running giveaways page by page. *Store implements it.
+type RunningLister interface {
+	Running(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error)
 }
 
 // App runs the giveaway rules for the Mini App: only the creator changes a giveaway, and the
@@ -178,53 +178,58 @@ type ManagedLister interface {
 type App struct {
 	ed       *Editor
 	reviewer *Reviewer
-	managed  ManagedLister
+	running  RunningLister
 	log      *slog.Logger
 }
 
 // NewApp returns the Mini App's entry to the rules of ed and reviewer.
-func NewApp(ed *Editor, reviewer *Reviewer, managed ManagedLister) *App {
-	return &App{ed: ed, reviewer: reviewer, managed: managed, log: ed.svc.log}
+func NewApp(ed *Editor, reviewer *Reviewer, running RunningLister) *App {
+	return &App{ed: ed, reviewer: reviewer, running: running, log: ed.svc.log}
 }
 
-// List returns the creator's running and cancelled giveaways, and the giveaways whose results
-// wait for review in a channel the user is an admin of, the creator's own included.
-func (a *App) List(ctx context.Context, tg Telegram, userID int64) ([]View, []View, error) {
-	mine, err := a.managed.Managed(ctx, userID)
+// Page is one page of a giveaway list and how many giveaways the whole list holds.
+type Page struct {
+	Views []View
+	Total int
+}
+
+// List returns up to limit of the creator's running giveaways after the first offset, newest
+// first, and the giveaways whose results wait for review in a channel the user is an admin of,
+// the creator's own included.
+func (a *App) List(ctx context.Context, tg Telegram, userID int64, offset, limit int) (Page, []View, error) {
+	mine, total, err := a.running.Running(ctx, userID, offset, limit)
 	if err != nil {
-		return nil, nil, err //nolint:wrapcheck // Store already names the user
+		return Page{}, nil, err //nolint:wrapcheck // Store already names the user
 	}
 
 	review, err := a.ed.pendingResults(ctx, tg, userID)
 	if err != nil {
-		return nil, nil, err
+		return Page{}, nil, err
 	}
 
 	// One participant count for both lists.
 	views, err := a.views(ctx, slices.Concat(mine, review))
 	if err != nil {
-		return nil, nil, err
+		return Page{}, nil, err
 	}
 
-	return views[:len(mine)], views[len(mine):], nil
+	return Page{Views: views[:len(mine)], Total: total}, views[len(mine):], nil
 }
 
-// Finished returns up to limit of the creator's finished giveaways after the first offset,
-// the latest draw first, and whether more follow.
-func (a *App) Finished(ctx context.Context, userID int64, offset, limit int) ([]View, bool, error) {
-	gs, err := a.ed.finished.Finished(ctx, userID, offset, limit+1)
+// Archived returns up to limit of the creator's finished and cancelled giveaways after the
+// first offset, the latest to leave the running list first.
+func (a *App) Archived(ctx context.Context, userID int64, offset, limit int) (Page, error) {
+	gs, total, err := a.ed.archived.Archived(ctx, userID, offset, limit)
 	if err != nil {
-		return nil, false, err //nolint:wrapcheck // Store already names the user
+		return Page{}, err //nolint:wrapcheck // Store already names the user
 	}
 
-	more := len(gs) > limit
-
-	views, err := a.views(ctx, gs[:min(len(gs), limit)])
+	views, err := a.views(ctx, gs)
 	if err != nil {
-		return nil, false, err
+		return Page{}, err
 	}
 
-	return views, more, nil
+	return Page{Views: views, Total: total}, nil
 }
 
 // Channel is a channel as the giveaway lists show it, read live from Telegram, never stored.

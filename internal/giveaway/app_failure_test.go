@@ -64,7 +64,7 @@ func TestAppListHidesReviewFromNonAdmin(t *testing.T) {
 	drawn.FinishedAt, drawn.ResultsPending = &s.now, true
 	s.tg.admin = false
 
-	_, review, err := app.List(t.Context(), s.tg, adminID)
+	_, review, err := app.List(t.Context(), s.tg, adminID, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

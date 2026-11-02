@@ -55,6 +55,7 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
   const t = useMemo(() => translator(me.data?.language ?? fallbackLang), [me.data, fallbackLang]);
   const [screen, setScreen] = useState<Screen>(firstScreen);
   const [tab, setTab] = useState(0);
+  const [page, setPage] = useState(1);
   const [notice, setNotice] = useState<string>();
   const hideNotice = useCallback(() => setNotice(undefined), []);
 
@@ -85,7 +86,12 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
         body = (
           <GiveawayList
             tab={tab}
-            onTab={setTab}
+            onTab={(next) => {
+              setTab(next);
+              setPage(1);
+            }}
+            page={page}
+            onPage={setPage}
             onOpen={(id) => setScreen({ name: "details", id })}
             onReview={(id) => setScreen({ name: "review", id })}
             onNew={() => setScreen({ name: "new" })}

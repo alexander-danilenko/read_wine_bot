@@ -2,6 +2,7 @@ package giveaway_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -278,15 +279,8 @@ func TestAppCancelAndRestore(t *testing.T) {
 		t.Errorf("status %q, buttons removed %d, want cancelled and 1", cancelled.Status, s.tg.removed)
 	}
 
-	// The creator can still find the cancelled giveaway, to restore it.
-	mine, _, err := app.List(t.Context(), s.tg, adminID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(mine) != 1 || mine[0].Status != giveaway.StatusCancelled {
-		t.Fatalf("list = %+v, want the cancelled giveaway", mine)
-	}
+	// The cancelled giveaway leaves the running list; the creator finds it in the archive.
+	wantLists(t, s, app, nil, []uint{v.ID})
 
 	_, err = app.Cancel(t.Context(), s.tg, adminID, v.ID)
 	wantAppError(t, err, giveaway.CodeStale, "")
@@ -298,6 +292,23 @@ func TestAppCancelAndRestore(t *testing.T) {
 
 	if restored.Status != giveaway.StatusActive {
 		t.Errorf("status after restore = %q, want active", restored.Status)
+	}
+
+	wantLists(t, s, app, []uint{v.ID}, nil)
+}
+
+// wantLists checks the IDs on the admin's first running and archive pages.
+func wantLists(t *testing.T, s *setup, app *giveaway.App, running, archived []uint) {
+	t.Helper()
+
+	r, _, err := app.List(t.Context(), s.tg, adminID, 0, 10)
+	if err != nil || !slices.Equal(pageIDs(r), running) || r.Total != len(running) {
+		t.Errorf("running = %+v, err %v, want %v", r, err, running)
+	}
+
+	a, err := app.Archived(t.Context(), adminID, 0, 10)
+	if err != nil || !slices.Equal(pageIDs(a), archived) || a.Total != len(archived) {
+		t.Errorf("archive = %+v, err %v, want %v", a, err, archived)
 	}
 }
 
@@ -355,12 +366,12 @@ func TestAppListAndFinished(t *testing.T) {
 
 	mustCreate(t, s, app, otherAdminID, other)
 
-	mine, review, err := app.List(t.Context(), s.tg, adminID)
+	mine, review, err := app.List(t.Context(), s.tg, adminID, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(mine) != 1 || mine[0].ID != v.ID || len(review) != 0 {
+	if len(mine.Views) != 1 || mine.Views[0].ID != v.ID || mine.Total != 1 || len(review) != 0 {
 		t.Fatalf("list = %+v, review %+v, want only the admin's giveaway", mine, review)
 	}
 
@@ -368,7 +379,7 @@ func TestAppListAndFinished(t *testing.T) {
 	drawn := s.store.rows[v.ID+1]
 	drawn.FinishedAt, drawn.ResultsPending = &s.now, true
 
-	_, review, err = app.List(t.Context(), s.tg, adminID)
+	_, review, err = app.List(t.Context(), s.tg, adminID, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,26 +389,48 @@ func TestAppListAndFinished(t *testing.T) {
 	}
 }
 
-func TestAppFinished(t *testing.T) {
+func TestAppArchived(t *testing.T) {
 	s := newSetup(t)
 	app := giveaway.NewApp(s.ed, nil, s.store)
+
+	ids := make([]uint, 0, 3)
 
 	for _, post := range []string{"42", "43", "44"} {
 		f := appFields(s)
 		f.PostLink = "https://t.me/c/1234567890/" + post
-		v := mustCreate(t, s, app, adminID, f)
-		s.store.rows[v.ID].FinishedAt = &s.now
+		ids = append(ids, mustCreate(t, s, app, adminID, f).ID)
 	}
 
-	page, more, err := app.Finished(t.Context(), adminID, 0, 2)
-	if err != nil || len(page) != 2 || !more {
-		t.Errorf("first page = %+v, more %v, err %v, want 2 and more", page, more, err)
+	// Drawn an hour ago, cancelled now, drawn two hours ago: the archive orders them by when
+	// each left the running list.
+	early, late := s.now.Add(-2*time.Hour), s.now.Add(-time.Hour)
+	s.store.rows[ids[0]].FinishedAt = &late
+	s.store.rows[ids[1]].Published, s.store.rows[ids[1]].CancelledAt = false, &s.now
+	s.store.rows[ids[2]].FinishedAt = &early
+
+	for _, tc := range []struct {
+		offset int
+		want   []uint
+	}{
+		{offset: 0, want: []uint{ids[1], ids[0]}}, // the cancelled, then the latest drawn
+		{offset: 2, want: []uint{ids[2]}},
+		{offset: 10, want: nil}, // past the end
+	} {
+		page, err := app.Archived(t.Context(), adminID, tc.offset, 2)
+		if err != nil || page.Total != 3 || !slices.Equal(pageIDs(page), tc.want) {
+			t.Errorf("offset %d: page %+v, err %v, want %v of 3", tc.offset, page, err, tc.want)
+		}
+	}
+}
+
+// pageIDs lists the IDs of the giveaways on p, in order.
+func pageIDs(p giveaway.Page) []uint {
+	ids := make([]uint, 0, len(p.Views))
+	for _, v := range p.Views {
+		ids = append(ids, v.ID)
 	}
 
-	page, more, err = app.Finished(t.Context(), adminID, 2, 2)
-	if err != nil || len(page) != 1 || more {
-		t.Errorf("last page = %+v, more %v, err %v, want 1 and no more", page, more, err)
-	}
+	return ids
 }
 
 func TestAppListNewestFirst(t *testing.T) {
@@ -410,12 +443,12 @@ func TestAppListNewestFirst(t *testing.T) {
 	later.PostLink = "https://t.me/c/1234567890/43"
 	second := mustCreate(t, s, app, adminID, later)
 
-	mine, _, err := app.List(t.Context(), s.tg, adminID)
+	mine, _, err := app.List(t.Context(), s.tg, adminID, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(mine) != 2 || mine[0].ID != second.ID || mine[1].ID != first.ID {
+	if len(mine.Views) != 2 || mine.Views[0].ID != second.ID || mine.Views[1].ID != first.ID {
 		t.Errorf("list = %+v, want the latest created first", mine)
 	}
 }

@@ -15,9 +15,10 @@ const (
 	FieldButtonText = "button_text"
 )
 
-// FinishedLister reads a creator's finished giveaways page by page. *Store implements it.
-type FinishedLister interface {
-	Finished(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, error)
+// ArchivedLister reads a creator's finished and cancelled giveaways page by page. *Store
+// implements it.
+type ArchivedLister interface {
+	Archived(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error)
 }
 
 // Giveaways reads the giveaways a creator manages. *Store implements it.
@@ -64,7 +65,7 @@ type Editor struct {
 	mover     Mover
 	pending   PendingLister
 	counter   Counter
-	finished  FinishedLister
+	archived  ArchivedLister
 }
 
 // NewEditor returns an Editor that reuses svc's texts, clock and checks.
@@ -75,11 +76,11 @@ func NewEditor(
 	mover Mover,
 	pending PendingLister,
 	counter Counter,
-	finished FinishedLister,
+	archived ArchivedLister,
 ) *Editor {
 	return &Editor{
 		svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending, counter: counter,
-		finished: finished,
+		archived: archived,
 	}
 }
 

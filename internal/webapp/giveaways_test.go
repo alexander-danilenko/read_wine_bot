@@ -25,6 +25,7 @@ type fakeGiveaways struct {
 	fields     giveaway.Fields
 	changes    giveaway.Changes
 	link       string
+	offset     int
 	limit      int
 	lastAction string
 	review     giveaway.ReviewView
@@ -36,20 +37,21 @@ func (f *fakeGiveaways) List(
 	_ context.Context,
 	_ giveaway.Telegram,
 	userID int64,
-) ([]giveaway.View, []giveaway.View, error) {
-	f.userID = userID
+	offset, limit int,
+) (giveaway.Page, []giveaway.View, error) {
+	f.userID, f.offset, f.limit = userID, offset, limit
 
-	return []giveaway.View{f.view}, nil, f.err
+	return giveaway.Page{Views: []giveaway.View{f.view}, Total: 21}, nil, f.err
 }
 
 func (f *fakeGiveaways) Channels(context.Context, giveaway.ChannelReader, ...[]giveaway.View) []giveaway.Channel {
 	return nil
 }
 
-func (f *fakeGiveaways) Finished(_ context.Context, userID int64, _, limit int) ([]giveaway.View, bool, error) {
-	f.userID, f.limit = userID, limit
+func (f *fakeGiveaways) Archived(_ context.Context, userID int64, offset, limit int) (giveaway.Page, error) {
+	f.userID, f.offset, f.limit = userID, offset, limit
 
-	return []giveaway.View{f.view}, true, f.err
+	return giveaway.Page{Views: []giveaway.View{f.view}, Total: 21}, f.err
 }
 
 func (f *fakeGiveaways) Get(_ context.Context, userID int64, _ uint) (giveaway.View, error) {
@@ -302,6 +304,47 @@ func TestEditGiveawayPartial(t *testing.T) {
 	}
 }
 
+func TestListPages(t *testing.T) {
+	for _, path := range []string{"/api/giveaways", "/api/giveaways/finished"} {
+		t.Run(path, func(t *testing.T) { checkListPage(t, path) })
+	}
+}
+
+// checkListPage checks that the list at path passes the page position on and answers with the
+// total.
+func checkListPage(t *testing.T, path string) {
+	t.Helper()
+
+	fake := &fakeGiveaways{}
+	mux := newGiveawayMux(t, fake)
+
+	rec := send(t, mux, http.MethodGet, path+"?offset=10&limit=10", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: code = %d, body %s", path, rec.Code, rec.Body)
+	}
+
+	if fake.offset != 10 || fake.limit != 10 {
+		t.Errorf("%s: offset %d, limit %d, want 10 and 10", path, fake.offset, fake.limit)
+	}
+
+	var body struct {
+		Giveaways []json.RawMessage `json:"giveaways"`
+		Total     *int              `json:"total"`
+		More      *bool             `json:"more"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Giveaways) != 1 || body.Total == nil || *body.Total != 21 || body.More != nil {
+		t.Errorf("%s: body %s, want one giveaway, total 21 and no more", path, rec.Body)
+	}
+
+	if rec := send(t, mux, http.MethodGet, path+"?limit=101", ""); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("%s: limit 101 code = %d, want 422", path, rec.Code)
+	}
+}
+
 func TestGiveawayRoutes(t *testing.T) {
 	fake := &fakeGiveaways{}
 	mux := newGiveawayMux(t, fake)
@@ -327,8 +370,8 @@ func TestGiveawayRoutes(t *testing.T) {
 		}
 	}
 
-	if fake.link != "https://t.me/c/1/50" || fake.limit != 10 {
-		t.Errorf("move link = %q, finished limit = %d", fake.link, fake.limit)
+	if fake.link != "https://t.me/c/1/50" {
+		t.Errorf("move link = %q", fake.link)
 	}
 
 	if rec := call(t, mux, "/api/giveaways", nil); rec.Code != http.StatusUnauthorized {

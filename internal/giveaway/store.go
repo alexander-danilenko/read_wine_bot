@@ -174,19 +174,16 @@ func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 	return g, nil
 }
 
-// Managed returns the user's unfinished giveaways that are published or cancelled, newest
-// first: the ones the creator can still change. Setup drafts are left out.
-func (s *Store) Managed(ctx context.Context, userID int64) ([]Giveaway, error) {
-	var gs []Giveaway
-
-	err := s.db.WithContext(ctx).
-		Where("created_by = ? AND finished_at IS NULL AND "+managed, userID).
-		Order("created_at DESC").Order("id DESC").Find(&gs).Error
+// Running returns up to limit of the user's published giveaways without recorded winners after
+// the first offset, newest first, and how many there are in all.
+func (s *Store) Running(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error) {
+	gs, total, err := s.page(ctx, offset, limit, "created_at DESC",
+		"created_by = ? AND published = true AND finished_at IS NULL", userID)
 	if err != nil {
-		return nil, fmt.Errorf("list managed giveaways of user %d: %w", userID, err)
+		return nil, 0, fmt.Errorf("list running giveaways of user %d: %w", userID, err)
 	}
 
-	return gs, nil
+	return gs, total, nil
 }
 
 // SaveFields saves the end time, winner count and button text of the unfinished giveaway id.
@@ -282,19 +279,17 @@ func (s *Store) Participants(ctx context.Context, ids []uint) (map[uint]int, err
 	return s.count(ctx, ids, "TRUE", "participants")
 }
 
-// Finished returns up to limit of the user's finished giveaways after the first offset, the
-// latest draw first.
-func (s *Store) Finished(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, error) {
-	var gs []Giveaway
-
-	err := s.db.WithContext(ctx).
-		Where("created_by = ? AND finished_at IS NOT NULL", userID).
-		Order(colFinished + " DESC").Order("id DESC").Offset(offset).Limit(limit).Find(&gs).Error
+// Archived returns up to limit of the user's finished and cancelled giveaways after the first
+// offset, and how many there are in all. The latest to leave the running list comes first: by
+// draw time or cancel time, as a giveaway has only one of them.
+func (s *Store) Archived(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error) {
+	gs, total, err := s.page(ctx, offset, limit, "COALESCE(finished_at, cancelled_at) DESC",
+		"created_by = ? AND (finished_at IS NOT NULL OR cancelled_at IS NOT NULL)", userID)
 	if err != nil {
-		return nil, fmt.Errorf("list finished giveaways of user %d: %w", userID, err)
+		return nil, 0, fmt.Errorf("list archived giveaways of user %d: %w", userID, err)
 	}
 
-	return gs, nil
+	return gs, total, nil
 }
 
 // Finish marks the winners of giveaway id at places 1, 2, … in the order of winnerIDs, sets
@@ -561,4 +556,28 @@ func (s *Store) count(ctx context.Context, ids []uint, where, what string) (map[
 	}
 
 	return counts, nil
+}
+
+// page returns up to limit of the giveaways matching where after the first offset, in order
+// with ties broken by the newest id, and how many match in all.
+func (s *Store) page(
+	ctx context.Context,
+	offset, limit int,
+	order, where string,
+	args ...any,
+) ([]Giveaway, int, error) {
+	var total int64
+
+	// The new session lets the count and the page reuse the same conditions.
+	q := s.db.WithContext(ctx).Model(&Giveaway{}).Where(where, args...).Session(&gorm.Session{})
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count: %w", err)
+	}
+
+	var gs []Giveaway
+	if err := q.Order(order).Order("id DESC").Offset(offset).Limit(limit).Find(&gs).Error; err != nil {
+		return nil, 0, fmt.Errorf("read page: %w", err)
+	}
+
+	return gs, int(total), nil
 }

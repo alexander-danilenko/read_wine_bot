@@ -12,9 +12,14 @@ import (
 
 // GiveawayReader lists and reads the caller's giveaways. *giveaway.App implements it.
 type GiveawayReader interface {
-	List(ctx context.Context, tg giveaway.Telegram, userID int64) ([]giveaway.View, []giveaway.View, error)
+	List(
+		ctx context.Context,
+		tg giveaway.Telegram,
+		userID int64,
+		offset, limit int,
+	) (giveaway.Page, []giveaway.View, error)
 	Channels(ctx context.Context, tg giveaway.ChannelReader, lists ...[]giveaway.View) []giveaway.Channel
-	Finished(ctx context.Context, userID int64, offset, limit int) ([]giveaway.View, bool, error)
+	Archived(ctx context.Context, userID int64, offset, limit int) (giveaway.Page, error)
 	Get(ctx context.Context, userID int64, id uint) (giveaway.View, error)
 }
 
@@ -37,9 +42,6 @@ type GiveawayActions interface {
 	Restore(ctx context.Context, tg giveaway.Telegram, userID int64, id uint) (giveaway.View, error)
 	FinishNow(ctx context.Context, tg giveaway.Telegram, userID int64, id uint) (giveaway.View, error)
 }
-
-// maxFinishedPage caps one page of finished giveaways.
-const maxFinishedPage = 100
 
 // giveawayBody is a giveaway as the API returns it.
 type giveawayBody struct {
@@ -118,24 +120,26 @@ type idInput struct {
 	ID uint `doc:"Giveaway ID" path:"id"`
 }
 
+// pageInput picks one page of a giveaway list.
+type pageInput struct {
+	Offset int `default:"0"  doc:"How many giveaways to skip" maximum:"100000" minimum:"0" query:"offset"`
+	Limit  int `default:"10" doc:"Page size"                  maximum:"100"    minimum:"1" query:"limit"`
+}
+
 type listOutput struct {
 	Body struct {
-		Giveaways []giveawayBody    `doc:"The caller's running and cancelled giveaways, newest first"                    json:"giveaways"`
+		Giveaways []giveawayBody    `doc:"One page of the caller's running giveaways, newest first"                      json:"giveaways"`
+		Total     int               `doc:"How many running giveaways the caller has"                                     json:"total"`
 		Review    []giveawayBody    `doc:"Giveaways whose results wait for review in channels the caller is an admin of" json:"review"`
 		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                                    json:"channels"`
 	}
 }
 
-type finishedInput struct {
-	Offset int `default:"0"  doc:"How many giveaways to skip" maximum:"100000" minimum:"0" query:"offset"`
-	Limit  int `default:"25" doc:"Page size"                  maximum:"100"    minimum:"1" query:"limit"`
-}
-
-type finishedOutput struct {
+type archiveOutput struct {
 	Body struct {
-		Giveaways []giveawayBody    `doc:"The caller's finished giveaways, latest draw first" json:"giveaways"`
-		More      bool              `doc:"Whether more giveaways follow"                      json:"more"`
-		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"         json:"channels"`
+		Giveaways []giveawayBody    `doc:"One page of the caller's finished and cancelled giveaways, the latest to end first" json:"giveaways"`
+		Total     int               `doc:"How many finished and cancelled giveaways the caller has"                           json:"total"`
+		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                                         json:"channels"`
 	}
 }
 
@@ -167,11 +171,11 @@ type moveInput struct {
 func (o *Operations) registerGiveaways(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "listGiveaways", Method: http.MethodGet, Path: "/api/giveaways",
-		Summary: "The caller's running and cancelled giveaways, and results waiting for review",
+		Summary: "The caller's running giveaways page by page, and results waiting for review",
 	}, o.listGiveaways)
 	huma.Register(api, huma.Operation{
 		OperationID: "listFinishedGiveaways", Method: http.MethodGet, Path: "/api/giveaways/finished",
-		Summary: "The caller's finished giveaways, page by page",
+		Summary: "The caller's finished and cancelled giveaways, page by page",
 	}, o.listFinished)
 	huma.Register(api, huma.Operation{
 		OperationID: "createGiveaway", Method: http.MethodPost, Path: "/api/giveaways",
@@ -239,38 +243,38 @@ func (o *Operations) registerActions(api huma.API) {
 	}
 }
 
-func (o *Operations) listGiveaways(ctx context.Context, _ *struct{}) (*listOutput, error) {
+func (o *Operations) listGiveaways(ctx context.Context, in *pageInput) (*listOutput, error) {
 	c, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	mine, review, err := o.reader.List(ctx, o.tg, c.User.ID)
+	mine, review, err := o.reader.List(ctx, o.tg, c.User.ID, in.Offset, in.Limit)
 	if err != nil {
 		return nil, o.apiErr(ctx, err)
 	}
 
 	out := &listOutput{}
-	out.Body.Giveaways, out.Body.Review = toBodies(mine), toBodies(review)
-	out.Body.Channels = o.toListChannels(o.reader.Channels(ctx, o.tg, mine, review))
+	out.Body.Giveaways, out.Body.Total, out.Body.Review = toBodies(mine.Views), mine.Total, toBodies(review)
+	out.Body.Channels = o.toListChannels(o.reader.Channels(ctx, o.tg, mine.Views, review))
 
 	return out, nil
 }
 
-func (o *Operations) listFinished(ctx context.Context, in *finishedInput) (*finishedOutput, error) {
+func (o *Operations) listFinished(ctx context.Context, in *pageInput) (*archiveOutput, error) {
 	c, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	vs, more, err := o.reader.Finished(ctx, c.User.ID, in.Offset, min(in.Limit, maxFinishedPage))
+	page, err := o.reader.Archived(ctx, c.User.ID, in.Offset, in.Limit)
 	if err != nil {
 		return nil, o.apiErr(ctx, err)
 	}
 
-	out := &finishedOutput{}
-	out.Body.Giveaways, out.Body.More = toBodies(vs), more
-	out.Body.Channels = o.toListChannels(o.reader.Channels(ctx, o.tg, vs))
+	out := &archiveOutput{}
+	out.Body.Giveaways, out.Body.Total = toBodies(page.Views), page.Total
+	out.Body.Channels = o.toListChannels(o.reader.Channels(ctx, o.tg, page.Views))
 
 	return out, nil
 }

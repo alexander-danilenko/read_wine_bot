@@ -171,48 +171,62 @@ func (f *memStore) ByID(_ context.Context, id uint) (giveaway.Giveaway, error) {
 	return giveaway.Giveaway{}, giveaway.ErrNotFound
 }
 
-// Finished sorts by finish time, latest first, then by ID, latest first, as Store.Finished.
-func (f *memStore) Finished(_ context.Context, userID int64, offset, limit int) ([]giveaway.Giveaway, error) {
+// Archived pages the user's finished and cancelled giveaways, as Store.Archived.
+func (f *memStore) Archived(_ context.Context, userID int64, offset, limit int) ([]giveaway.Giveaway, int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	var gs []giveaway.Giveaway
 
 	for _, id := range f.ids() {
-		if g := f.rows[id]; g.CreatedBy == userID && g.FinishedAt != nil {
+		if g := f.rows[id]; g.CreatedBy == userID && archivedAt(g) != nil {
 			gs = append(gs, *g)
 		}
 	}
 
 	slices.SortFunc(gs, func(a, b giveaway.Giveaway) int {
-		if c := b.FinishedAt.Compare(*a.FinishedAt); c != 0 {
+		if c := archivedAt(&b).Compare(*archivedAt(&a)); c != 0 {
 			return c
 		}
 
 		return int(b.ID) - int(a.ID)
 	})
 
-	gs = gs[min(offset, len(gs)):]
-
-	return gs[:min(limit, len(gs))], nil
+	return page(gs, offset, limit), len(gs), nil
 }
 
-// Managed lists the user's unfinished published or cancelled giveaways, as Store.Managed.
-func (f *memStore) Managed(_ context.Context, userID int64) ([]giveaway.Giveaway, error) {
+// archivedAt is when g left the running list, as COALESCE(finished_at, cancelled_at), or nil.
+func archivedAt(g *giveaway.Giveaway) *time.Time {
+	if g.FinishedAt != nil {
+		return g.FinishedAt
+	}
+
+	return g.CancelledAt
+}
+
+// Running pages the user's published giveaways without winners, as Store.Running.
+func (f *memStore) Running(_ context.Context, userID int64, offset, limit int) ([]giveaway.Giveaway, int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	var gs []giveaway.Giveaway
 
 	for _, id := range f.ids() {
-		if g := f.rows[id]; g.CreatedBy == userID && g.FinishedAt == nil && isManaged(g) {
+		if g := f.rows[id]; g.CreatedBy == userID && g.Published && g.FinishedAt == nil {
 			gs = append(gs, *g)
 		}
 	}
 
 	slices.Reverse(gs) // newest first; IDs grow with creation, as in the database
 
-	return gs, nil
+	return page(gs, offset, limit), len(gs), nil
+}
+
+// page is the part of gs after offset, at most limit long.
+func page(gs []giveaway.Giveaway, offset, limit int) []giveaway.Giveaway {
+	gs = gs[min(offset, len(gs)):]
+
+	return gs[:min(limit, len(gs))]
 }
 
 func (f *memStore) SaveFields(_ context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error {
