@@ -148,6 +148,18 @@ go build .
 > [!WARNING]
 > `go install` does not work: it builds without the Mini App, and the bot then stops at startup.
 
+### 🧪 Test the Mini App locally
+
+Telegram opens a Mini App only over HTTPS. The `Caddyfile` serves `https://bot-local.readwine.com.ua` with a certificate from Caddy's local CA and forwards it to the bot on `:8080`. It works in Telegram Desktop on the same Mac; a phone does not resolve the name.
+
+1. Install Caddy: `brew install caddy`
+2. Point the name at this Mac: `echo "127.0.0.1 bot-local.readwine.com.ua" | sudo tee -a /etc/hosts`
+3. Trust Caddy's local CA (asks for your password once): `sudo caddy trust`
+4. Start Caddy from the repo root: `sudo caddy run` (port 443 needs `sudo`)
+5. In `.env`, set `APP_URL=https://bot-local.readwine.com.ua`
+6. Start PostgreSQL, build the app and run the bot: `docker compose up -d`, `npm --prefix web run build`, `go run .`
+7. In Telegram Desktop, send `/start` to the bot and tap the app button.
+
 ## 🧭 Where to read next
 
 | File | What is in it |
