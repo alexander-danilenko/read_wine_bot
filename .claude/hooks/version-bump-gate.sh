@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse hook on Bash: blocks a `git commit` that changes the bot but not `const version` in
 # main.go (exit 2, reason shown to Claude). The bot is what ships: non-test Go files, go.mod,
-# go.sum, the files internal/i18n embeds, and the Dockerfile. Every bump on main is a GitHub
+# go.sum, the files internal/i18n embeds, the Mini App under web/ (embedded at build time), and
+# the Dockerfile. Every bump on main is a GitHub
 # Release, so a commit of anything else passes without one. See "Version" in CLAUDE.md.
 set -euo pipefail
 
@@ -30,7 +31,7 @@ rg -q '\scommit\b.*\s(-[a-zA-Z]*a|--all)\b' <<<"$command" && diff=(git -C "$repo
 # Diffs are captured, not piped into rg: rg -q stops reading at the first match, and under
 # pipefail the SIGPIPE that git then gets would fail the test.
 files="$("${diff[@]}" --name-only 2>/dev/null)" || exit 0
-shipped="$(rg -v '_test\.go$' <<<"$files" | rg '(\.go$|^go\.(mod|sum)$|^Dockerfile$|^internal/i18n/(schema|locales/[^/]+)\.json$)' || true)"
+shipped="$(rg -v '_test\.go$' <<<"$files" | rg '(\.go$|^go\.(mod|sum)$|^Dockerfile$|^internal/i18n/(schema|locales/[^/]+)\.json$|^web/)' || true)"
 [[ -n $shipped ]] || exit 0
 rg -qx 'main.go' <<<"$files" && rg -q '^\+const version = ' <<<"$("${diff[@]}" -- main.go)" && exit 0
 

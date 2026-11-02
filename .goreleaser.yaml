@@ -2,6 +2,12 @@
 # bumps const version in main.go. The version lives in that const, not in ldflags.
 version: 2
 
+# The bot embeds the Mini App: build it before the Go builds.
+before:
+  hooks:
+    - npm --prefix web ci --ignore-scripts
+    - npm --prefix web run build
+
 builds:
   - env:
       - CGO_ENABLED=0 # static binary, same as the Dockerfile

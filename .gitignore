@@ -20,3 +20,9 @@
 
 # Plans: temporary handoff artifacts, never committed
 /docs/plans/
+
+# Mini App: npm packages, the Vite build (embedded at build time) and generated API types
+/web/node_modules/
+/internal/webapp/dist/*
+!/internal/webapp/dist/.gitkeep
+/web/src/api/schema.d.ts

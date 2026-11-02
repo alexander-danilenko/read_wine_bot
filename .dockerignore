@@ -6,3 +6,5 @@
 bot
 cli
 dist
+web/node_modules
+internal/webapp/dist

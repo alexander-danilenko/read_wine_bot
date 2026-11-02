@@ -20,6 +20,8 @@ Use issue references without being asked:
 
 | Command | Purpose |
 | --- | --- |
+| `npm --prefix web ci --ignore-scripts` | Install the Mini App's npm packages from the lockfile |
+| `npm --prefix web run build` | Build the Mini App into `internal/webapp/dist`, which the binary embeds; run it before `go run .` |
 | `go run .` | Run the bot |
 | `go build .` | Build the bot binary `./read_wine_bot` |
 | `go build ./...` | Compile everything |
@@ -30,7 +32,7 @@ Use issue references without being asked:
 | `markdownlint-cli2 --fix "**/*.md"` | Format all Markdown |
 | `actionlint` | Lint `.github/workflows`; CI requires every third-party `uses:` pinned to a commit SHA; GitHub's `actions/*` stay on their latest major tag |
 
-Tools: `brew install go golangci-lint markdownlint-cli2 jq actionlint`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
+Tools: `brew install go node golangci-lint markdownlint-cli2 jq actionlint`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
 Config comes only from environment variables and `.env` files (the bot ships as a Docker container): copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result (Fail fast in [CODING_STANDARDS.md](CODING_STANDARDS.md)). A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot. In Docker, pass settings with `docker run --env-file .env` or Compose `env_file:`.
 
@@ -43,6 +45,7 @@ Follows go.dev's "Organizing a Go module" for a single command: the main package
 ```text
 *.go              # main package in the repo root: wiring only (config, logger, DB, bot, shutdown), no business logic
 internal/<name>/  # every other package, one responsibility each
+web/              # the Mini App (Vite + React + MUI); builds into internal/webapp/dist, which the binary embeds
 docs/channel-analytics.md  # ready SQL over the channel audience log
 docs/telegram-ux.md        # rules for everything the user sees in Telegram
 docs/hand-check-store-sql.md  # how to check a Store query against the local database
@@ -98,7 +101,7 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 
 `const version` in `main.go` holds the bot's [semver](https://semver.org) version. The startup log (`bot started version=…`) and the `/start` reply show it, so the owner can check which build is deployed.
 
-- Every commit that changes what ships bumps it, in that same commit: non-test `.go` files, `go.mod`, `go.sum`, the files `internal/i18n` embeds, or the `Dockerfile`. Any other commit leaves it alone, since each bump publishes a release.
+- Every commit that changes what ships bumps it, in that same commit: non-test `.go` files, `go.mod`, `go.sum`, the files `internal/i18n` embeds, anything under `web/` (the Mini App the binary embeds), or the `Dockerfile`. Any other commit leaves it alone, since each bump publishes a release.
 - `feat` -> minor (`1.1.1` -> `1.2.0`), patch reset to 0. Every other type -> patch (`1.1.0` -> `1.1.1`). A breaking change (`!`) -> major (`1.4.2` -> `2.0.0`).
 - The `version-bump-gate.sh` hook (PreToolUse on Bash) blocks a `git commit` that breaks this rule. Bump, stage `main.go` and commit again; do not work around the hook.
 - A bump reaching `main` is a release: once `check` passes, `.github/workflows/release.yml` tags `v<version>` and GoReleaser (`.goreleaser.yaml`) publishes a GitHub Release with binaries and a changelog from the Conventional Commit types. Never tag by hand. Try the config locally with `goreleaser release --snapshot --clean --skip=publish`.
