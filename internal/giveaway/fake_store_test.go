@@ -210,6 +210,8 @@ func (f *memStore) Managed(_ context.Context, userID int64) ([]giveaway.Giveaway
 		}
 	}
 
+	slices.Reverse(gs) // newest first; IDs grow with creation, as in the database
+
 	return gs, nil
 }
 

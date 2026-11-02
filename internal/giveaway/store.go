@@ -174,14 +174,14 @@ func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 	return g, nil
 }
 
-// Managed returns the user's unfinished giveaways that are published or cancelled, soonest end
+// Managed returns the user's unfinished giveaways that are published or cancelled, newest
 // first: the ones the creator can still change. Setup drafts are left out.
 func (s *Store) Managed(ctx context.Context, userID int64) ([]Giveaway, error) {
 	var gs []Giveaway
 
 	err := s.db.WithContext(ctx).
 		Where("created_by = ? AND finished_at IS NULL AND "+managed, userID).
-		Order(colEndsAt).Order("id").Find(&gs).Error
+		Order("created_at DESC").Order("id DESC").Find(&gs).Error
 	if err != nil {
 		return nil, fmt.Errorf("list managed giveaways of user %d: %w", userID, err)
 	}

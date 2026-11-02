@@ -399,3 +399,23 @@ func TestAppFinished(t *testing.T) {
 		t.Errorf("last page = %+v, more %v, err %v, want 1 and no more", page, more, err)
 	}
 }
+
+func TestAppListNewestFirst(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store)
+
+	first := mustCreate(t, s, app, adminID, appFields(s))
+
+	later := appFields(s)
+	later.PostLink = "https://t.me/c/1234567890/43"
+	second := mustCreate(t, s, app, adminID, later)
+
+	mine, _, err := app.List(t.Context(), s.tg, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(mine) != 2 || mine[0].ID != second.ID || mine[1].ID != first.ID {
+		t.Errorf("list = %+v, want the latest created first", mine)
+	}
+}
