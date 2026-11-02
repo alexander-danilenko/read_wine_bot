@@ -177,8 +177,8 @@ func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 // Running returns up to limit of the user's published giveaways without recorded winners after
 // the first offset, newest first, and how many there are in all.
 func (s *Store) Running(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error) {
-	gs, total, err := s.page(ctx, offset, limit, "created_at DESC",
-		"created_by = ? AND published = true AND finished_at IS NULL", userID)
+	gs, total, err := s.page(ctx, "created_by = ? AND published = true AND finished_at IS NULL", "created_at DESC",
+		offset, limit, userID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list running giveaways of user %d: %w", userID, err)
 	}
@@ -283,8 +283,8 @@ func (s *Store) Participants(ctx context.Context, ids []uint) (map[uint]int, err
 // offset, and how many there are in all. The latest to leave the running list comes first: by
 // draw time or cancel time, as a giveaway has only one of them.
 func (s *Store) Archived(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error) {
-	gs, total, err := s.page(ctx, offset, limit, "COALESCE(finished_at, cancelled_at) DESC",
-		"created_by = ? AND (finished_at IS NOT NULL OR cancelled_at IS NOT NULL)", userID)
+	gs, total, err := s.page(ctx, "created_by = ? AND (finished_at IS NOT NULL OR cancelled_at IS NOT NULL)",
+		"COALESCE(finished_at, cancelled_at) DESC", offset, limit, userID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list archived giveaways of user %d: %w", userID, err)
 	}
@@ -562,8 +562,8 @@ func (s *Store) count(ctx context.Context, ids []uint, where, what string) (map[
 // with ties broken by the newest id, and how many match in all.
 func (s *Store) page(
 	ctx context.Context,
+	where, order string,
 	offset, limit int,
-	order, where string,
 	args ...any,
 ) ([]Giveaway, int, error) {
 	var total int64

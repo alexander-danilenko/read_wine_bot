@@ -60,11 +60,11 @@ export function Button({
   );
 }
 
-// pagerSlots lists what Pager shows between its arrows: at most five slots, so the bar fits a
-// 320 px phone with 44 px targets. Every page is shown up to five pages; past that, the first,
-// the last and the current page, with "gap" for the pages left out.
+// pagerSlots lists what Pager shows between its arrows. Every page is shown up to four pages;
+// past that, the first, the last and the current page, with "gap" for the pages left out. With
+// 48 px buttons and narrow gaps the bar stays within 328 px, a 360 px phone less its margins.
 export function pagerSlots(page: number, pages: number): (number | "gap")[] {
-  if (pages <= 5) return Array.from({ length: pages }, (_, i) => i + 1);
+  if (pages <= 4) return Array.from({ length: pages }, (_, i) => i + 1);
   if (page <= 3) return [1, 2, 3, "gap", pages];
   if (page >= pages - 2) return [1, "gap", pages - 2, pages - 1, pages];
   return [1, "gap", page, "gap", pages];
@@ -75,7 +75,7 @@ export function Pager({ page, pages, onPage }: { page: number; pages: number; on
   const t = useT();
   if (pages <= 1) return null;
 
-  const cell = `inline-flex size-11 items-center justify-center rounded-xl ${focus}`;
+  const cell = `inline-flex size-12 items-center justify-center rounded-xl ${focus}`;
   const arrow = (to: number, label: string, glyph: string) => (
     <li>
       <button type="button" className={`${cell} text-accent disabled:opacity-30`} disabled={to < 1 || to > pages} aria-label={label} onClick={() => onPage(to)}>
@@ -90,7 +90,7 @@ export function Pager({ page, pages, onPage }: { page: number; pages: number; on
         {arrow(page - 1, t("list.prev"), "‹")}
         {pagerSlots(page, pages).map((slot, i) =>
           slot === "gap" ? (
-            <li key={`gap-${i}`} aria-hidden className={`${cell} text-hint`}>
+            <li key={`gap-${i}`} aria-hidden className="inline-flex h-12 w-6 items-center justify-center text-hint">
               …
             </li>
           ) : (

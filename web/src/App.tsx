@@ -55,9 +55,6 @@ function screenURL(screen: Screen): string {
       if (screen.at.tab === 1) q.set("tab", "archive");
       if (screen.at.page > 1) q.set("page", String(screen.at.page));
       break;
-    case "new":
-      q.set("new", "");
-      break;
     case "details":
       q.set("giveaway", String(screen.id));
       break;
@@ -66,7 +63,7 @@ function screenURL(screen: Screen): string {
       q.set(screen.name, String(screen.id));
       break;
   }
-  const query = q.toString().replace(/^new=$/, "new");
+  const query = screen.name === "new" ? "new" : q.toString();
   return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
 }
 

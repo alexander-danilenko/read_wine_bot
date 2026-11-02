@@ -4,7 +4,7 @@ import { useT, type T } from "../i18n";
 import { formatEnd } from "../time";
 import { Avatar, Button, Card, ErrorText, Loading, Pager, Pill, Section, statusTone, useLoad } from "../ui";
 
-export const pageSize = 10;
+const pageSize = 10;
 
 function GiveawayRow({ g, channel, t, onOpen }: { g: Giveaway; channel?: Channel; t: T; onOpen: () => void }) {
   const ends = g.ends_at ? t("list.ends", { time: formatEnd(g.ends_at) }) : t("list.noEnd");
@@ -47,26 +47,36 @@ function Empty({ children }: { children: string }) {
   return <p className="py-6 text-center text-hint">{children}</p>;
 }
 
+// maxOffset is the largest offset the API accepts. A page beyond it asks for the last offset,
+// gets no rows and moves to the last page, instead of failing.
+const maxOffset = 100000;
+
+// pageQuery asks the API for one page of a list.
+function pageQuery(page: number) {
+  return { offset: Math.min((page - 1) * pageSize, maxOffset), limit: pageSize };
+}
+
 // pageCount is how many pages a list of total giveaways fills, at least one.
 function pageCount(total: number) {
   return Math.max(1, Math.ceil(total / pageSize));
 }
 
 // useLastPage moves to the last page when the asked page is past the end, for example after a
-// cancel or restore shrank the list.
-function useLastPage(rows: number | undefined, total: number | undefined, page: number, onPage: (page: number) => void) {
+// cancel or restore shrank the list. It compares with the total, not the rows shown, so the
+// previous page's data, still on screen while the next page loads, cannot trigger it again.
+function useLastPage(total: number | undefined, page: number, onPage: (page: number) => void) {
   useEffect(() => {
-    if (rows === 0 && total !== undefined && total > 0 && page > 1) onPage(pageCount(total));
-  }, [rows, total, page, onPage]);
+    if (total !== undefined && page > pageCount(total)) onPage(pageCount(total));
+  }, [total, page, onPage]);
 }
 
 function Running({ page, onPage, onOpen, onReview, onNew }: ListProps) {
   const t = useT();
   const list = useLoad(
-    () => must(api.GET("/api/giveaways", { params: { query: { offset: (page - 1) * pageSize, limit: pageSize } } })),
+    () => must(api.GET("/api/giveaways", { params: { query: pageQuery(page) } })),
     [page],
   );
-  useLastPage(list.data?.giveaways.length, list.data?.total, page, onPage);
+  useLastPage(list.data?.total, page, onPage);
 
   if (list.loading && !list.data) return <Loading />;
   if (list.error || !list.data) return <ErrorText error={list.error} onRetry={list.reload} />;
@@ -96,10 +106,10 @@ function Running({ page, onPage, onOpen, onReview, onNew }: ListProps) {
 function Archive({ page, onPage, onOpen, onReview }: ListProps) {
   const t = useT();
   const list = useLoad(
-    () => must(api.GET("/api/giveaways/finished", { params: { query: { offset: (page - 1) * pageSize, limit: pageSize } } })),
+    () => must(api.GET("/api/giveaways/finished", { params: { query: pageQuery(page) } })),
     [page],
   );
-  useLastPage(list.data?.giveaways.length, list.data?.total, page, onPage);
+  useLastPage(list.data?.total, page, onPage);
 
   if (list.loading && !list.data) return <Loading />;
   if (list.error || !list.data) return <ErrorText error={list.error} onRetry={list.reload} />;
