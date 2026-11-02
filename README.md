@@ -44,70 +44,17 @@ flowchart LR
     F --> H["🤫 Or close<br/>without publishing"]
 ```
 
-## 👥 Who uses the bot
+## 🔐 Add the bot to a channel
 
-| Who | What they do | What they grant |
-| --- | --- | --- |
-| 👑 Channel owner | Adds the bot to the channel as an admin. | The giveaway permissions below. |
-| 🛠️ Channel admin | Creates, edits and reviews giveaways in the bot's Mini App. | Nothing. Telegram tells the bot who the channel's admins are. |
-| 🤝 Giveaway partner | Runs a giveaway together with a channel owner. Winners must also subscribe to the partner's channel. | The partner permissions below. |
-| 🎉 Participant | Taps the join button under the giveaway post. | Nothing. |
+Send `/start` to [@read_wine_bot](https://t.me/read_wine_bot) and open the app: its **Help** screen has both links and explains each permission.
 
-## 🔐 Permissions to grant
-
-> [!IMPORTANT]
-> Grant only the permissions listed here and disable every other toggle. The bot never asks for more.
-
-### 📢 Channel that runs giveaways
-
-Open [t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages](https://t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages) and select your channel. Telegram then adds the bot as an admin with the two permissions below already enabled. For your own bot, put its username in the link.
-
-You can also go to **Administrators → Add Admin → @read_wine_bot** in the channel. Telegram enables the same two permissions there by default. Make sure that these permissions are enabled:
-
-| Permission | Why the bot needs it |
-| --- | --- |
-| ✅ **Manage messages → Post messages** | Publishes the giveaway results as a reply to the giveaway post. |
-| ✅ **Manage messages → Edit messages of others** | Adds the join button under your post. Removes the button when the giveaway ends. |
-
-When an admin creates a giveaway, the bot checks both permissions. If one permission is missing, the bot does not create the giveaway.
-
-As an admin, the bot can also check winner subscriptions. Telegram does not give them to bots that are not admins.
-
-<details>
-<summary>🚫 Permissions to keep disabled (the bot does not use them)</summary>
-
-- Manage messages → Delete messages of others
-- Change channel info
-- Send welcome messages
-- Manage stories
-- Add members
-- Manage live streams
-- Manage direct messages
-- Add new admins
-- Ban users
-
-</details>
-
-### 🤝 Giveaway partner
-
-A partner's channel needs **no permissions at all**. Open [t.me/read_wine_bot?startchannel&admin=manage_chat](https://t.me/read_wine_bot?startchannel&admin=manage_chat) and select your channel. Telegram requires at least one permission in this link. The link asks for `manage_chat`, which every admin has anyway. Then make sure that every other toggle is disabled. Telegram answers "is this user subscribed?" only to a channel's admins. That status is the only thing the bot needs from you.
-
-With no permissions, the bot cannot post, edit, delete or ban anything in your channel. It also cannot run giveaways there, because giveaways need the Edit messages of others permission.
+- 📢 **Channel that runs giveaways:** [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages) with only **Post messages** (publishes the results) and **Edit messages of others** (adds the join button). Disable every other toggle.
+- 🤝 **Giveaway partner:** [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=manage_chat) with every permission disabled. Telegram shows subscriptions only to admins, and that is all the bot reads.
 
 > [!NOTE]
-> Your channel appears in the results review of every giveaway the bot runs, in every channel. The review lists each winner's subscriptions to it. Admins of other channels see these subscriptions.
+> A partner channel appears in the results review of every giveaway the bot runs, and admins of other channels see which winners subscribe to it. To end a partnership, remove the bot from your admins.
 
-To end a partnership, remove the bot from your admins. The bot then stops checking your channel immediately.
-
-## 🗄️ What the bot stores
-
-The bot keeps its data in its own PostgreSQL database:
-
-| Data | What is kept |
-| --- | --- |
-| 👤 **Users the bot sees** | Telegram ID, first and last name, username, Telegram app language, Premium flag, and whether the account is a bot. When any of these change, the bot saves a new revision and keeps the old ones. |
-| 🎁 **Giveaways** | The channel post, end time, number of winners, button text, participants, winners and replaced winners. |
-| 📺 **Channels** | Which channels the bot is an admin of. The bot does not store titles and usernames. It reads them from Telegram when it shows them. |
+For your own bot, put its username in the links.
 
 ## 🚀 Run your own
 
@@ -116,6 +63,9 @@ You need:
 - 🐘 a PostgreSQL database (tested with PostgreSQL 18). The bot creates its tables on the first start.
 - 🔑 a bot token from [@BotFather](https://t.me/BotFather).
 - 🌐 a public HTTPS address for the Mini App, for example a domain behind a reverse proxy. Telegram opens Mini Apps only over HTTPS. The bot listens on `LISTEN_ADDR` (default `:8080`); the proxy forwards the address to it. Set the same address as `APP_URL` and as the Mini App URL in @BotFather.
+
+> [!IMPORTANT]
+> `APP_URL` must be a public `https://` address that anyone on the internet can open. With `http://`, `localhost` or an address only your network can reach, the Mini App does not open in Telegram. The only exception is a local test in Telegram Desktop: see [Test the Mini App locally](#-test-the-mini-app-locally).
 
 Then, on Windows, macOS or Linux:
 
