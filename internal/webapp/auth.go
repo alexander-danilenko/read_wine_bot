@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -170,14 +169,14 @@ func (a *Auth) Wrap(next http.Handler) http.HandlerFunc {
 		u, err := Verify(initData, a.botToken, a.now())
 		if err != nil {
 			a.log.InfoContext(ctx, "reject mini app request", "path", r.URL.Path, "reason", err)
-			writeProblem(w, http.StatusUnauthorized, CodeUnauthorized)
+			writeProblem(w, a.log, r, problem(http.StatusUnauthorized, CodeUnauthorized))
 
 			return
 		}
 
 		if err := a.profiles.Record(ctx, user.ProfileOf(&u)); err != nil {
 			a.log.ErrorContext(ctx, "record mini app user", "user_id", u.ID, "error", err)
-			writeProblem(w, http.StatusInternalServerError, CodeInternal)
+			writeProblem(w, a.log, r, problem(http.StatusInternalServerError, CodeInternal))
 
 			return
 		}
@@ -196,20 +195,4 @@ func (a *Auth) locale(lang string) string {
 	}
 
 	return i18n.DefaultLang
-}
-
-// Error codes the API returns in the "code" field of an error body. The app maps each to its
-// own text.
-const (
-	CodeUnauthorized = "unauthorized"
-	CodeInternal     = "internal"
-)
-
-// writeProblem writes an RFC 9457 problem body, the shape every API error has.
-func writeProblem(w http.ResponseWriter, status int, code string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-
-	body := fmt.Sprintf(`{"status":%d,"title":%q,"code":%q}`, status, http.StatusText(status), code)
-	_, _ = w.Write([]byte(body)) //nolint:errcheck // the client went away; nothing to do
 }

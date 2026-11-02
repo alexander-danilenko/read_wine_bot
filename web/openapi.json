@@ -1,0 +1,140 @@
+{
+  "components": {
+    "schemas": {
+      "APIError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "What went wrong; the app shows its own text for it",
+            "enum": [
+              "unauthorized",
+              "internal",
+              "invalid"
+            ],
+            "type": "string"
+          },
+          "detail": {
+            "description": "Details for developers, not for users",
+            "type": "string"
+          },
+          "errors": {
+            "description": "Schema validation errors",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "field": {
+            "description": "The request field the error concerns, when there is one",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "description": "HTTP status text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "title",
+          "code"
+        ],
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "description": "Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'",
+            "type": "string"
+          },
+          "message": {
+            "description": "Error message text",
+            "type": "string"
+          },
+          "value": {
+            "description": "The value at the given location"
+          }
+        },
+        "type": "object"
+      },
+      "MeOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "first_name": {
+            "description": "The user's first name",
+            "type": "string"
+          },
+          "language": {
+            "description": "The language to show the app in",
+            "enum": [
+              "en",
+              "uk"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "language",
+          "first_name"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "telegramInitData": {
+        "description": "tma followed by Telegram.WebApp.initData",
+        "in": "header",
+        "name": "Authorization",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "read_wine_bot Mini App API",
+    "version": "spec"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/me": {
+      "get": {
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Who is using the app and in which language"
+      }
+    }
+  },
+  "security": [
+    {
+      "telegramInitData": []
+    }
+  ]
+}

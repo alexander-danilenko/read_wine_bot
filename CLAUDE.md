@@ -59,7 +59,9 @@ CODING_STANDARDS.md  # Go style, fail-fast and SOLID rules that /code-review enf
 ## Dependencies: standard library first
 
 - Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
-- Approved modules: `gorm.io/gorm`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`. Add nothing else without the owner's approval.
+- Approved modules: `gorm.io/gorm`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`, `github.com/danielgtaylor/huma/v2` (the Mini App API and its OpenAPI spec, with the `humago` adapter only). Add nothing else without the owner's approval.
+- The Mini App's npm packages are limited the same way: runtime `react`, `react-dom`, `@mui/material`, `@emotion/react`, `@emotion/styled`, `openapi-fetch`; build-only `vite`, `@vitejs/plugin-react`, `typescript`, `openapi-typescript`, `@types/react`, `@types/react-dom`.
+- After changing an API operation, run `UPDATE_OPENAPI=1 go test ./internal/webapp/ -run OpenAPI` to rewrite `web/openapi.json`; the test fails while it is out of date.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
 - Keep `CGO_ENABLED=0` builds working: the Docker image is static.
 - Tests never open a database, real or embedded: test the code above a store with in-memory fakes of its interfaces.

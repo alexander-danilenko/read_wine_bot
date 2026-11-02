@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build && touch ../internal/webapp/dist/.gitkeep",
+    "gen": "openapi-typescript openapi.json -o src/api/schema.d.ts",
+    "build": "npm run gen && tsc --noEmit && vite build && touch ../internal/webapp/dist/.gitkeep",
     "dev": "vite"
   },
   "dependencies": {

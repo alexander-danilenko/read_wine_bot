@@ -34,7 +34,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.4.0"
+const version = "1.5.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -106,18 +106,18 @@ func run() error {
 
 	drawer := newDrawer(store, users, reviewer, texts, log)
 
-	return serve(ctx, stop, b, drawer, static, cfg.ListenAddr)
+	auth := webapp.NewAuth(cfg.TelegramBotToken, users, users, texts.Langs(), log)
+	mux := webapp.NewMux(static, auth, &webapp.Operations{}, version)
+
+	return serve(ctx, stop, b, drawer, mux, cfg.ListenAddr)
 }
 
 // serve runs the bot, the regular tasks and the Mini App server until ctx is done. They share
 // ctx, so the same signal stops them all, and a failing server stops the others through stop.
 // Waiting for them before returning keeps the deferred database close from cutting a run short.
 func serve(
-	ctx context.Context, stop context.CancelFunc, b *bot.Bot, drawer *giveaway.Drawer, static http.Handler, addr string,
+	ctx context.Context, stop context.CancelFunc, b *bot.Bot, drawer *giveaway.Drawer, mux http.Handler, addr string,
 ) error {
-	mux := http.NewServeMux()
-	mux.Handle("GET /", static)
-
 	// A busy port stops the bot here.
 	srv, err := webapp.Listen(ctx, addr, mux)
 	if err != nil {
