@@ -175,14 +175,15 @@ type ManagedLister interface {
 // App runs the giveaway rules for the Mini App. It reuses the chat rules' checks, so both
 // enforce the same things: only the creator changes a giveaway, button first, then row.
 type App struct {
-	ed      *Editor
-	managed ManagedLister
-	log     *slog.Logger
+	ed       *Editor
+	reviewer *Reviewer
+	managed  ManagedLister
+	log      *slog.Logger
 }
 
-// NewApp returns the Mini App's entry to the rules of ed.
-func NewApp(ed *Editor, managed ManagedLister) *App {
-	return &App{ed: ed, managed: managed, log: ed.svc.log}
+// NewApp returns the Mini App's entry to the rules of ed and reviewer.
+func NewApp(ed *Editor, reviewer *Reviewer, managed ManagedLister) *App {
+	return &App{ed: ed, reviewer: reviewer, managed: managed, log: ed.svc.log}
 }
 
 // List returns the creator's running and cancelled giveaways, and the giveaways whose results

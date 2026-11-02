@@ -27,6 +27,9 @@ type fakeGiveaways struct {
 	link       string
 	limit      int
 	lastAction string
+	review     giveaway.ReviewView
+	winnerID   int64
+	rerolled   int
 }
 
 func (f *fakeGiveaways) List(
@@ -91,6 +94,49 @@ func (f *fakeGiveaways) FinishNow(_ context.Context, _ giveaway.Telegram, userID
 	return f.act("finish-now", userID)
 }
 
+func (f *fakeGiveaways) Review(
+	_ context.Context,
+	_ giveaway.ReviewTelegramAll,
+	userID int64,
+	_ uint,
+) (giveaway.ReviewView, error) {
+	f.userID = userID
+
+	return f.review, f.err
+}
+
+func (f *fakeGiveaways) Reroll(
+	_ context.Context, _ giveaway.ReviewTelegramAll, userID int64, _ uint, out int64,
+) (giveaway.ReviewView, error) {
+	f.userID, f.winnerID = userID, out
+
+	return f.review, f.err
+}
+
+func (f *fakeGiveaways) Publish(
+	_ context.Context,
+	_ giveaway.ReviewTelegramAll,
+	userID int64,
+	_ uint,
+	rerolled int,
+) error {
+	f.userID, f.rerolled, f.lastAction = userID, rerolled, "publish"
+
+	return f.err
+}
+
+func (f *fakeGiveaways) Skip(
+	_ context.Context,
+	_ giveaway.ReviewTelegramAll,
+	userID int64,
+	_ uint,
+	rerolled int,
+) error {
+	f.userID, f.rerolled, f.lastAction = userID, rerolled, "skip"
+
+	return f.err
+}
+
 func (f *fakeGiveaways) act(name string, userID int64) (giveaway.View, error) {
 	f.userID, f.lastAction = userID, name
 
@@ -100,7 +146,7 @@ func (f *fakeGiveaways) act(name string, userID int64) (giveaway.View, error) {
 func newGiveawayMux(t *testing.T, fake *fakeGiveaways) *http.ServeMux {
 	t.Helper()
 
-	ops := webapp.NewOperations(nil, fake, fake, fake, slog.New(slog.DiscardHandler))
+	ops := webapp.NewOperations(nil, fake, slog.New(slog.DiscardHandler))
 
 	return newTestMux(t, ops, map[int64]string{42: "uk"})
 }

@@ -43,7 +43,7 @@ func wantAppError(t *testing.T, err error, code, field string) {
 
 func TestAppCreate(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -130,7 +130,7 @@ func TestAppCreateRejects(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newSetup(t)
-			app := giveaway.NewApp(s.ed, s.store)
+			app := giveaway.NewApp(s.ed, nil, s.store)
 			f := appFields(s)
 			tc.change(s, &f)
 
@@ -146,7 +146,7 @@ func TestAppCreateRejects(t *testing.T) {
 
 func TestAppCreateOnTakenPost(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	mustCreate(t, s, app, adminID, appFields(s))
 
@@ -161,7 +161,7 @@ func TestAppCreateOnTakenPost(t *testing.T) {
 // admin's next create, on the same post or another.
 func TestAppCreateAfterFailedAttach(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	s.tg.attachErr = giveaway.ErrPostGone
 
@@ -188,7 +188,7 @@ func TestAppCreateAfterFailedAttach(t *testing.T) {
 // AE5: the end is Kyiv wall-clock time whatever the phone's zone; the app sends it as typed.
 func TestAppCreateEndIsKyivTime(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 	f := appFields(s)
 	f.EndsAt = "2026-12-01T20:00"
 
@@ -210,7 +210,7 @@ func TestAppCreateEndIsKyivTime(t *testing.T) {
 
 func TestAppGetOnlyForCreator(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -234,7 +234,7 @@ func TestAppGetOnlyForCreator(t *testing.T) {
 
 func TestAppEdit(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -265,7 +265,7 @@ func TestAppEdit(t *testing.T) {
 
 func TestAppCancelAndRestore(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -303,7 +303,7 @@ func TestAppCancelAndRestore(t *testing.T) {
 
 func TestAppFinishNow(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -319,7 +319,7 @@ func TestAppFinishNow(t *testing.T) {
 
 func TestAppMove(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -346,7 +346,7 @@ func TestAppMove(t *testing.T) {
 
 func TestAppListAndFinished(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -380,7 +380,7 @@ func TestAppListAndFinished(t *testing.T) {
 
 func TestAppFinished(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store)
 
 	for _, post := range []string{"42", "43", "44"} {
 		f := appFields(s)

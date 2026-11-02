@@ -12,19 +12,33 @@ import (
 // Operations implements the API over the domain services it calls. The zero value only
 // registers the operations, which is enough to render the spec.
 type Operations struct {
-	tg      giveaway.AppTelegram
-	reader  GiveawayReader
-	writer  GiveawayWriter
-	actions GiveawayActions
-	log     *slog.Logger
+	tg            Telegram
+	reader        GiveawayReader
+	writer        GiveawayWriter
+	actions       GiveawayActions
+	reviewReader  ReviewReader
+	reviewActions ReviewActions
+	log           *slog.Logger
 }
 
-// NewOperations returns the API's operations. tg makes the Telegram calls the giveaway rules
-// need; *giveaway.App implements reader, writer and actions.
-func NewOperations(
-	tg giveaway.AppTelegram, reader GiveawayReader, writer GiveawayWriter, actions GiveawayActions, log *slog.Logger,
-) *Operations {
-	return &Operations{tg: tg, reader: reader, writer: writer, actions: actions, log: log}
+// Telegram is every Telegram call the operations make. giveaway.BotAPI implements it.
+type Telegram interface {
+	giveaway.AppTelegram
+	giveaway.ReviewTelegramAll
+}
+
+// Domain is the giveaway rules the operations call. *giveaway.App implements every part.
+type Domain interface {
+	GiveawayReader
+	GiveawayWriter
+	GiveawayActions
+	ReviewReader
+	ReviewActions
+}
+
+// NewOperations returns the API's operations over d. tg makes the Telegram calls.
+func NewOperations(tg Telegram, d Domain, log *slog.Logger) *Operations {
+	return &Operations{tg: tg, reader: d, writer: d, actions: d, reviewReader: d, reviewActions: d, log: log}
 }
 
 // Register adds every operation to api.
@@ -36,6 +50,7 @@ func (o *Operations) Register(api huma.API) {
 		Summary:     "Who is using the app and in which language",
 	}, o.me)
 	o.registerGiveaways(api)
+	o.registerReviews(api)
 }
 
 // NewMux routes the Mini App: the API behind Auth, and the static files.

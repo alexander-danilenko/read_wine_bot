@@ -34,7 +34,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.6.0"
+const version = "1.7.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -107,18 +107,17 @@ func run() error {
 
 	drawer := newDrawer(store, users, reviewer, texts, log)
 
-	mux := newMiniApp(cfg.TelegramBotToken, b, static, editor, store, users, texts, log)
+	mux := newMiniApp(cfg.TelegramBotToken, b, static, giveaway.NewApp(editor, reviewer, store), users, texts, log)
 
 	return serve(ctx, stop, b, drawer, mux, cfg.ListenAddr)
 }
 
 // newMiniApp routes the Mini App: its static files and its API over the giveaway rules.
 func newMiniApp(
-	token string, b *bot.Bot, static *webapp.Static, editor *giveaway.Editor, store *giveaway.Store,
+	token string, b *bot.Bot, static *webapp.Static, app *giveaway.App,
 	users *user.Store, texts *i18n.Catalog, log *slog.Logger,
 ) *http.ServeMux {
-	app := giveaway.NewApp(editor, store)
-	ops := webapp.NewOperations(giveaway.NewBotAPI(b), app, app, app, log)
+	ops := webapp.NewOperations(giveaway.NewBotAPI(b), app, log)
 	auth := webapp.NewAuth(token, users, users, texts.Langs(), log)
 
 	return webapp.NewMux(static, auth, ops, version)
