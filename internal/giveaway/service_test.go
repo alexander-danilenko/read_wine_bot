@@ -70,6 +70,15 @@ type fakeTelegram struct {
 	attached    int
 	attachedTo  int64 // the post of the last attach
 	removedFrom int64 // the post of the last removal
+	resolveErr  error // ResolveChannel fails with it; otherwise every link names channelID
+}
+
+func (f *fakeTelegram) ResolveChannel(context.Context, string) (int64, error) {
+	if f.resolveErr != nil {
+		return 0, f.resolveErr
+	}
+
+	return channelID, nil
 }
 
 func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, error) {

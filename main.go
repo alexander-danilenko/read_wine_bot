@@ -34,7 +34,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.5.0"
+const version = "1.6.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -89,7 +89,8 @@ func run() error {
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
 	reviewer := newReviewer(store, channel.NewStore(conn), texts, log)
-	opts := append(handlers(users, store, reviewer, texts, kyiv, log), bot.WithAllowedUpdates(allowedUpdates()))
+	giveaways, editor := newGiveawayRules(store, users, texts, kyiv, log)
+	opts := append(handlers(users, giveaways, editor, reviewer, texts, log), bot.WithAllowedUpdates(allowedUpdates()))
 
 	b, err := bot.New(cfg.TelegramBotToken, opts...)
 	if err != nil {
@@ -106,10 +107,21 @@ func run() error {
 
 	drawer := newDrawer(store, users, reviewer, texts, log)
 
-	auth := webapp.NewAuth(cfg.TelegramBotToken, users, users, texts.Langs(), log)
-	mux := webapp.NewMux(static, auth, &webapp.Operations{}, version)
+	mux := newMiniApp(cfg.TelegramBotToken, b, static, editor, store, users, texts, log)
 
 	return serve(ctx, stop, b, drawer, mux, cfg.ListenAddr)
+}
+
+// newMiniApp routes the Mini App: its static files and its API over the giveaway rules.
+func newMiniApp(
+	token string, b *bot.Bot, static *webapp.Static, editor *giveaway.Editor, store *giveaway.Store,
+	users *user.Store, texts *i18n.Catalog, log *slog.Logger,
+) *http.ServeMux {
+	app := giveaway.NewApp(editor, store)
+	ops := webapp.NewOperations(giveaway.NewBotAPI(b), app, app, app, log)
+	auth := webapp.NewAuth(token, users, users, texts.Langs(), log)
+
+	return webapp.NewMux(static, auth, ops, version)
 }
 
 // serve runs the bot, the regular tasks and the Mini App server until ctx is done. They share
@@ -219,17 +231,24 @@ func newReviewer(
 	return giveaway.NewReviewer(store, store, store, channels, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
 }
 
+// newGiveawayRules returns the giveaway rules the chat and the Mini App share.
+func newGiveawayRules(
+	store *giveaway.Store, users *user.Store, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger,
+) (*giveaway.Service, *giveaway.Editor) {
+	svc := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
+
+	return svc, giveaway.NewEditor(svc, store, store, store, store, store, store)
+}
+
 // handlers wires every update the bot handles to the package that handles it.
 func handlers(
 	users *user.Store,
-	store *giveaway.Store,
+	giveaways *giveaway.Service,
+	editor *giveaway.Editor,
 	reviewer *giveaway.Reviewer,
 	texts *i18n.Catalog,
-	kyiv *time.Location,
 	log *slog.Logger,
 ) []bot.Option {
-	giveaways := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
-	editor := giveaway.NewEditor(giveaways, store, store, store, store, store, store)
 	kb := keyboard.NewTracker(users, log)
 
 	return slices.Concat([]bot.Option{

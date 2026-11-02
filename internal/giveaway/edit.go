@@ -868,31 +868,42 @@ func (e *Editor) checkTarget(
 	}
 }
 
-// move puts g on the post messageID. A published giveaway's button goes on the new post
-// first, so a post the bot cannot edit leaves the giveaway where it was, and comes off the
-// old post last; a button left behind there joins nothing. A failure that the user can fix
-// by sending another post keeps the move step.
+// move puts g on the post messageID. A failure that the user can fix by sending another post
+// keeps the move step.
 func (e *Editor) move(
 	ctx context.Context, tg Telegram, rm ButtonRemover, log *slog.Logger, userID int64, g Giveaway, messageID int64,
 ) Reply {
-	retry := func(key i18n.Key) Reply {
-		step := editStep(moveStep, g.ID)
-		if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
-			log.ErrorContext(ctx, "keep move step", "error", err)
-		}
+	key, retry := e.moveTo(ctx, tg, rm, log, g, messageID)
 
-		return Reply{Notice: key, Next: step}
+	switch {
+	case key == i18n.EditFinished:
+		return Reply{Notice: key} // a finished giveaway has no menu
+	case !retry:
+		return Reply{Notice: key, Next: editStep(menuStep, g.ID)}
 	}
 
+	step := editStep(moveStep, g.ID)
+	if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
+		log.ErrorContext(ctx, "keep move step", "error", err)
+	}
+
+	return Reply{Notice: key, Next: step}
+}
+
+// moveTo puts g on the post messageID and returns the notice for the result, and whether
+// another post could succeed. A published giveaway's button goes on the new post first, so a
+// post the bot cannot edit leaves the giveaway where it was, and comes off the old post last;
+// a button left behind there joins nothing.
+func (e *Editor) moveTo(
+	ctx context.Context, tg Telegram, rm ButtonRemover, log *slog.Logger, g Giveaway, messageID int64,
+) (i18n.Key, bool) {
 	if g.Published {
 		if err := tg.AttachButton(ctx, g.ChatID, messageID, e.label(g)); err != nil {
 			log.WarnContext(ctx, "attach join button to new post", "error", err)
 
-			return retry(attachFailure(err))
+			return attachFailure(err), true
 		}
 	}
-
-	menu := editStep(menuStep, g.ID)
 
 	err := e.mover.Move(ctx, g.ID, messageID)
 	if err != nil {
@@ -903,18 +914,18 @@ func (e *Editor) move(
 
 	switch {
 	case errors.Is(err, ErrExists):
-		return retry(i18n.EditMoveTaken)
+		return i18n.EditMoveTaken, true
 	case errors.Is(err, ErrNotFound):
-		return Reply{Notice: i18n.EditFinished}
+		return i18n.EditFinished, false
 	case err != nil:
 		log.ErrorContext(ctx, "move giveaway", "giveaway_id", g.ID, "error", err)
 
-		return Reply{Notice: i18n.EditFailed, Next: menu}
+		return i18n.EditFailed, false
 	}
 
 	e.removeButton(ctx, rm, log, g, g.MessageID)
 
-	return Reply{Notice: i18n.EditMoved, Next: menu}
+	return i18n.EditMoved, false
 }
 
 // removeButton takes the join button of the published g off post messageID of its channel.

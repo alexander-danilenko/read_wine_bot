@@ -159,7 +159,7 @@ func EditLinkHandler(
 			return
 		}
 
-		h.reply(ctx, b, msg.From.ID, lang, ed.OpenPost(ctx, telegramAPI{b: b}, msg.From.ID, chatID, messageID))
+		h.reply(ctx, b, msg.From.ID, lang, ed.OpenPost(ctx, BotAPI{b: b}, msg.From.ID, chatID, messageID))
 	}
 }
 
@@ -183,9 +183,9 @@ func FieldLinkHandler(
 
 		r := Reply{Stale: true}
 		if id, field, ok := parseFieldLink(msg.Text); ok && field == linkPost {
-			r = ed.AskMove(ctx, telegramAPI{b: b}, msg.From.ID, id)
+			r = ed.AskMove(ctx, BotAPI{b: b}, msg.From.ID, id)
 		} else if ok {
-			r = ed.Field(ctx, telegramAPI{b: b}, msg.From.ID, id, field)
+			r = ed.Field(ctx, BotAPI{b: b}, msg.From.ID, id, field)
 		}
 
 		// A link answers a message, which shows no popup, so a link that no longer applies
@@ -246,7 +246,7 @@ func parsePostPayload(text, prefix string) (int64, int64, bool) {
 func (h editHandler) message(ctx context.Context, b *bot.Bot, msg *models.Message, step, lang string) {
 	chatID, messageID, isPost := postRef(ctx, b, h.log, msg)
 
-	tg := telegramAPI{b: b}
+	tg := BotAPI{b: b}
 	what, _, _ := parseEditStep(step)
 
 	switch {
@@ -314,7 +314,7 @@ func EditCallbackHandler(
 
 // act runs the Editor call a tap asks for.
 func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang string, a editAction) Reply {
-	tg := telegramAPI{b: b}
+	tg := BotAPI{b: b}
 
 	switch a.name {
 	case editDefault:
@@ -331,7 +331,7 @@ func (h editHandler) act(ctx context.Context, b *bot.Bot, userID int64, lang str
 }
 
 // confirm runs the Editor call of a tap that asks for, accepts or declines a cancel or finish.
-func (h editHandler) confirm(ctx context.Context, tg telegramAPI, userID int64, a editAction) Reply {
+func (h editHandler) confirm(ctx context.Context, tg BotAPI, userID int64, a editAction) Reply {
 	switch a.name {
 	case editAsk:
 		return h.ed.AskCancel(ctx, tg, userID, a.id)

@@ -188,6 +188,21 @@ func (s *Store) Running(ctx context.Context, userID int64) ([]Giveaway, error) {
 	return gs, nil
 }
 
+// Managed returns the user's unfinished giveaways that are published or cancelled, soonest end
+// first: the ones the creator can still change. Setup drafts are left out.
+func (s *Store) Managed(ctx context.Context, userID int64) ([]Giveaway, error) {
+	var gs []Giveaway
+
+	err := s.db.WithContext(ctx).
+		Where("created_by = ? AND finished_at IS NULL AND "+managed, userID).
+		Order(colEndsAt).Order("id").Find(&gs).Error
+	if err != nil {
+		return nil, fmt.Errorf("list managed giveaways of user %d: %w", userID, err)
+	}
+
+	return gs, nil
+}
+
 // SaveFields saves the end time, winner count and button text of the unfinished giveaway id.
 // It returns ErrNotFound for a finished or a missing giveaway.
 func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error {

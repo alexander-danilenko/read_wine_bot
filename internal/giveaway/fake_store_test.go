@@ -242,6 +242,22 @@ func (f *memStore) Running(_ context.Context, userID int64) ([]giveaway.Giveaway
 	return gs, nil
 }
 
+// Managed lists the user's unfinished published or cancelled giveaways, as Store.Managed.
+func (f *memStore) Managed(_ context.Context, userID int64) ([]giveaway.Giveaway, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var gs []giveaway.Giveaway
+
+	for _, id := range f.ids() {
+		if g := f.rows[id]; g.CreatedBy == userID && g.FinishedAt == nil && isManaged(g) {
+			gs = append(gs, *g)
+		}
+	}
+
+	return gs, nil
+}
+
 func (f *memStore) SaveFields(_ context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

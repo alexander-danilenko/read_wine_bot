@@ -147,7 +147,7 @@ func (p pager) show(ctx context.Context, b *bot.Bot, userID int64, lang string, 
 		more bool
 	)
 	if err == nil {
-		text, more, err = p.render(ctx, telegramAPI{b: b}, userID, page, lang, name)
+		text, more, err = p.render(ctx, BotAPI{b: b}, userID, page, lang, name)
 	}
 
 	if err != nil {

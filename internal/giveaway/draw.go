@@ -61,7 +61,7 @@ func NewDrawer(
 // DrawDue draws every giveaway that is due now and sends each one's results to its creator
 // for review through b. main runs it once a minute with internal/cron.
 func (d *Drawer) DrawDue(ctx context.Context, b *bot.Bot) {
-	d.drawDue(ctx, drawAnnouncer{telegramAPI: telegramAPI{b: b}, b: b, reviews: d.reviews})
+	d.drawDue(ctx, drawAnnouncer{BotAPI: BotAPI{b: b}, b: b, reviews: d.reviews})
 }
 
 // drawDue draws every giveaway that is due now. A failure in one giveaway is logged and the
@@ -168,7 +168,7 @@ func (d *Drawer) announce(ctx context.Context, tg Announcer, g Giveaway) {
 // drawAnnouncer is the Announcer of a real draw: Telegram removes the button, and the review
 // sender sends the review through the bot.
 type drawAnnouncer struct {
-	telegramAPI
+	BotAPI
 
 	b       *bot.Bot
 	reviews ReviewSender

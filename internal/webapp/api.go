@@ -7,6 +7,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+
+	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 )
 
 // Error codes in the "code" field of every error body. The app shows its own text for each.
@@ -18,7 +20,14 @@ const (
 
 // errorCodes lists every error code, for the spec's enum. Add new codes here.
 func errorCodes() []string {
-	return []string{CodeUnauthorized, CodeInternal, CodeInvalid}
+	return []string{
+		CodeUnauthorized, CodeInternal, CodeInvalid,
+		giveaway.CodeNotFound, giveaway.CodeNotYours, giveaway.CodeFinished, giveaway.CodeNotAdmin,
+		giveaway.CodeBotNoRights, giveaway.CodePostGone, giveaway.CodeExists, giveaway.CodeTaken,
+		giveaway.CodeInvalidPostLink, giveaway.CodeInvalidEnd, giveaway.CodeEndInPast, giveaway.CodeInvalidWinners,
+		giveaway.CodeInvalidButtonText, giveaway.CodeOtherChannel, giveaway.CodeDue, giveaway.CodeStale,
+		giveaway.CodeFailed,
+	}
 }
 
 // APIError is the body of every error response (RFC 9457 problem details plus a code).

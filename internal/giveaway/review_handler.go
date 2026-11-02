@@ -181,7 +181,7 @@ func (h reviewHandler) reply(ctx context.Context, b *bot.Bot, userID int64, lang
 
 	var subs Subscriptions
 	if r.Screen == ResultsScreen {
-		subs = h.rv.Subscriptions(ctx, telegramAPI{b: b}, r.Giveaway, r.Results.Winners)
+		subs = h.rv.Subscriptions(ctx, BotAPI{b: b}, r.Giveaway, r.Results.Winners)
 	}
 
 	text, rows := reviewView(h.rv, lang, r, subs)
@@ -207,7 +207,7 @@ func ReviewCallbackHandler(
 
 		r := ReviewReply{Stale: true}
 		if a, ok := parseReviewData(query.Data); ok {
-			r = h.act(ctx, telegramAPI{b: b}, userID, a)
+			r = h.act(ctx, BotAPI{b: b}, userID, a)
 		}
 
 		popup := ""
@@ -240,7 +240,7 @@ func ReviewCallbackHandler(
 }
 
 // act runs the Reviewer call a tap asks for.
-func (h reviewHandler) act(ctx context.Context, tg telegramAPI, userID int64, a reviewAction) ReviewReply {
+func (h reviewHandler) act(ctx context.Context, tg BotAPI, userID int64, a reviewAction) ReviewReply {
 	switch a.name {
 	case reviewAskReroll:
 		return h.rv.AskReroll(ctx, tg, userID, a.id, a.arg)
@@ -284,7 +284,7 @@ func ReviewLinkHandler(
 			return
 		}
 
-		h.reply(ctx, b, msg.From.ID, lang, rv.Open(ctx, telegramAPI{b: b}, msg.From.ID, chatID, messageID), 0)
+		h.reply(ctx, b, msg.From.ID, lang, rv.Open(ctx, BotAPI{b: b}, msg.From.ID, chatID, messageID), 0)
 	}
 }
 

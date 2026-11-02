@@ -96,12 +96,35 @@ func joinText(r JoinResult) i18n.Key {
 	}
 }
 
-// telegramAPI implements Telegram with the bot that received the update.
-type telegramAPI struct {
+// BotAPI implements Telegram with the bot that received the update.
+type BotAPI struct {
 	b *bot.Bot
 }
 
-func (t telegramAPI) IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error) {
+// NewBotAPI returns the Telegram calls the giveaway rules make, through b.
+func NewBotAPI(b *bot.Bot) BotAPI {
+	return BotAPI{b: b}
+}
+
+// ErrNotChannel means a post link names a chat that is not a channel.
+var ErrNotChannel = errors.New("chat is not a channel")
+
+// ResolveChannel returns the chat ID of chat, an @username or a chat ID as parsePostLink
+// returns it, after checking that it is a channel.
+func (t BotAPI) ResolveChannel(ctx context.Context, chat string) (int64, error) {
+	info, err := t.b.GetChat(ctx, &bot.GetChatParams{ChatID: chat})
+	if err != nil {
+		return 0, err //nolint:wrapcheck // App logs it with the link
+	}
+
+	if info.Type != models.ChatTypeChannel {
+		return 0, ErrNotChannel
+	}
+
+	return info.ID, nil
+}
+
+func (t BotAPI) IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error) {
 	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: userID})
 	if err != nil {
 		return false, err //nolint:wrapcheck // Service logs it with the chat and user IDs
@@ -110,7 +133,7 @@ func (t telegramAPI) IsChannelAdmin(ctx context.Context, chatID, userID int64) (
 	return m.Type == models.ChatMemberTypeOwner || m.Type == models.ChatMemberTypeAdministrator, nil
 }
 
-func (t telegramAPI) Channel(ctx context.Context, chatID int64) (ChannelInfo, error) {
+func (t BotAPI) Channel(ctx context.Context, chatID int64) (ChannelInfo, error) {
 	c, err := t.b.GetChat(ctx, &bot.GetChatParams{ChatID: chatID})
 	if err != nil {
 		return ChannelInfo{}, err //nolint:wrapcheck // Reviewer logs it with the chat ID
@@ -119,7 +142,7 @@ func (t telegramAPI) Channel(ctx context.Context, chatID int64) (ChannelInfo, er
 	return ChannelInfo{ID: c.ID, Title: c.Title, Username: c.Username}, nil
 }
 
-func (t telegramAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bool, error) {
+func (t BotAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bool, error) {
 	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: userID})
 	if err != nil {
 		return false, err //nolint:wrapcheck // Reviewer logs it with the chat and user IDs
@@ -128,7 +151,7 @@ func (t telegramAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bo
 	return channel.Subscribed(*m), nil
 }
 
-func (t telegramAPI) CanRunGiveaways(ctx context.Context, chatID int64) (bool, error) {
+func (t BotAPI) CanRunGiveaways(ctx context.Context, chatID int64) (bool, error) {
 	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: t.b.ID()})
 	if err != nil {
 		return false, err //nolint:wrapcheck // Service logs it with the chat ID
@@ -178,7 +201,7 @@ func canRunGiveaways(m models.ChatMember) bool {
 	return m.Administrator != nil && m.Administrator.CanEditMessages && m.Administrator.CanPostMessages
 }
 
-func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, label string) error {
+func (t BotAPI) AttachButton(ctx context.Context, chatID, messageID int64, label string) error {
 	_, err := t.b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
 		ChatID:    chatID,
 		MessageID: int(messageID),
@@ -192,7 +215,7 @@ func (t telegramAPI) AttachButton(ctx context.Context, chatID, messageID int64, 
 
 // RemoveButton takes every inline button off the channel post. A post without buttons, or a
 // deleted post, counts as success.
-func (t telegramAPI) RemoveButton(ctx context.Context, chatID, messageID int64) error {
+func (t BotAPI) RemoveButton(ctx context.Context, chatID, messageID int64) error {
 	_, err := t.b.EditMessageReplyMarkup(
 		ctx,
 		&bot.EditMessageReplyMarkupParams{ChatID: chatID, MessageID: int(messageID)},
@@ -203,7 +226,7 @@ func (t telegramAPI) RemoveButton(ctx context.Context, chatID, messageID int64) 
 
 // SendHTML sends an HTML text without a link preview, as a reply to message replyTo of the
 // same chat unless replyTo is 0. When replyTo was deleted, the text goes without the reply.
-func (t telegramAPI) SendHTML(ctx context.Context, chatID, replyTo int64, text string) error {
+func (t BotAPI) SendHTML(ctx context.Context, chatID, replyTo int64, text string) error {
 	params := &bot.SendMessageParams{
 		ChatID:             chatID,
 		Text:               text,
