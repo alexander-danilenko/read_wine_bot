@@ -174,20 +174,6 @@ func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 	return g, nil
 }
 
-// Running returns the user's published giveaways that are not finished, soonest end first.
-func (s *Store) Running(ctx context.Context, userID int64) ([]Giveaway, error) {
-	var gs []Giveaway
-
-	err := s.db.WithContext(ctx).
-		Where("created_by = ? AND published = ? AND finished_at IS NULL", userID, true).
-		Order(colEndsAt).Order("id").Find(&gs).Error
-	if err != nil {
-		return nil, fmt.Errorf("list running giveaways of user %d: %w", userID, err)
-	}
-
-	return gs, nil
-}
-
 // Managed returns the user's unfinished giveaways that are published or cancelled, soonest end
 // first: the ones the creator can still change. Setup drafts are left out.
 func (s *Store) Managed(ctx context.Context, userID int64) ([]Giveaway, error) {

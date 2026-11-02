@@ -341,7 +341,7 @@ func TestRerollKeepsPlaceAndNeverPicksRerolledOut(t *testing.T) {
 	tg := newAdmins()
 
 	r := rv.Reroll(t.Context(), tg, creatorID, reviewID, ann().TelegramID)
-	if r.Stale || r.Notice != "" || r.Screen != ResultsScreen {
+	if r.Stale || r.Notice != "" {
 		t.Fatalf("first reroll = %+v, want the review again", r)
 	}
 
@@ -365,17 +365,6 @@ func TestRerollWithoutReplacementLeavesFewerWinners(t *testing.T) {
 	r := rv.Reroll(t.Context(), newAdmins(), creatorID, reviewID, ann().TelegramID)
 	if len(r.Results.Winners) != 0 {
 		t.Fatalf("winners = %+v, want none", r.Results.Winners)
-	}
-
-	text, rows := reviewView(rv, "en", r, Subscriptions{})
-	if text != rv.texts.Text("en", i18n.ReviewNoWinners, postLink(drawChannel, drawPost)) {
-		t.Errorf("review text = %q, want the no-winners text", text)
-	}
-
-	if len(rows) != 2 || len(rows[0]) != 1 || len(rows[1]) != 1 ||
-		!strings.HasPrefix(rows[0][0].CallbackData, ReviewCallbackPrefix+reviewAskPublish) ||
-		!strings.HasPrefix(rows[1][0].CallbackData, ReviewCallbackPrefix+reviewAskSkip) {
-		t.Errorf("rows = %+v, want only the publish and skip buttons", rows)
 	}
 }
 
@@ -428,7 +417,7 @@ func TestSkipClosesWithoutPosting(t *testing.T) {
 	rv := newTestReviewer(t, store)
 	tg := newAdmins()
 
-	if r := rv.Skip(t.Context(), tg, creatorID, reviewID, 0); r.Notice != i18n.ReviewSkipped || r.Screen != NoScreen {
+	if r := rv.Skip(t.Context(), tg, creatorID, reviewID, 0); r.Notice != i18n.ReviewSkipped {
 		t.Errorf("skip = %+v, want the skipped notice", r)
 	}
 
@@ -469,7 +458,7 @@ func TestPublishPostsResultsUnderThePost(t *testing.T) {
 	tg := newAdmins()
 
 	r := rv.Publish(t.Context(), tg, creatorID, reviewID, 0)
-	if r.Notice != i18n.ReviewPublished || r.Screen != NoScreen {
+	if r.Notice != i18n.ReviewPublished {
 		t.Errorf("publish = %+v, want the published notice", r)
 	}
 
@@ -495,7 +484,7 @@ func TestPublishRefusedByChannelKeepsResultsPending(t *testing.T) {
 	tg.sendFails = 1
 
 	r := rv.Publish(t.Context(), tg, creatorID, reviewID, 0)
-	if r.Notice != i18n.ReviewPublishFailed || r.Screen != ResultsScreen {
+	if r.Notice != i18n.ReviewPublishFailed {
 		t.Errorf("publish = %+v, want the refusal notice and the review again", r)
 	}
 
@@ -533,9 +522,9 @@ func TestPublishAfterAnotherAdminsRerollIsStale(t *testing.T) {
 	rv := newTestReviewer(t, store)
 	tg := newAdmins()
 
-	ask := rv.AskPublish(t.Context(), tg, creatorID, reviewID, 0)
-	if ask.Screen != PublishScreen {
-		t.Fatalf("ask publish = %+v, want the confirmation", ask)
+	ask := rv.Show(t.Context(), tg, creatorID, reviewID)
+	if ask.Stale || ask.Notice != "" {
+		t.Fatalf("show = %+v, want the review", ask)
 	}
 
 	rv.Reroll(t.Context(), tg, otherAdmin, reviewID, bob().TelegramID)
@@ -590,7 +579,7 @@ func TestReviewAccess(t *testing.T) {
 				rv.Reroll(t.Context(), tt.tg, tt.userID, reviewID, ann().TelegramID),
 				rv.Publish(t.Context(), tt.tg, tt.userID, reviewID, 0),
 			} {
-				if r.Notice != tt.want || r.Screen != NoScreen {
+				if r.Notice != tt.want {
 					t.Errorf("reply = %+v, want only notice %q", r, tt.want)
 				}
 			}
@@ -621,144 +610,6 @@ func TestRerollFilterErrorChangesNothing(t *testing.T) {
 
 	if !strings.Contains(logs.String(), "level=ERROR") {
 		t.Errorf("filter error not logged: %s", logs)
-	}
-}
-
-func TestOpenFromLink(t *testing.T) {
-	store := newFakeReviewStore()
-	store.drawn([]user.User{ann()})
-	rv := newTestReviewer(t, store)
-	tg := newAdmins()
-
-	if r := rv.Open(t.Context(), tg, otherAdmin, drawChannel, drawPost); r.Screen != ResultsScreen {
-		t.Errorf("open = %+v, want the review", r)
-	}
-
-	if r := rv.Open(t.Context(), tg, creatorID, drawChannel, drawPost+1); r.Notice != i18n.EditNotFound {
-		t.Errorf("open of another post = %+v, want not found", r)
-	}
-
-	rv.Publish(t.Context(), tg, creatorID, reviewID, 0)
-
-	if r := rv.Open(t.Context(), tg, creatorID, drawChannel, drawPost); r.Notice != i18n.ReviewNotPending {
-		t.Errorf("open after publishing = %+v, want already published", r)
-	}
-}
-
-func TestReviewFitsOneMessageWithMostWinners(t *testing.T) {
-	store := newFakeReviewStore()
-	long := strings.Repeat("Ж", 64)
-	winners := make([]user.User, 0, maxWinners)
-
-	for i := range int64(maxWinners) {
-		winners = append(winners, user.User{TelegramID: i + 1, FirstName: long, LastName: long})
-	}
-
-	store.drawn(winners)
-	rv := newTestReviewer(t, store)
-
-	r := rv.Show(t.Context(), newAdmins(), creatorID, reviewID)
-	text, rows := reviewView(rv, "en", r, Subscriptions{})
-
-	if n := visibleLen(text); n > maxMessageLen {
-		t.Errorf("review is %d UTF-16 code units long, over %d", n, maxMessageLen)
-	}
-
-	if n := strings.Count(text, "tg://user?id="); n != maxWinners {
-		t.Errorf("review links %d winners, want %d", n, maxWinners)
-	}
-
-	buttons := 0
-	for _, row := range rows {
-		buttons += len(row)
-	}
-
-	if buttons > 100 {
-		t.Errorf("review has %d buttons, over Telegram's 100", buttons)
-	}
-}
-
-func TestReviewNamesWinnerToReroll(t *testing.T) {
-	store := newFakeReviewStore()
-	store.drawn([]user.User{ann(), bob()}, cid())
-	rv := newTestReviewer(t, store)
-
-	r := rv.AskReroll(t.Context(), newAdmins(), creatorID, reviewID, bob().TelegramID)
-	text, rows := reviewView(rv, "en", r, Subscriptions{})
-
-	if !strings.Contains(text, "2") || !strings.Contains(text, `href="tg://user?id=2">Bob</a>`) {
-		t.Errorf("confirmation = %q, want winner 2, Bob", text)
-	}
-
-	if len(rows) != 1 || rows[0][0].CallbackData != reviewData(reviewReroll, reviewID, bob().TelegramID) ||
-		rows[0][1].CallbackData != reviewData(reviewShow, reviewID) {
-		t.Errorf("rows = %+v, want Yes for Bob and back to the review", rows)
-	}
-
-	if r := rv.AskReroll(t.Context(), newAdmins(), creatorID, reviewID, cid().TelegramID); !r.Stale {
-		t.Errorf("ask to reroll a participant who is not a winner = %+v, want stale", r)
-	}
-}
-
-func TestReviewCallbackData(t *testing.T) {
-	const maxID = ^uint(0)
-
-	const maxUser int64 = 1<<63 - 1
-
-	for _, data := range []string{
-		reviewData(reviewShow, maxID),
-		reviewData(reviewAskReroll, maxID, maxUser),
-		reviewData(reviewReroll, maxID, maxUser),
-		reviewData(reviewAskPublish, maxID, maxWinners),
-		reviewData(reviewPublish, maxID, maxUser),
-		reviewData(reviewAskSkip, maxID, maxUser),
-		reviewData(reviewSkip, maxID, maxUser),
-	} {
-		if len(data) > 64 {
-			t.Errorf("%q is %d bytes, over Telegram's 64", data, len(data))
-		}
-
-		for _, other := range []string{EditCallbackPrefix, SetupCallbackPrefix, JoinCallback} {
-			if strings.HasPrefix(data, other) || strings.HasPrefix(other, ReviewCallbackPrefix) {
-				t.Errorf("%q overlaps prefix %q", data, other)
-			}
-		}
-
-		a, ok := parseReviewData(data)
-		if !ok || a.id != maxID {
-			t.Errorf("parse %q = %+v, %v; want it back", data, a, ok)
-		}
-	}
-
-	for _, data := range []string{
-		ReviewCallbackPrefix + "pub:1",
-		ReviewCallbackPrefix + "show:x",
-		ReviewCallbackPrefix + "reroll:1:-5",
-		ReviewCallbackPrefix + "drop:1:2",
-		ReviewCallbackPrefix + "show:1:2",
-	} {
-		if a, ok := parseReviewData(data); ok {
-			t.Errorf("parse %q = %+v, want rejected", data, a)
-		}
-	}
-}
-
-func TestParseResultsLink(t *testing.T) {
-	chat, post, ok := parsePostPayload("/start results_1234567890_42", ReviewLinkPrefix)
-	if !ok || chat != drawChannel || post != drawPost {
-		t.Errorf("parse = %d, %d, %v; want the channel and post 42", chat, post, ok)
-	}
-
-	if _, _, ok := parsePostPayload("/start results_x_42", ReviewLinkPrefix); ok {
-		t.Error("malformed link parsed")
-	}
-
-	if got := resultsLink(
-		"read_wine_bot",
-		drawChannel,
-		drawPost,
-	); got != "https://t.me/read_wine_bot?start=results_1234567890_42" {
-		t.Errorf("resultsLink = %q", got)
 	}
 }
 

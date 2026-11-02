@@ -3,88 +3,28 @@ package giveaway
 import (
 	"context"
 	"errors"
-	"html"
 	"log/slog"
-	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
 
-// editPrefix starts every edit step. It is not under stepPrefix, so the setup's Cancel never
-// treats an edit as a setup and deletes the user's draft.
-const editPrefix = "edit:"
-
-// EditStepPost is the pending command while the bot waits for the post of the giveaway to
-// edit. A field step names the field and the giveaway: edit:<field>:<giveaway ID>.
-const EditStepPost = editPrefix + "post"
-
-// Fields of a giveaway that the creator can change. Each is the
-// suffix of the setup step that asks for the same value.
+// Fields of a giveaway that the Mini App form sends.
 const (
-	FieldEndDate    = "end_date"
-	FieldEndTime    = "end_time"
 	FieldWinners    = "winners"
 	FieldButtonText = "button_text"
 )
 
-// Pseudo steps that name a message to show rather than an input to wait for; they are never
-// saved as a pending command.
-const (
-	menuStep      = "menu"   // the field menu of a giveaway
-	askCancelStep = "cancel" // the cancel confirmation of a giveaway
-	askFinishStep = "finish" // the finish now confirmation of a giveaway
-)
-
-// moveStep is the step that waits for the post to move a giveaway to: edit:move:<giveaway ID>.
-const moveStep = "move"
-
-// inEdit reports whether a pending command is an edit step.
-func inEdit(pending string) bool { return strings.HasPrefix(pending, editPrefix) }
-
-// editStep returns the step that names what for giveaway id: a field, the menu or the cancel
-// confirmation.
-func editStep(what string, id uint) string {
-	return editPrefix + what + ":" + strconv.FormatUint(uint64(id), 10)
-}
-
-// parseEditStep returns the field or pseudo step and the giveaway of an editStep, and false
-// for anything else.
-func parseEditStep(step string) (string, uint, bool) {
-	what, rawID, ok := strings.Cut(strings.TrimPrefix(step, editPrefix), ":")
-	if !ok || !inEdit(step) {
-		return "", 0, false
-	}
-
-	id, err := strconv.ParseUint(rawID, 10, 0)
-	if err != nil {
-		return "", 0, false
-	}
-
-	return what, uint(id), true
-}
-
-// linkPost stands in for a field in a field link: the link moves the giveaway to another
-// post of its channel.
-const linkPost = "post"
-
-// isField reports whether what names a field the creator can change.
-func isField(what string) bool {
-	switch what {
-	case FieldEndDate, FieldEndTime, FieldWinners, FieldButtonText:
-		return true
-	default:
-		return false
-	}
+// FinishedLister reads a creator's finished giveaways page by page. *Store implements it.
+type FinishedLister interface {
+	Finished(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, error)
+	WinnerCounts(ctx context.Context, ids []uint) (map[uint]int, error)
 }
 
 // Giveaways reads the giveaways a creator manages. *Store implements it.
 type Giveaways interface {
 	ByID(ctx context.Context, id uint) (Giveaway, error)
 	Post(ctx context.Context, chatID, messageID int64) (Giveaway, error)
-	Running(ctx context.Context, userID int64) ([]Giveaway, error)
 }
 
 // Writer changes the giveaways a creator manages. *Store implements it.
@@ -129,7 +69,7 @@ type Editor struct {
 	finished  FinishedLister
 }
 
-// NewEditor returns an Editor that reuses svc's steps, texts, clock and parsers.
+// NewEditor returns an Editor that reuses svc's texts, clock and checks.
 func NewEditor(
 	svc *Service,
 	giveaways Giveaways,
@@ -143,141 +83,6 @@ func NewEditor(
 		svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending, counter: counter,
 		finished: finished,
 	}
-}
-
-// BeginEdit starts an edit for the user: the bot now waits for a forwarded post.
-func (e *Editor) BeginEdit(ctx context.Context, userID int64) error {
-	if err := e.svc.steps.SetPendingCommand(ctx, userID, EditStepPost); err != nil {
-		return err //nolint:wrapcheck // user.Store already names the user and the column
-	}
-
-	return nil
-}
-
-// ForwardEdit takes the forwarded post and opens the field menu of its giveaway when the
-// user may change it.
-func (e *Editor) ForwardEdit(ctx context.Context, tg Telegram, userID, chatID, messageID int64) Reply {
-	log := e.svc.log.With("user_id", userID, "chat_id", chatID, "message_id", messageID)
-
-	if r, ok := e.svc.claim(ctx, log, userID, EditStepPost, ""); !ok {
-		return r
-	}
-
-	return e.OpenPost(ctx, tg, userID, chatID, messageID)
-}
-
-// OpenPost opens the field menu of the giveaway on the post, or of the user's own draft on
-// it, when the user may change it.
-func (e *Editor) OpenPost(ctx context.Context, tg Telegram, userID, chatID, messageID int64) Reply {
-	log := e.svc.log.With("user_id", userID, "chat_id", chatID, "message_id", messageID)
-
-	g, err := e.giveaways.Post(ctx, chatID, messageID)
-	if errors.Is(err, ErrNotFound) {
-		// Store.Post skips drafts, so the setup can take a post over from another admin's draft.
-		g, err = e.svc.drafts.Draft(ctx, userID)
-		if err == nil && (g.ChatID != chatID || g.MessageID != messageID) {
-			err = ErrNotFound
-		}
-	}
-
-	if errors.Is(err, ErrNotFound) {
-		return Reply{Notice: i18n.EditNotFound}
-	}
-
-	if err != nil {
-		log.ErrorContext(ctx, "find giveaway to edit", "error", err)
-
-		return Reply{Notice: i18n.EditFailed}
-	}
-
-	if key, ok := e.check(ctx, tg, userID, g); !ok {
-		return Reply{Notice: key}
-	}
-
-	return Reply{Next: editStep(menuStep, g.ID)}
-}
-
-// Field asks for a new value of field: the bot now waits for it.
-func (e *Editor) Field(ctx context.Context, tg Telegram, userID int64, id uint, field string) Reply {
-	if !isField(field) {
-		return Reply{Stale: true}
-	}
-
-	if _, r, ok := e.load(ctx, tg, userID, id); !ok {
-		return r
-	}
-
-	step := editStep(field, id)
-	if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
-		e.svc.log.ErrorContext(ctx, "start field edit", "user_id", userID, "error", err)
-
-		return Reply{Notice: i18n.EditFailed}
-	}
-
-	return Reply{Next: step}
-}
-
-// Value saves value, typed or tapped as a default, as the field that step waits for, and
-// shows the menu again. An invalid value keeps the step and names the expected format; a
-// step the user is no longer at changes nothing. A new button text of a published giveaway
-// goes on the post first, so a post the bot cannot edit leaves the giveaway unchanged.
-func (e *Editor) Value(ctx context.Context, tg Telegram, userID int64, step, value string) Reply {
-	log := e.svc.log.With("user_id", userID, "step", step)
-
-	field, id, ok := parseEditStep(step)
-	if !ok || !isField(field) {
-		return Reply{Stale: true}
-	}
-
-	current, err := e.svc.steps.PendingCommand(ctx, userID)
-	if err != nil {
-		log.ErrorContext(ctx, "read edit step", "error", err)
-
-		return Reply{Notice: i18n.EditFailed}
-	}
-
-	if current != step {
-		return Reply{Stale: true}
-	}
-
-	g, r, ok := e.load(ctx, tg, userID, id)
-	if !ok {
-		if err := e.svc.steps.SetPendingCommand(ctx, userID, ""); err != nil {
-			log.ErrorContext(ctx, "clear edit step", "error", err)
-		}
-
-		return r
-	}
-
-	changed := g
-	if errKey := e.fill(&changed, field, value); errKey != "" {
-		return Reply{Notice: errKey, Next: step}
-	}
-
-	if r, ok := e.svc.claim(ctx, log, userID, step, ""); !ok {
-		return r
-	}
-
-	return e.save(ctx, tg, log, g, changed)
-}
-
-// ShowMenu shows the field menu of giveaway id again when the user may still change it.
-func (e *Editor) ShowMenu(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
-	if _, r, ok := e.load(ctx, tg, userID, id); !ok {
-		return r
-	}
-
-	return Reply{Next: editStep(menuStep, id)}
-}
-
-// AskCancel asks the creator to confirm cancelling the published giveaway id.
-func (e *Editor) AskCancel(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
-	return e.askPublished(ctx, tg, userID, id, askCancelStep)
-}
-
-// AskFinish asks the creator to confirm finishing the published giveaway id now.
-func (e *Editor) AskFinish(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
-	return e.askPublished(ctx, tg, userID, id, askFinishStep)
 }
 
 // FinishNow moves the end time of the published giveaway id to now, so the next winner draw,
@@ -302,7 +107,7 @@ func (e *Editor) FinishNow(ctx context.Context, tg Telegram, userID int64, id ui
 	if err != nil {
 		e.svc.log.ErrorContext(ctx, "finish giveaway now", "user_id", userID, "giveaway_id", id, "error", err)
 
-		return Reply{Notice: i18n.EditFailed, Next: editStep(menuStep, id)}
+		return Reply{Notice: i18n.EditFailed}
 	}
 
 	return Reply{Notice: i18n.EditFinishing}
@@ -323,12 +128,10 @@ func (e *Editor) Cancel(ctx context.Context, tg Telegram, rm ButtonRemover, user
 		return Reply{Stale: true}
 	}
 
-	menu := editStep(menuStep, id)
-
 	if err := rm.RemoveButton(ctx, g.ChatID, g.MessageID); err != nil {
 		log.WarnContext(ctx, "remove join button", "error", err)
 
-		return Reply{Notice: i18n.EditNoRights, Next: menu}
+		return Reply{Notice: i18n.EditNoRights}
 	}
 
 	err := e.writer.Cancel(ctx, id)
@@ -339,10 +142,10 @@ func (e *Editor) Cancel(ctx context.Context, tg Telegram, rm ButtonRemover, user
 	if err != nil {
 		log.ErrorContext(ctx, "cancel giveaway", "error", err)
 
-		return Reply{Notice: i18n.EditFailed, Next: menu}
+		return Reply{Notice: i18n.EditFailed}
 	}
 
-	return Reply{Notice: i18n.EditCancelled, Next: menu}
+	return Reply{Notice: i18n.EditCancelled}
 }
 
 // Restore puts the join button on the post of the cancelled giveaway or draft id and
@@ -359,16 +162,14 @@ func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint
 		return Reply{Stale: true}
 	}
 
-	menu := editStep(menuStep, id)
-
 	if g.EndsAt == nil || !g.EndsAt.After(e.svc.now()) {
-		return Reply{Notice: i18n.EditEndPassed, Next: menu}
+		return Reply{Notice: i18n.EditEndPassed}
 	}
 
 	if err := tg.AttachButton(ctx, g.ChatID, g.MessageID, e.label(g)); err != nil {
 		log.WarnContext(ctx, "attach join button", "error", err)
 
-		return Reply{Notice: attachFailure(err), Next: menu}
+		return Reply{Notice: attachFailure(err)}
 	}
 
 	err := e.writer.Publish(ctx, id)
@@ -379,74 +180,14 @@ func (e *Editor) Restore(ctx context.Context, tg Telegram, userID int64, id uint
 	if err != nil {
 		log.ErrorContext(ctx, "publish giveaway again", "error", err)
 
-		return Reply{Notice: i18n.EditFailed, Next: menu}
+		return Reply{Notice: i18n.EditFailed}
 	}
 
 	if g.CancelledAt == nil {
-		return Reply{Notice: i18n.GiveawayCreated, Next: menu}
+		return Reply{Notice: i18n.GiveawayCreated}
 	}
 
-	return Reply{Notice: i18n.EditRestored, Next: menu}
-}
-
-// AskMove asks for the post to move the published or cancelled giveaway id to: the bot now
-// waits for it. A giveaway past its end time waits for its draw and cannot move.
-func (e *Editor) AskMove(ctx context.Context, tg Telegram, userID int64, id uint) Reply {
-	g, r, ok := e.load(ctx, tg, userID, id)
-	if !ok {
-		return r
-	}
-
-	if e.due(g) {
-		return Reply{Stale: true}
-	}
-
-	step := editStep(moveStep, id)
-	if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
-		e.svc.log.ErrorContext(ctx, "start giveaway move", "user_id", userID, "error", err)
-
-		return Reply{Notice: i18n.EditFailed}
-	}
-
-	return Reply{Next: step}
-}
-
-// Move puts the giveaway the move step waits for on the post messageID, keeping its ID,
-// channel and participants. The post must be in the giveaway's channel and carry no other
-// giveaway; otherwise the step stays and the notice says what to send instead.
-func (e *Editor) Move(ctx context.Context, tg Telegram, rm ButtonRemover, userID, chatID, messageID int64) Reply {
-	log := e.svc.log.With("user_id", userID, "chat_id", chatID, "message_id", messageID)
-
-	step, err := e.svc.steps.PendingCommand(ctx, userID)
-	if err != nil {
-		log.ErrorContext(ctx, "read move step", "error", err)
-
-		return Reply{Notice: i18n.EditFailed}
-	}
-
-	what, id, ok := parseEditStep(step)
-	if !ok || what != moveStep {
-		return Reply{Stale: true}
-	}
-
-	g, r, ok := e.loadMovable(ctx, tg, log, userID, id)
-	if !ok {
-		return r
-	}
-
-	if key, ok := e.checkTarget(ctx, log, g, chatID, messageID); !ok {
-		return Reply{Notice: key, Next: step}
-	}
-
-	if r, ok := e.svc.claim(ctx, log, userID, step, ""); !ok {
-		return r
-	}
-
-	if messageID == g.MessageID {
-		return Reply{Notice: i18n.EditMoveSame, Next: editStep(menuStep, id)}
-	}
-
-	return e.move(ctx, tg, rm, log, userID, g, messageID)
+	return Reply{Notice: i18n.EditRestored}
 }
 
 // attachFailure returns the notice for a failed attach: the post is gone, or the bot may not
@@ -457,182 +198,6 @@ func attachFailure(err error) i18n.Key {
 	}
 
 	return i18n.EditNoRights
-}
-
-// Stop ends the wait for a forward or a field value: the edit ends at the forward, and the
-// menu shows again at a field.
-func (e *Editor) Stop(ctx context.Context, userID int64) Reply {
-	log := e.svc.log.With("user_id", userID)
-
-	current, err := e.svc.steps.PendingCommand(ctx, userID)
-	if err != nil {
-		log.ErrorContext(ctx, "read edit step", "error", err)
-
-		return Reply{Notice: i18n.EditFailed}
-	}
-
-	if !inEdit(current) {
-		return Reply{Stale: true}
-	}
-
-	if r, ok := e.svc.claim(ctx, log, userID, current, ""); !ok {
-		return r
-	}
-
-	if _, id, ok := parseEditStep(current); ok {
-		return Reply{Next: editStep(menuStep, id)}
-	}
-
-	return Reply{Notice: i18n.EditStopped}
-}
-
-// Menu returns the HTML field menu text of giveaway id and whether it is published. Each field
-// the creator can change ends with a link that asks the bot named botUsername for its value.
-func (e *Editor) Menu(ctx context.Context, id uint, lang, botUsername string) (string, bool, error) {
-	g, err := e.giveaways.ByID(ctx, id)
-	if err != nil {
-		return "", false, err //nolint:wrapcheck // Store already names the giveaway
-	}
-
-	counts, err := e.counter.Participants(ctx, []uint{id})
-	if err != nil {
-		return "", false, err //nolint:wrapcheck // Store already names the giveaway
-	}
-
-	status := i18n.EditStatusDraft
-
-	switch {
-	case g.Published:
-		status = i18n.EditStatusPublished
-	case g.CancelledAt != nil:
-		status = i18n.EditStatusCancelled
-	}
-
-	date, clock := "—", "—"
-	if g.EndsAt != nil {
-		ends := g.EndsAt.In(e.svc.kyiv)
-		date, clock = ends.Format(dateLayout), ends.Format(timeLayout)
-	}
-
-	edit := func(field string) string {
-		return `<a href="` + fieldLink(botUsername, field, id) + `">` + e.svc.texts.Text(lang, i18n.EditLink) + `</a>`
-	}
-
-	text := e.svc.texts.Text(lang, i18n.EditMenu,
-		e.svc.texts.Text(lang, status), postLink(g.ChatID, g.MessageID), date, clock, g.Winners, counts[id],
-		html.EscapeString(e.label(g)),
-		edit(FieldEndDate), edit(FieldEndTime), edit(FieldWinners), edit(FieldButtonText), edit(linkPost))
-
-	return text, g.Published, nil
-}
-
-// List returns the HTML text of page, from 1, of the user's running giveaways, then their
-// draft, then the giveaways whose results wait for review in a channel the user is an admin
-// of, as a bulleted list, and whether a next page exists. Each line links to its post and opens
-// its field menu or results review in the bot named botUsername. A running giveaway whose post
-// was deleted gets a warning, and a note under the list says how to move it.
-func (e *Editor) List(
-	ctx context.Context, tg Telegram, userID int64, page int, lang, botUsername string,
-) (string, bool, error) {
-	gs, err := e.giveaways.Running(ctx, userID)
-	if err != nil {
-		return "", false, err //nolint:wrapcheck // Store already names the user
-	}
-
-	d, err := e.svc.drafts.Draft(ctx, userID)
-	switch {
-	case err == nil:
-		gs = append(gs, d)
-	case !errors.Is(err, ErrNotFound):
-		return "", false, err //nolint:wrapcheck // Store already names the user
-	}
-
-	pending, err := e.pendingResults(ctx, tg, userID)
-	if err != nil {
-		return "", false, err
-	}
-
-	// ponytail: the list comes from three sources and an admin check in Telegram, so it is
-	// paged here, not in SQL; fine for a few dozen giveaways per admin.
-	all := slices.Concat(gs, pending)
-	offset := (page - 1) * pageSize
-	more := len(all) > offset+pageSize
-	all = all[min(offset, len(all)):]
-	all = all[:min(pageSize, len(all))]
-
-	if len(all) == 0 {
-		return e.svc.texts.Text(lang, i18n.EditListEmpty), false, nil
-	}
-
-	// Only drawn giveaways have pending results, and running ones come first.
-	split := slices.IndexFunc(all, func(g Giveaway) bool { return g.ResultsPending })
-	if split < 0 {
-		split = len(all)
-	}
-
-	lines, gone, err := e.runningLines(ctx, tg, lang, botUsername, all[:split])
-	if err != nil {
-		return "", false, err
-	}
-
-	for _, g := range all[split:] {
-		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListResults,
-			e.svc.texts.Text(lang, i18n.EditListMarkResults), postLink(g.ChatID, g.MessageID),
-			resultsLink(botUsername, g.ChatID, g.MessageID)))
-	}
-
-	text := e.svc.texts.Text(lang, i18n.EditList) + "\n\n" + strings.Join(lines, "\n")
-	if gone {
-		text += "\n\n" + e.svc.texts.Text(lang, i18n.EditListGoneNote)
-	}
-
-	return text, more, nil
-}
-
-// Default returns the value a field's default button stands for, or "" if it has none.
-func (e *Editor) Default(field, lang string) string {
-	return e.svc.Default(stepPrefix+field, lang)
-}
-
-// runningLines returns a /list line for every running giveaway and draft in gs, and whether
-// one of their posts was deleted.
-func (e *Editor) runningLines(
-	ctx context.Context, tg Telegram, lang, botUsername string, gs []Giveaway,
-) ([]string, bool, error) {
-	ids := make([]uint, 0, len(gs))
-	for _, g := range gs {
-		ids = append(ids, g.ID)
-	}
-
-	counts, err := e.counter.Participants(ctx, ids)
-	if err != nil {
-		return nil, false, err //nolint:wrapcheck // Store already names the giveaways
-	}
-
-	now := e.svc.now()
-	lines := make([]string, 0, len(gs))
-	gone := false
-
-	for _, g := range gs {
-		ends, mark := e.ends(g), i18n.EditListMarkPublished
-
-		switch {
-		case !g.Published:
-			ends += e.svc.texts.Text(lang, i18n.EditListDraft)
-			mark = i18n.EditListMarkDraft
-		case g.State(now) == Due:
-			ends += e.svc.texts.Text(lang, i18n.EditListDue)
-		case e.postGone(ctx, tg, g):
-			ends += e.svc.texts.Text(lang, i18n.EditListGone)
-			mark, gone = i18n.EditListMarkGone, true
-		}
-
-		lines = append(lines, e.svc.texts.Text(lang, i18n.EditListItem,
-			e.svc.texts.Text(lang, mark), postLink(g.ChatID, g.MessageID), editLink(botUsername, g.ChatID, g.MessageID),
-			ends, counts[g.ID], e.svc.texts.Text(lang, i18n.EditLink)))
-	}
-
-	return lines, gone, nil
 }
 
 // pendingResults returns the giveaways whose results wait for review in a channel the user is
@@ -667,29 +232,13 @@ func (e *Editor) pendingResults(ctx context.Context, tg Telegram, userID int64) 
 	return mine, nil
 }
 
-// askPublished returns the confirmation step of the published giveaway id.
-func (e *Editor) askPublished(ctx context.Context, tg Telegram, userID int64, id uint, step string) Reply {
-	g, r, ok := e.load(ctx, tg, userID, id)
-	if !ok {
-		return r
-	}
-
-	if !g.Published {
-		return Reply{Stale: true}
-	}
-
-	return Reply{Next: editStep(step, id)}
-}
-
 // save writes the changed fields of g, the post first when its button text changed.
 func (e *Editor) save(ctx context.Context, tg Telegram, log *slog.Logger, g, changed Giveaway) Reply {
-	menu := editStep(menuStep, g.ID)
-
 	if g.Published && changed.ButtonText != g.ButtonText {
 		if err := tg.AttachButton(ctx, g.ChatID, g.MessageID, changed.ButtonText); err != nil {
 			log.WarnContext(ctx, "change join button text", "error", err)
 
-			return Reply{Notice: attachFailure(err), Next: menu}
+			return Reply{Notice: attachFailure(err)}
 		}
 	}
 
@@ -701,77 +250,10 @@ func (e *Editor) save(ctx context.Context, tg Telegram, log *slog.Logger, g, cha
 	if err != nil {
 		log.ErrorContext(ctx, "save giveaway fields", "error", err)
 
-		return Reply{Notice: i18n.EditFailed, Next: menu}
+		return Reply{Notice: i18n.EditFailed}
 	}
 
-	return Reply{Next: menu}
-}
-
-// fill parses value as field into g and returns the error text for an invalid value.
-func (e *Editor) fill(g *Giveaway, field, value string) i18n.Key {
-	var errKey i18n.Key
-
-	switch field {
-	case FieldEndDate, FieldEndTime:
-		var ends *time.Time
-		if ends, errKey = e.newEnd(*g, field, value); errKey == "" {
-			g.EndsAt = ends
-		}
-	case FieldWinners:
-		var winners int
-		if winners, errKey = parseWinners(value); errKey == "" {
-			g.Winners = winners
-		}
-	case FieldButtonText:
-		var text string
-		if text, errKey = parseButtonText(value); errKey == "" {
-			g.ButtonText = text
-		}
-	}
-
-	return errKey
-}
-
-// newEnd returns g's end time with a new date or time of day. A new date keeps the time of
-// day, or takes the default end time when g has none. A new time keeps the date, or takes
-// today when g has none or its date has passed, as a due giveaway's has.
-func (e *Editor) newEnd(g Giveaway, field, value string) (*time.Time, i18n.Key) {
-	kyiv, now := e.svc.kyiv, e.svc.now()
-	today := now.In(kyiv).Format(dateLayout)
-
-	date, timeOfDay := e.svc.endDate(g), value
-	if field == FieldEndDate {
-		parsed, errKey := parseDate(value, kyiv, now)
-		if errKey != "" {
-			return nil, errKey
-		}
-
-		date, timeOfDay = parsed.Format(dateLayout), defaultEndTime
-		if g.EndsAt != nil {
-			timeOfDay = g.EndsAt.In(kyiv).Format(timeLayout)
-		}
-	}
-
-	if date < today {
-		date = today
-	}
-
-	ends, errKey := parseTime(date, timeOfDay, kyiv, now)
-	if errKey == i18n.GiveawayTimeInPast && field == FieldEndDate {
-		// The date is today, but the kept time of day has passed.
-		errKey = i18n.EditDateTimeInPast
-	}
-
-	return utcPtr(ends), errKey
-}
-
-// ends returns g's end time in Kyiv for display, or "—" for a giveaway without one.
-func (e *Editor) ends(g Giveaway) string {
-	if g.EndsAt == nil {
-		return "—"
-	}
-
-	return g.EndsAt.In(e.svc.kyiv).Format(dateLayout + " " + timeLayout)
+	return Reply{}
 }
 
 // load reads giveaway id and checks that the user may change it. On failure it returns the
@@ -818,29 +300,6 @@ func (e *Editor) check(ctx context.Context, tg Telegram, userID int64, g Giveawa
 	}
 }
 
-// loadMovable reads giveaway id for the move step and checks that the user may change it and
-// that it is not waiting for its draw. On failure it ends the step and returns the Reply that
-// names the failed check, and false. The step answers a message, which shows no popup, so a
-// giveaway that reached its end time meanwhile gets a notice rather than a stale reply.
-func (e *Editor) loadMovable(
-	ctx context.Context, tg Telegram, log *slog.Logger, userID int64, id uint,
-) (Giveaway, Reply, bool) {
-	g, r, ok := e.load(ctx, tg, userID, id)
-	if ok && !e.due(g) {
-		return g, Reply{}, true
-	}
-
-	if err := e.svc.steps.SetPendingCommand(ctx, userID, ""); err != nil {
-		log.ErrorContext(ctx, "clear move step", "error", err)
-	}
-
-	if ok {
-		return Giveaway{}, Reply{Notice: i18n.EditFinishing}, false
-	}
-
-	return Giveaway{}, r, false
-}
-
 // checkTarget checks that the post is in g's channel and carries no other giveaway. It
 // returns the notice that names the failed check and false, or true when both hold.
 func (e *Editor) checkTarget(
@@ -866,28 +325,6 @@ func (e *Editor) checkTarget(
 	default:
 		return i18n.EditMoveTaken, false
 	}
-}
-
-// move puts g on the post messageID. A failure that the user can fix by sending another post
-// keeps the move step.
-func (e *Editor) move(
-	ctx context.Context, tg Telegram, rm ButtonRemover, log *slog.Logger, userID int64, g Giveaway, messageID int64,
-) Reply {
-	key, retry := e.moveTo(ctx, tg, rm, log, g, messageID)
-
-	switch {
-	case key == i18n.EditFinished:
-		return Reply{Notice: key} // a finished giveaway has no menu
-	case !retry:
-		return Reply{Notice: key, Next: editStep(menuStep, g.ID)}
-	}
-
-	step := editStep(moveStep, g.ID)
-	if err := e.svc.steps.SetPendingCommand(ctx, userID, step); err != nil {
-		log.ErrorContext(ctx, "keep move step", "error", err)
-	}
-
-	return Reply{Notice: key, Next: step}
 }
 
 // moveTo puts g on the post messageID and returns the notice for the result, and whether
@@ -938,19 +375,6 @@ func (e *Editor) removeButton(ctx context.Context, rm ButtonRemover, log *slog.L
 	if err := rm.RemoveButton(ctx, g.ChatID, messageID); err != nil {
 		log.WarnContext(ctx, "remove join button", "giveaway_id", g.ID, "post", messageID, "error", err)
 	}
-}
-
-// postGone reports whether the post of the published g was deleted. The Bot API cannot read a
-// channel post, so it puts the same button on the post again: Telegram answers "not modified"
-// for a post that exists. Any other failure counts as not deleted.
-// ponytail: one Telegram call per running giveaway on every /list; fine for a few giveaways.
-func (e *Editor) postGone(ctx context.Context, tg Telegram, g Giveaway) bool {
-	err := tg.AttachButton(ctx, g.ChatID, g.MessageID, e.label(g))
-	if err != nil && !errors.Is(err, ErrPostGone) {
-		e.svc.log.WarnContext(ctx, "check giveaway post", "giveaway_id", g.ID, "error", err)
-	}
-
-	return errors.Is(err, ErrPostGone)
 }
 
 // label returns the join button text of g: its own text, or the default one.

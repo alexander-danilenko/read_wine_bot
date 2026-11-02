@@ -32,12 +32,6 @@ func (f *fakeRecorder) Clear(_ context.Context, _ *bot.Bot, id int64) {
 	f.calls = append(f.calls, fmt.Sprintf("clear %d", id))
 }
 
-func (f *fakeRecorder) SetPendingCommand(_ context.Context, id int64, command string) error {
-	f.calls = append(f.calls, fmt.Sprintf("pending %s %d", command, id))
-
-	return f.err
-}
-
 func privateMessage(text string) *models.Update {
 	return &models.Update{Message: &models.Message{
 		Text: text,
@@ -75,11 +69,11 @@ func TestMiddleware(t *testing.T) {
 	}{
 		{"plain message", privateMessage("hello"), []string{"record Olena Koval 7"}},
 		{"number keeps the step", privateMessage("5"), []string{"record Olena Koval 7"}},
-		{"start clears", privateMessage("/start"), []string{"record Olena Koval 7", "pending  7", "clear 7"}},
+		{"start clears", privateMessage("/start"), []string{"record Olena Koval 7", "clear 7"}},
 		{
 			"any command clears",
 			privateMessage("/giveaway@read_wine_bot"),
-			[]string{"record Olena Koval 7", "pending  7", "clear 7"},
+			[]string{"record Olena Koval 7", "clear 7"},
 		},
 		{
 			"former menu label keeps the step",

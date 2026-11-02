@@ -49,27 +49,13 @@ type ReviewTelegram interface {
 	SendHTML(ctx context.Context, chatID, replyTo int64, text string) error
 }
 
-// ReviewScreen is what results review shows next in place of the tapped message.
-type ReviewScreen int
-
-// Results review screens.
-const (
-	NoScreen      ReviewScreen = iota // nothing to show
-	ResultsScreen                     // the winners with their reroll buttons and Publish
-	RerollScreen                      // asks to confirm replacing one winner
-	PublishScreen                     // asks to confirm publishing
-	SkipScreen                        // asks to confirm closing without publishing
-)
-
 // ReviewReply is the outcome of a results review action: a notice to send, the screen to
 // show, or neither for a tap whose button no longer applies.
 type ReviewReply struct {
-	Notice   i18n.Key     // sent below; "" for none
-	Screen   ReviewScreen // shown in place of the tapped message, or below the notice
+	Notice   i18n.Key // what happened; "" for nothing to say
 	Giveaway Giveaway
 	Results  Results
-	Winner   Winner // the winner RerollScreen asks about
-	Stale    bool   // the button no longer applies: the "outdated" popup, nothing else
+	Stale    bool // the action no longer applies, so nothing changed
 }
 
 // Reviewer holds the rules of results review: who may review, how a winner is replaced and
@@ -101,30 +87,6 @@ func NewReviewer(
 	}
 }
 
-// Open shows the results review of the giveaway on the channel post, from a /list link.
-func (r *Reviewer) Open(ctx context.Context, tg ReviewTelegram, userID, chatID, messageID int64) ReviewReply {
-	g, err := r.store.Post(ctx, chatID, messageID)
-	if errors.Is(err, ErrNotFound) {
-		return ReviewReply{Notice: i18n.EditNotFound}
-	}
-
-	if err != nil {
-		r.log.ErrorContext(ctx, "find giveaway to review",
-			"user_id", userID, "chat_id", chatID, "message_id", messageID, "error", err)
-
-		return ReviewReply{Notice: i18n.EditFailed}
-	}
-
-	switch {
-	case g.FinishedAt == nil:
-		return ReviewReply{Notice: i18n.EditNotFound}
-	case !g.ResultsPending:
-		return ReviewReply{Notice: i18n.ReviewNotPending}
-	}
-
-	return r.Show(ctx, tg, userID, g.ID)
-}
-
 // Show shows the results review of giveaway id.
 func (r *Reviewer) Show(ctx context.Context, tg ReviewTelegram, userID int64, id uint) ReviewReply {
 	g, res, reply, ok := r.load(ctx, tg, userID, id)
@@ -132,22 +94,7 @@ func (r *Reviewer) Show(ctx context.Context, tg ReviewTelegram, userID int64, id
 		return reply
 	}
 
-	return ReviewReply{Screen: ResultsScreen, Giveaway: g, Results: res}
-}
-
-// AskReroll asks to confirm replacing winner out of giveaway id.
-func (r *Reviewer) AskReroll(ctx context.Context, tg ReviewTelegram, userID int64, id uint, out int64) ReviewReply {
-	g, res, reply, ok := r.load(ctx, tg, userID, id)
-	if !ok {
-		return reply
-	}
-
-	w, ok := winner(res, out)
-	if !ok {
-		return ReviewReply{Stale: true}
-	}
-
-	return ReviewReply{Screen: RerollScreen, Giveaway: g, Results: res, Winner: w}
+	return ReviewReply{Giveaway: g, Results: res}
 }
 
 // Reroll replaces winner out of giveaway id with a random eligible participant who passes
@@ -168,7 +115,7 @@ func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, 
 	if err != nil {
 		log.ErrorContext(ctx, "pick replacement winner", "error", err)
 
-		return ReviewReply{Notice: i18n.EditFailed, Screen: ResultsScreen, Giveaway: g, Results: res}
+		return ReviewReply{Notice: i18n.EditFailed, Giveaway: g, Results: res}
 	}
 
 	err = r.rerolls.Reroll(ctx, id, out, in, r.now())
@@ -179,7 +126,7 @@ func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, 
 	if err != nil {
 		log.ErrorContext(ctx, "reroll winner", "winner_id", out, "error", err)
 
-		return ReviewReply{Notice: i18n.EditFailed, Screen: ResultsScreen, Giveaway: g, Results: res}
+		return ReviewReply{Notice: i18n.EditFailed, Giveaway: g, Results: res}
 	}
 
 	log.InfoContext(ctx, "winner rerolled", "winner_id", out, "replacement_id", in)
@@ -191,19 +138,7 @@ func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, 
 		return ReviewReply{Notice: i18n.EditFailed}
 	}
 
-	return ReviewReply{Screen: ResultsScreen, Giveaway: g, Results: res}
-}
-
-// AskPublish asks to confirm publishing the results of giveaway id that the admin saw with
-// rerolled participants rerolled out.
-func (r *Reviewer) AskPublish(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
-	return r.ask(ctx, tg, userID, id, rerolled, PublishScreen)
-}
-
-// AskSkip asks to confirm closing giveaway id without publishing the results that the admin
-// saw with rerolled participants rerolled out.
-func (r *Reviewer) AskSkip(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
-	return r.ask(ctx, tg, userID, id, rerolled, SkipScreen)
+	return ReviewReply{Giveaway: g, Results: res}
 }
 
 // Skip closes giveaway id without posting its results, if they are still the results the
@@ -229,7 +164,7 @@ func (r *Reviewer) Skip(ctx context.Context, tg ReviewTelegram, userID int64, id
 	if err != nil {
 		log.ErrorContext(ctx, "claim giveaway results to skip", "error", err)
 
-		return ReviewReply{Notice: i18n.EditFailed, Screen: ResultsScreen, Giveaway: g, Results: res}
+		return ReviewReply{Notice: i18n.EditFailed, Giveaway: g, Results: res}
 	}
 
 	log.InfoContext(ctx, "giveaway results skipped")
@@ -261,7 +196,7 @@ func (r *Reviewer) Publish(ctx context.Context, tg ReviewTelegram, userID int64,
 	if err != nil {
 		log.ErrorContext(ctx, "claim giveaway results", "error", err)
 
-		return ReviewReply{Notice: i18n.EditFailed, Screen: ResultsScreen, Giveaway: g, Results: res}
+		return ReviewReply{Notice: i18n.EditFailed, Giveaway: g, Results: res}
 	}
 
 	// The results are claimed: post them, or give the claim back, even if shutdown has begun.
@@ -286,93 +221,12 @@ func (r *Reviewer) Publish(ctx context.Context, tg ReviewTelegram, userID int64,
 			return ReviewReply{Notice: i18n.EditFailed}
 		}
 
-		return ReviewReply{Notice: i18n.ReviewPublishFailed, Screen: ResultsScreen, Giveaway: g, Results: res}
+		return ReviewReply{Notice: i18n.ReviewPublishFailed, Giveaway: g, Results: res}
 	}
 
 	log.InfoContext(ctx, "giveaway results published", "winners", len(res.Winners))
 
 	return ReviewReply{Notice: i18n.ReviewPublished}
-}
-
-// Results returns the results review of g for its creator, after the draw: no admin check,
-// because the bot sends it to the creator itself.
-func (r *Reviewer) Results(ctx context.Context, g Giveaway) (ReviewReply, error) {
-	res, err := r.store.Results(ctx, g.ID)
-	if err != nil {
-		return ReviewReply{}, err //nolint:wrapcheck // the store's error names the giveaway
-	}
-
-	return ReviewReply{Screen: ResultsScreen, Giveaway: g, Results: res}, nil
-}
-
-// ReviewText returns the results review of g as HTML: a header, the channels of subs and
-// one numbered line per winner with the winner's subscription mark, name and channels.
-// Names are shortened as needed so the text fits one Telegram message; when that would
-// leave them too short, the winner lines drop their channels.
-func (r *Reviewer) ReviewText(lang string, g Giveaway, res Results, subs Subscriptions) string {
-	link := postLink(g.ChatID, g.MessageID)
-	if len(res.Winners) == 0 {
-		return r.texts.Text(lang, i18n.ReviewNoWinners, link)
-	}
-
-	header := r.texts.Text(lang, i18n.ReviewResults, link)
-	if len(subs.Channels) > 0 {
-		list, _ := subs.list()
-		header += "\n" + r.texts.Text(lang, i18n.ReviewChannels, list)
-	}
-
-	// The header's markup counts as visible here, which only leaves the names more room
-	// than they need.
-	room := r.maxWidth - utf16Len(header) - 1
-	prefixes := make([]string, len(res.Winners))
-	suffixes := make([]string, len(res.Winners))
-	suffixLen := 0
-
-	for i, w := range res.Winners {
-		prefixes[i] = "\n" + strconv.Itoa(place(w, i)) + ". " + subs.mark(g, w.TelegramID) + " "
-		room -= utf16Len(prefixes[i])
-
-		var n int
-		suffixes[i], n = subs.line(w.TelegramID)
-		suffixLen += n
-	}
-
-	if (room-suffixLen)/len(res.Winners) < minNameWidth {
-		clear(suffixes)
-	} else {
-		room -= suffixLen
-	}
-
-	width := max(1, room/len(res.Winners))
-	lines := make([]string, 0, len(res.Winners))
-
-	for i, w := range res.Winners {
-		lines = append(lines, prefixes[i]+userLink(w.User, width)+suffixes[i])
-	}
-
-	return header + "\n" + strings.Join(lines, "")
-}
-
-// RerollText returns the confirmation for replacing winner w as HTML.
-func (r *Reviewer) RerollText(lang string, i int, w Winner) string {
-	return r.texts.Text(lang, i18n.ReviewAskReroll, place(w, i), userLink(w.User, r.maxWidth))
-}
-
-// ask shows the confirmation screen for the results of giveaway id that the admin saw with
-// rerolled participants rerolled out.
-func (r *Reviewer) ask(
-	ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int, screen ReviewScreen,
-) ReviewReply {
-	g, res, reply, ok := r.load(ctx, tg, userID, id)
-	if !ok {
-		return reply
-	}
-
-	if res.Rerolled != rerolled {
-		return ReviewReply{Stale: true}
-	}
-
-	return ReviewReply{Screen: screen, Giveaway: g, Results: res}
 }
 
 // load reads giveaway id and its results and checks that they wait for review and that the
@@ -495,15 +349,6 @@ func winner(res Results, id int64) (Winner, bool) {
 	}
 
 	return Winner{}, false
-}
-
-// place returns the place the review shows winner w, the i-th in the results, at.
-func place(w Winner, i int) int {
-	if w.Place > 0 {
-		return w.Place
-	}
-
-	return i + 1
 }
 
 func winnerUsers(res Results) []user.User {

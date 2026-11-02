@@ -2,29 +2,13 @@ package giveaway
 
 import (
 	"context"
-	"html"
 	"log/slog"
 	"slices"
-	"strings"
 	"sync"
 )
 
 // checksAtOnce caps the Telegram calls one review sends at the same time.
 const checksAtOnce = 8
-
-// titleWidth is how many UTF-16 code units of a channel title a winner line shows.
-const titleWidth = 20
-
-// minNameWidth is the narrowest a winner's name gets before the winner lines drop their
-// channel titles and keep only the mark.
-const minNameWidth = 10
-
-// Marks of a winner's subscription to the giveaway's channel, and of a check that failed.
-const (
-	markSubscribed    = "✅"
-	markNotSubscribed = "⚠️"
-	markUnknown       = "❔"
-)
 
 // Channels lists the channels where the bot is an admin. *channel.Store implements it.
 type Channels interface {
@@ -160,84 +144,4 @@ func readable(infos []*ChannelInfo, winners []Winner, subs [][]Subscription) Sub
 	}
 
 	return res
-}
-
-// mark returns the mark of the winner's subscription to the giveaway's channel.
-func (s Subscriptions) mark(g Giveaway, telegramID int64) string {
-	if len(s.Channels) == 0 || s.Channels[0].ID != g.ChatID {
-		return markUnknown
-	}
-
-	switch s.Of[telegramID][0] {
-	case Subscribed:
-		return markSubscribed
-	case NotSubscribed:
-		return markNotSubscribed
-	case SubscriptionUnknown:
-	}
-
-	return markUnknown
-}
-
-// line returns the channels the winner is subscribed to, as HTML links with titles shortened
-// to titleWidth, and the length the text shows. Unknown checks are marked; channels the winner
-// is not subscribed to are left out.
-func (s Subscriptions) line(telegramID int64) (string, int) {
-	links := make([]string, 0, len(s.Of[telegramID]))
-	visible := 0
-
-	for c, sub := range s.Of[telegramID] {
-		prefix := ""
-
-		switch sub {
-		case NotSubscribed:
-			continue
-		case SubscriptionUnknown:
-			prefix = markUnknown
-		case Subscribed:
-		}
-
-		title := shorten(s.Channels[c].Title, titleWidth)
-		links = append(links, prefix+channelLink(s.Channels[c], title))
-		visible += utf16Len(prefix) + utf16Len(title)
-	}
-
-	if len(links) == 0 {
-		return "", 0
-	}
-
-	const sep, lead = ", ", " — "
-
-	visible += utf16Len(lead) + len(sep)*(len(links)-1)
-
-	return lead + strings.Join(links, sep), visible
-}
-
-// list returns every channel as a full-title HTML link joined with " · ", and the length the
-// text shows.
-func (s Subscriptions) list() (string, int) {
-	const sep = " · "
-
-	links := make([]string, 0, len(s.Channels))
-	visible := 0
-
-	for _, c := range s.Channels {
-		links = append(links, channelLink(c, c.Title))
-		visible += utf16Len(c.Title)
-	}
-
-	visible += utf16Len(sep) * max(0, len(links)-1)
-
-	return strings.Join(links, sep), visible
-}
-
-// channelLink returns an HTML link to channel c that shows title: its public username, or
-// the t.me/c link for a channel without one, which opens only for its subscribers.
-func channelLink(c ChannelInfo, title string) string {
-	href := "https://t.me/c/" + channelPart(c.ID)
-	if c.Username != "" {
-		href = "https://t.me/" + c.Username
-	}
-
-	return `<a href="` + href + `">` + html.EscapeString(title) + "</a>"
 }

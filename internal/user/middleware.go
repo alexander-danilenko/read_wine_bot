@@ -9,10 +9,9 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-// Recorder saves what the middleware learns from each update.
+// Recorder saves the profiles the middleware learns from each update.
 type Recorder interface {
 	Record(ctx context.Context, p Profile) error
-	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
 }
 
 // Clearer deletes the message with buttons in a user's private chat. *keyboard.Tracker
@@ -23,10 +22,9 @@ type Clearer interface {
 
 // Middleware returns a bot middleware that runs before every handler. It records the profile
 // of whoever sent the update, in any chat, so the users table always has current profiles and
-// their revisions. A private command clears the pending command and deletes the message with
-// buttons, so the user leaves any unfinished setup; the handler that runs next may start a
-// new one. A store error is logged and the
-// handler still runs, so a database problem never silences a reply.
+// their revisions. A private command deletes the message with buttons, so only the command's
+// answer is live. A store error is logged and the handler still runs, so a database problem
+// never silences a reply.
 func Middleware(store Recorder, kb Clearer, log *slog.Logger) bot.Middleware {
 	return func(next bot.HandlerFunc) bot.HandlerFunc {
 		return func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -34,11 +32,7 @@ func Middleware(store Recorder, kb Clearer, log *slog.Logger) bot.Middleware {
 				recordSender(ctx, store, log, from)
 			}
 
-			if msg := update.Message; leaves(msg) {
-				if err := store.SetPendingCommand(ctx, msg.From.ID, ""); err != nil {
-					log.ErrorContext(ctx, "save pending command", "user_id", msg.From.ID, "error", err)
-				}
-
+			if msg := update.Message; isCommand(msg) {
 				kb.Clear(ctx, b, msg.From.ID)
 			}
 
@@ -47,8 +41,8 @@ func Middleware(store Recorder, kb Clearer, log *slog.Logger) bot.Middleware {
 	}
 }
 
-// leaves reports whether msg is a private command, which leaves any unfinished setup.
-func leaves(msg *models.Message) bool {
+// isCommand reports whether msg is a command in a private chat.
+func isCommand(msg *models.Message) bool {
 	return msg != nil && msg.From != nil && msg.Chat.Type == models.ChatTypePrivate && strings.HasPrefix(msg.Text, "/")
 }
 

@@ -29,12 +29,13 @@
 - 🎟️ **Join button.** Adds a join button under a channel post and collects participants.
 - 🎲 **Random draw.** Draws winners at random when the giveaway ends.
 - 🔍 **Review before publishing.** Channel admins see which channels each winner is subscribed to, and can replace a winner. Then they publish the results under the post, or close the giveaway without results.
+- 📱 **Mini App.** Admins create, edit and review giveaways in a Telegram Mini App that opens from the chat with the bot.
 
 ## 🔄 How a giveaway works
 
 ```mermaid
 flowchart LR
-    A["📨 Admin forwards a post<br/>to the bot"] --> B["⚙️ Setup<br/>end time, winners, button text"]
+    A["📱 Admin opens the app<br/>and pastes a post link"] --> B["⚙️ Form<br/>end time, winners, button text"]
     B --> C["🎟️ Join button<br/>appears under the post"]
     C --> D["👆 Subscribers tap<br/>to join"]
     D --> E["⏰ End time:<br/>random draw"]
@@ -48,7 +49,7 @@ flowchart LR
 | Who | What they do | What they grant |
 | --- | --- | --- |
 | 👑 Channel owner | Adds the bot to the channel as an admin. | The giveaway permissions below. |
-| 🛠️ Channel admin | Creates, edits and reviews giveaways in a private chat with the bot. | Nothing. Telegram tells the bot who the channel's admins are. |
+| 🛠️ Channel admin | Creates, edits and reviews giveaways in the bot's Mini App. | Nothing. Telegram tells the bot who the channel's admins are. |
 | 🤝 Giveaway partner | Runs a giveaway together with a channel owner. Winners must also subscribe to the partner's channel. | The partner permissions below. |
 | 🎉 Participant | Taps the join button under the giveaway post. | Nothing. |
 
@@ -68,7 +69,7 @@ You can also go to **Administrators → Add Admin → @read_wine_bot** in the ch
 | ✅ **Manage messages → Post messages** | Publishes the giveaway results as a reply to the giveaway post. |
 | ✅ **Manage messages → Edit messages of others** | Adds the join button under your post. Removes the button when the giveaway ends. |
 
-When an admin starts a giveaway, the bot checks both permissions. If one permission is missing, the bot stops the setup.
+When an admin creates a giveaway, the bot checks both permissions. If one permission is missing, the bot does not create the giveaway.
 
 As an admin, the bot can also check winner subscriptions. Telegram does not give them to bots that are not admins.
 
@@ -114,6 +115,7 @@ You need:
 
 - 🐘 a PostgreSQL database (tested with PostgreSQL 18). The bot creates its tables on the first start.
 - 🔑 a bot token from [@BotFather](https://t.me/BotFather).
+- 🌐 a public HTTPS address for the Mini App, for example a domain behind a reverse proxy. Telegram opens Mini Apps only over HTTPS. The bot listens on `LISTEN_ADDR` (default `:8080`); the proxy forwards the address to it. Set the same address as `APP_URL` and as the Mini App URL in @BotFather.
 
 Then, on Windows, macOS or Linux:
 
@@ -131,15 +133,20 @@ Before it starts, the bot checks every setting, the database and the token. If a
 > [!TIP]
 > If the system blocks the downloaded binary, unblock it once: `Unblock-File .\read_wine_bot.exe` in PowerShell on Windows, `xattr -d com.apple.quarantine read_wine_bot` on macOS.
 
-### 🐹 With `go install`
+### 🐹 Build from source
 
-If you have Go 1.27 or newer, you can install the bot with one command instead of the download:
+The binary embeds the Mini App, so build the app first. You need Go 1.27 or newer and Node.js 26:
 
 ```sh
-go install github.com/alexander-danilenko/read_wine_bot@latest
+git clone https://github.com/alexander-danilenko/read_wine_bot.git
+cd read_wine_bot
+npm --prefix web ci --ignore-scripts
+npm --prefix web run build
+go build .
 ```
 
-Go puts the binary in `$(go env GOPATH)/bin`. This method does not install `.env.example`. Create `.env` with the keys from [.env.example](.env.example), then run `read_wine_bot` from the folder that holds `.env`.
+> [!WARNING]
+> `go install` does not work: it builds without the Mini App, and the bot then stops at startup.
 
 ## 🧭 Where to read next
 

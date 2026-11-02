@@ -42,7 +42,6 @@ type ReviewView struct {
 func reviewProblems() map[i18n.Key]AppError {
 	return map[i18n.Key]AppError{
 		i18n.ReviewNotAdmin:        {Code: CodeNotAdmin},
-		i18n.ReviewNotPending:      {Code: CodeReviewClosed},
 		i18n.ReviewPublishFailed:   {Code: CodeBotNoRights},
 		i18n.ReviewPublishedPartly: {Code: CodePublishedPartly},
 		i18n.EditNotFound:          {Code: CodeNotFound},

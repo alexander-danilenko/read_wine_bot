@@ -60,21 +60,11 @@ func noticeProblems() map[i18n.Key]AppError {
 		i18n.EditNotYours:              {Code: CodeNotYours},
 		i18n.EditFinished:              {Code: CodeFinished},
 		i18n.EditNotAdmin:              {Code: CodeNotAdmin},
-		i18n.GiveawayNotAdmin:          {Code: CodeNotAdmin, Field: FieldPostLink},
 		i18n.EditNoRights:              {Code: CodeBotNoRights},
-		i18n.GiveawayNoRights:          {Code: CodeBotNoRights, Field: FieldPostLink},
 		i18n.EditPostGone:              {Code: CodePostGone},
-		i18n.GiveawayExists:            {Code: CodeExists, Field: FieldPostLink},
-		i18n.GiveawayTaken:             {Code: CodeTaken, Field: FieldPostLink},
 		i18n.EditMoveTaken:             {Code: CodeTaken, Field: FieldPostLink},
 		i18n.EditMoveOtherChannel:      {Code: CodeOtherChannel, Field: FieldPostLink},
 		i18n.EditEndPassed:             {Code: CodeEndInPast, Field: FieldEndsAt},
-		i18n.GiveawayInvalidDate:       {Code: CodeInvalidEnd, Field: FieldEndsAt},
-		i18n.GiveawayInvalidTime:       {Code: CodeInvalidEnd, Field: FieldEndsAt},
-		i18n.GiveawayDateInPast:        {Code: CodeEndInPast, Field: FieldEndsAt},
-		i18n.GiveawayTimeInPast:        {Code: CodeEndInPast, Field: FieldEndsAt},
-		i18n.EditDateTimeInPast:        {Code: CodeEndInPast, Field: FieldEndsAt},
-		i18n.GiveawayInvalidWinners:    {Code: CodeInvalidWinners, Field: FieldWinners},
 		i18n.GiveawayInvalidButtonText: {Code: CodeInvalidButtonText, Field: FieldButtonText},
 	}
 }
@@ -107,11 +97,22 @@ func replyErr(r Reply) error {
 
 // startErr returns the AppError a post check outcome stands for, or nil for Created.
 func startErr(r StartResult) error {
-	if r == Created {
+	switch r {
+	case Created:
 		return nil
+	case Exists:
+		return &AppError{Code: CodeExists, Field: FieldPostLink}
+	case Taken:
+		return &AppError{Code: CodeTaken, Field: FieldPostLink}
+	case NotAdmin:
+		return &AppError{Code: CodeNotAdmin, Field: FieldPostLink}
+	case NoRights:
+		return &AppError{Code: CodeBotNoRights, Field: FieldPostLink}
+	case Failed:
+		return &AppError{Code: CodeFailed}
+	default:
+		return &AppError{Code: CodeFailed}
 	}
-
-	return replyErr(Reply{Notice: startText(r)})
 }
 
 // Status is where a giveaway is, as the Mini App shows it.

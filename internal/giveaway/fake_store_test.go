@@ -213,35 +213,6 @@ func (f *memStore) WinnerCounts(_ context.Context, ids []uint) (map[uint]int, er
 	return counts, nil
 }
 
-// Running sorts giveaways without an end time last, as Postgres sorts NULLs in ascending order.
-func (f *memStore) Running(_ context.Context, userID int64) ([]giveaway.Giveaway, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	var gs []giveaway.Giveaway
-
-	for _, id := range f.ids() {
-		if g := f.rows[id]; g.CreatedBy == userID && g.Published && g.FinishedAt == nil {
-			gs = append(gs, *g)
-		}
-	}
-
-	slices.SortStableFunc(gs, func(a, b giveaway.Giveaway) int {
-		switch {
-		case a.EndsAt == nil && b.EndsAt == nil:
-			return 0
-		case a.EndsAt == nil:
-			return 1
-		case b.EndsAt == nil:
-			return -1
-		default:
-			return a.EndsAt.Compare(*b.EndsAt)
-		}
-	})
-
-	return gs, nil
-}
-
 // Managed lists the user's unfinished published or cancelled giveaways, as Store.Managed.
 func (f *memStore) Managed(_ context.Context, userID int64) ([]giveaway.Giveaway, error) {
 	f.mu.Lock()
@@ -350,44 +321,15 @@ func (f *memStore) ids() []uint {
 	return ids
 }
 
-// finish marks giveaway id finished, as the draw does.
-func (f *memStore) finish(t *testing.T, id uint) {
-	t.Helper()
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	g, ok := f.rows[id]
-	if !ok {
-		t.Fatalf("finish: no giveaway %d", id)
-	}
-
-	now := time.Now()
-	g.FinishedAt = &now
-}
-
-// draw marks giveaway id finished with its results waiting for review, as the draw does.
-func (f *memStore) draw(t *testing.T, id uint) {
-	t.Helper()
-
-	f.finish(t, id)
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.rows[id].ResultsPending = true
-}
-
 // fakeUsers keeps each user's language, pending command and keyboard message in memory.
 type fakeUsers struct {
 	mu       sync.Mutex
 	language map[int64]string
-	pending  map[int64]string
 	keyboard map[int64]int64
 }
 
 func newFakeUsers() *fakeUsers {
-	return &fakeUsers{language: map[int64]string{}, pending: map[int64]string{}, keyboard: map[int64]int64{}}
+	return &fakeUsers{language: map[int64]string{}, keyboard: map[int64]int64{}}
 }
 
 func (f *fakeUsers) KeyboardMessage(_ context.Context, telegramID int64) (int64, error) {
@@ -411,35 +353,6 @@ func (f *fakeUsers) Language(_ context.Context, telegramID int64) (string, error
 	defer f.mu.Unlock()
 
 	return f.language[telegramID], nil
-}
-
-func (f *fakeUsers) PendingCommand(_ context.Context, telegramID int64) (string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return f.pending[telegramID], nil
-}
-
-func (f *fakeUsers) SetPendingCommand(_ context.Context, telegramID int64, command string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.pending[telegramID] = command
-
-	return nil
-}
-
-func (f *fakeUsers) MovePendingCommand(_ context.Context, telegramID int64, from, to string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if f.pending[telegramID] != from {
-		return false, nil
-	}
-
-	f.pending[telegramID] = to
-
-	return true, nil
 }
 
 // publish saves g as its creator's draft and publishes it, the way Confirm does.

@@ -1,73 +1,28 @@
 package giveaway_test
 
 import (
-	"context"
 	"log/slog"
-	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
-	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
-	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
 
-// resultsStore adds fixed results to memStore, for the review sent after a draw.
-type resultsStore struct {
-	*memStore
-
-	results giveaway.Results
-}
-
-func (s resultsStore) Results(context.Context, uint) (giveaway.Results, error) { return s.results, nil }
-
-func (resultsStore) Eligible(context.Context, uint) ([]user.User, error) { return nil, nil }
-
-func (resultsStore) Reroll(context.Context, uint, int64, int64, time.Time) error {
-	return giveaway.ErrNotFound
-}
-
-func (resultsStore) ClaimResults(context.Context, uint, int) error { return giveaway.ErrNotFound }
-
-func (resultsStore) ReleaseResults(context.Context, uint) error { return nil }
-
-// noChannels is a bot that is an admin of no channel but the giveaway's own.
-type noChannels struct{}
-
-func (noChannels) AdminChannels(context.Context) ([]int64, error) { return nil, nil }
-
-func (h *handlerSetup) notifier(results giveaway.Results) *giveaway.ReviewNotifier {
-	store := resultsStore{memStore: h.store, results: results}
-	log := slog.New(slog.DiscardHandler)
-	rv := giveaway.NewReviewer(
-		store,
-		store,
-		store,
-		noChannels{},
-		giveaway.AcceptAll,
-		rand.Shuffle,
-		h.texts,
-		time.Now,
-		log,
-	)
-
-	return giveaway.NewReviewNotifier(rv, h.users, h.texts, h.kb, "https://bot.example/app", log)
-}
+const appURL = "https://bot.example/app"
 
 func TestSendReviewToCreator(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := publish(t, h.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "en"})
 	h.users.keyboard[adminID] = 77 // an older message with buttons
 
-	results := giveaway.Results{Winners: []giveaway.Winner{{TelegramID: 5, FirstName: "Ann", Place: 1}}}
-	h.notifier(results).SendReview(t.Context(), h.bot, g)
+	giveaway.NewReviewNotifier(h.users, h.texts, h.kb, appURL, slog.New(slog.DiscardHandler)).
+		SendReview(t.Context(), h.bot, g)
 
 	sent := h.sent()
-	if len(sent) != 1 || !strings.Contains(sent[0], `href="tg://user?id=5"`) {
-		t.Fatalf("sent %q, want the review linking the winner", sent)
+	if len(sent) != 1 || !strings.Contains(sent[0], "https://t.me/c/1234567890/42") {
+		t.Fatalf("sent %q, want one message linking the post", sent)
 	}
 
 	if !slices.Contains(h.deleted(), "77") {
@@ -75,31 +30,25 @@ func TestSendReviewToCreator(t *testing.T) {
 	}
 
 	rows := h.keyboard(t)
-	if len(rows) != 4 || !strings.HasPrefix(rows[0][0].CallbackData, giveaway.ReviewCallbackPrefix) {
-		t.Fatalf("rows = %+v, want one reroll row, the publish row, the skip row and the app row", rows)
+	if len(rows) != 1 || len(rows[0]) != 1 {
+		t.Fatalf("rows = %+v, want one button", rows)
 	}
 
-	app := rows[3][0]
-	if want := "https://bot.example/app?review=" + strconv.FormatUint(
-		uint64(g.ID),
-		10,
-	); app.WebApp == nil ||
-		app.WebApp.URL != want {
-		t.Errorf("last button = %+v, want a web_app button to %s", app, want)
+	want := appURL + "?review=" + strconv.FormatUint(uint64(g.ID), 10)
+	if b := rows[0][0]; b.WebApp == nil || b.WebApp.URL != want {
+		t.Errorf("button = %+v, want a web_app button to %s", b, want)
 	}
 }
 
-func TestSendReviewWaitsForOpenStep(t *testing.T) {
+func TestSendReviewInCreatorsLanguage(t *testing.T) {
 	h := newHandlerSetup(t)
 	g := publish(t, h.store, &giveaway.Giveaway{ChatID: channelID, MessageID: 42, CreatedBy: adminID, Language: "en"})
-	h.users.keyboard[adminID] = 77 // the open step's prompt
-	h.users.pending[adminID] = "edit:winners:1"
+	h.users.language[adminID] = "uk"
 
-	h.notifier(giveaway.Results{}).SendReview(t.Context(), h.bot, g)
+	giveaway.NewReviewNotifier(h.users, h.texts, h.kb, appURL, slog.New(slog.DiscardHandler)).
+		SendReview(t.Context(), h.bot, g)
 
-	h.wantSilent(t, h.texts.Text("en", i18n.ReviewWaiting, "https://t.me/c/1234567890/42"))
-
-	if len(h.deleted()) != 0 {
-		t.Errorf("deleted %v, want the open step's prompt kept", h.deleted())
+	if rows := h.keyboard(t); len(rows) != 1 || rows[0][0].Text != h.texts.Text("uk", "review.open_app") {
+		t.Errorf("rows = %+v, want the Ukrainian button", rows)
 	}
 }

@@ -26,9 +26,6 @@ type User struct {
 	IsPremium    bool   `gorm:"not null;default:false;comment:Whether the user has Telegram Premium"`
 	Revision     int    `gorm:"not null;default:0;comment:Number of the latest row in user_revisions for this user, 0 before the first"`
 	Language     string `gorm:"size:16;not null;comment:Bot language the user chose from the menu (locale code from internal/i18n), empty if never chosen"`
-	// PendingCommand is what the bot waits for in the user's next message, such as a giveaway
-	// setup step, or "" for nothing.
-	PendingCommand string `gorm:"size:32;not null;default:'';comment:What the bot waits for in the user's next private message, such as a giveaway setup step, empty for nothing"`
 	// KeyboardMessageID is the bot's latest message with buttons in the user's private chat,
 	// which the bot deletes before it sends the next one.
 	KeyboardMessageID int64     `gorm:"not null;default:0;comment:ID of the bot's latest message with buttons in the user's private chat, deleted before the bot sends the next one, 0 for none"`
@@ -60,39 +57,6 @@ func (s *Store) Language(ctx context.Context, telegramID int64) (string, error) 
 func (s *Store) SetLanguage(ctx context.Context, telegramID int64, lang string) error {
 	if err := s.upsert(ctx, &User{TelegramID: telegramID, Language: lang}, "language"); err != nil {
 		return fmt.Errorf("save language of user %d: %w", telegramID, err)
-	}
-
-	return nil
-}
-
-// MovePendingCommand changes the user's pending command from to to, and reports whether
-// it did; it does nothing unless the pending command equals from. It is one conditional
-// update, so when several updates race for one step, exactly one of them moves it.
-func (s *Store) MovePendingCommand(ctx context.Context, telegramID int64, from, to string) (bool, error) {
-	res := s.db.WithContext(ctx).Model(&User{}).
-		Where("telegram_id = ? AND pending_command = ?", telegramID, from).
-		Update("pending_command", to)
-	if res.Error != nil {
-		return false, fmt.Errorf("move pending command of user %d: %w", telegramID, res.Error)
-	}
-
-	return res.RowsAffected == 1, nil
-}
-
-// PendingCommand returns the user's pending command, or "" if there is none.
-func (s *Store) PendingCommand(ctx context.Context, telegramID int64) (string, error) {
-	u, err := s.read(ctx, telegramID, "pending_command")
-	if err != nil {
-		return "", fmt.Errorf("read pending command of user %d: %w", telegramID, err)
-	}
-
-	return u.PendingCommand, nil
-}
-
-// SetPendingCommand saves the command waiting for the user's next message; "" clears it.
-func (s *Store) SetPendingCommand(ctx context.Context, telegramID int64, command string) error {
-	if err := s.upsert(ctx, &User{TelegramID: telegramID, PendingCommand: command}, "pending_command"); err != nil {
-		return fmt.Errorf("save pending command of user %d: %w", telegramID, err)
 	}
 
 	return nil

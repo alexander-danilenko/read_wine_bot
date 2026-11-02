@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -17,16 +16,12 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 )
 
-// Commands, without the slash. Every command but Start is in the command menu.
+// Commands, without the slash. Every command but Start is in the command menu. Giveaways are
+// managed in the Mini App, which the menu button opens.
 const (
-	Start        = "start"         // shows the greeting; Telegram sends it when a user first opens the bot
-	New          = "new"           // starts a giveaway setup
-	Edit         = "edit"          // starts editing a giveaway
-	List         = "list"          // lists the user's running giveaways
-	ListFinished = "list_finished" // lists the user's finished giveaways page by page
-	Language     = "language"      // shows the language buttons
-	Help         = "help"          // explains how the bot works and the channel rights it needs
-	Cancel       = "cancel"        // leaves any unfinished step
+	Start    = "start"    // shows the greeting and the button that opens the Mini App
+	Language = "language" // shows the language buttons
+	Help     = "help"     // explains how the bot works and the channel rights it needs
 )
 
 // entry is one command in the command menu.
@@ -35,16 +30,11 @@ type entry struct {
 	description i18n.Key // starts with an emoji, so the eye finds the command
 }
 
-// menu returns the command menu in display order.
+// menu returns the command menu in display order, /help first, so a new user starts there.
 func menu() []entry {
 	return []entry{
-		{New, i18n.CommandNew},
-		{Edit, i18n.CommandEdit},
-		{List, i18n.CommandList},
-		{ListFinished, i18n.CommandListFinished},
-		{Language, i18n.CommandLanguage},
 		{Help, i18n.CommandHelp},
-		{Cancel, i18n.CommandCancel},
+		{Language, i18n.CommandLanguage},
 	}
 }
 
@@ -55,15 +45,12 @@ type Sender interface {
 }
 
 // StartHandler returns a handler that answers /start with the greeting, the command menu as
-// tappable commands with /help first, so a new user starts there, the bot's version, so the
-// owner can see which build is deployed, and a button that opens the Mini App at appURL.
+// tappable commands, the bot's version, so the owner can see which build is deployed, and a
+// button that opens the Mini App at appURL.
 func StartHandler(
 	texts *i18n.Catalog, langs language.Reader, kb Sender, appURL, version string, log *slog.Logger,
 ) bot.HandlerFunc {
-	entries := append(
-		[]entry{{Help, i18n.CommandHelp}},
-		slices.DeleteFunc(menu(), func(e entry) bool { return e.command == Help })...,
-	)
+	entries := menu()
 
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		msg := update.Message
@@ -128,12 +115,6 @@ func HelpHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) b
 			update,
 		)
 	}
-}
-
-// CancelHandler returns a handler that answers /cancel. user.Middleware has already left the
-// unfinished step and deleted its buttons, as it does for every command.
-func CancelHandler(texts *i18n.Catalog, langs language.Reader, log *slog.Logger) bot.HandlerFunc {
-	return reply(langs, log, func(lang string) string { return texts.Text(lang, i18n.CommandCancelled) })
 }
 
 // Register lists the commands in Telegram's command menu of private chats, in every language

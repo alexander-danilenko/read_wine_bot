@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -34,7 +33,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.9.0"
+const version = "2.0.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -89,8 +88,8 @@ func run() error {
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
 	reviewer := newReviewer(store, channel.NewStore(conn), texts, log)
-	giveaways, editor := newGiveawayRules(store, users, texts, kyiv, log)
-	b, err := bot.New(cfg.TelegramBotToken, handlers(users, giveaways, editor, reviewer, texts, cfg.AppURL, log)...)
+	giveaways, editor := newGiveawayRules(store, texts, kyiv, log)
+	b, err := bot.New(cfg.TelegramBotToken, handlers(users, giveaways, texts, cfg.AppURL, log)...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
@@ -103,7 +102,7 @@ func run() error {
 		return err
 	}
 
-	drawer := newDrawer(store, users, reviewer, texts, cfg.AppURL, log)
+	drawer := newDrawer(store, users, texts, cfg.AppURL, log)
 	mux := newMiniApp(cfg.TelegramBotToken, b, static, giveaway.NewApp(editor, reviewer, store), users, texts, log)
 
 	return serve(ctx, stop, b, drawer, mux, cfg.ListenAddr)
@@ -214,13 +213,12 @@ func allowedUpdates() bot.AllowedUpdates {
 	}
 }
 
-// newDrawer returns the winner draw, which sends the results to the creator for review.
+// newDrawer returns the winner draw, which tells the creator that the results wait for review
+// in the Mini App.
 func newDrawer(
-	store *giveaway.Store, users *user.Store, reviewer *giveaway.Reviewer, texts *i18n.Catalog, appURL string,
-	log *slog.Logger,
+	store *giveaway.Store, users *user.Store, texts *i18n.Catalog, appURL string, log *slog.Logger,
 ) *giveaway.Drawer {
-	kb := keyboard.NewTracker(users, log)
-	notifier := giveaway.NewReviewNotifier(reviewer, users, texts, kb, appURL, log)
+	notifier := giveaway.NewReviewNotifier(users, texts, keyboard.NewTracker(users, log), appURL, log)
 
 	return giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, notifier, time.Now, log)
 }
@@ -233,53 +231,37 @@ func newReviewer(
 	return giveaway.NewReviewer(store, store, store, channels, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
 }
 
-// newGiveawayRules returns the giveaway rules the chat and the Mini App share.
+// newGiveawayRules returns the giveaway rules the join button and the Mini App share.
 func newGiveawayRules(
-	store *giveaway.Store, users *user.Store, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger,
+	store *giveaway.Store, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger,
 ) (*giveaway.Service, *giveaway.Editor) {
-	svc := giveaway.NewService(store, store, users, texts, kyiv, time.Now, log)
+	svc := giveaway.NewService(store, store, texts, kyiv, time.Now, log)
 
 	return svc, giveaway.NewEditor(svc, store, store, store, store, store, store)
 }
 
 // handlers wires every update the bot handles to the package that handles it, and asks
-// Telegram for those updates only.
+// Telegram for those updates only. Giveaways are managed in the Mini App; the chat keeps
+// /start, /help, the language menu and the join button.
 func handlers(
-	users *user.Store,
-	giveaways *giveaway.Service,
-	editor *giveaway.Editor,
-	reviewer *giveaway.Reviewer,
-	texts *i18n.Catalog,
-	appURL string,
-	log *slog.Logger,
+	users *user.Store, giveaways *giveaway.Service, texts *i18n.Catalog, appURL string, log *slog.Logger,
 ) []bot.Option {
 	kb := keyboard.NewTracker(users, log)
 
-	return slices.Concat([]bot.Option{
+	return []bot.Option{
 		// Runs before every handler: records every sender's profile and its revisions, and
-		// leaves any unfinished setup on a command.
+		// deletes the message with buttons on a command.
 		bot.WithMiddlewares(user.Middleware(users, kb, log)),
-		// Before the greeting: a bot link sends /start with a payload, which the greeting
-		// would also match, and the first matching handler wins.
-		bot.WithMessageTextHandler(
-			giveaway.ReviewLinkPrefix,
-			bot.MatchTypePrefix,
-			giveaway.ReviewLinkHandler(reviewer, texts, users, kb, log),
-		),
-		bot.WithMessageTextHandler(
-			giveaway.FieldLinkPrefix,
-			bot.MatchTypePrefix,
-			giveaway.FieldLinkHandler(editor, texts, users, kb, log),
-		),
-		bot.WithMessageTextHandler(
-			giveaway.EditLinkPrefix,
-			bot.MatchTypePrefix,
-			giveaway.EditLinkHandler(editor, texts, users, kb, log),
-		),
 		bot.WithMessageTextHandler(
 			command.Start,
 			bot.MatchTypeCommandStartOnly,
 			command.StartHandler(texts, users, kb, appURL, version, log),
+		),
+		bot.WithMessageTextHandler(
+			command.Help, bot.MatchTypeCommandStartOnly, command.HelpHandler(texts, users, log),
+		),
+		bot.WithMessageTextHandler(
+			command.Language, bot.MatchTypeCommandStartOnly, language.PromptHandler(texts, users, kb, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,
@@ -291,66 +273,8 @@ func handlers(
 			bot.MatchTypeExact,
 			giveaway.JoinHandler(giveaways, texts, users, log),
 		),
-		bot.WithCallbackQueryDataHandler(
-			giveaway.SetupCallbackPrefix,
-			bot.MatchTypePrefix,
-			giveaway.SetupCallbackHandler(giveaways, texts, users, kb, log),
-		),
-		bot.WithCallbackQueryDataHandler(
-			giveaway.ReviewCallbackPrefix,
-			bot.MatchTypePrefix,
-			giveaway.ReviewCallbackHandler(reviewer, texts, users, kb, log),
-		),
-		bot.WithCallbackQueryDataHandler(
-			giveaway.EditCallbackPrefix,
-			bot.MatchTypePrefix,
-			giveaway.EditCallbackHandler(editor, texts, users, kb, log),
-		),
-		// Forwarded posts and typed setup and edit values match no handler above, so they
-		// land here.
-		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, kb, log)),
+		// Any other message gets no answer. Without this, go-telegram logs every unmatched update.
+		bot.WithDefaultHandler(func(context.Context, *bot.Bot, *models.Update) {}),
 		bot.WithAllowedUpdates(allowedUpdates()),
-	}, menuHandlers(texts, users, kb, giveaways, editor, log))
-}
-
-// menuHandlers wires the commands of the command menu and the page buttons of the lists.
-func menuHandlers(
-	texts *i18n.Catalog,
-	users *user.Store,
-	kb *keyboard.Tracker,
-	giveaways *giveaway.Service,
-	editor *giveaway.Editor,
-	log *slog.Logger,
-) []bot.Option {
-	handlers := map[string]bot.HandlerFunc{
-		command.New:          giveaway.StartHandler(giveaways, texts, users, kb, log),
-		command.Edit:         giveaway.EditStartHandler(editor, texts, users, kb, log),
-		command.List:         giveaway.ListHandler(editor, texts, users, kb, log),
-		command.ListFinished: giveaway.ListFinishedHandler(editor, texts, users, kb, log),
-		command.Language:     language.PromptHandler(texts, users, kb, log),
-		command.Help:         command.HelpHandler(texts, users, log),
-		command.Cancel:       command.CancelHandler(texts, users, log),
 	}
-
-	pageButtons := []bot.Option{
-		bot.WithCallbackQueryDataHandler(
-			giveaway.ListCallbackPrefix,
-			bot.MatchTypePrefix,
-			giveaway.ListCallbackHandler(editor, texts, users, kb, log),
-		),
-		bot.WithCallbackQueryDataHandler(
-			giveaway.FinishedCallbackPrefix,
-			bot.MatchTypePrefix,
-			giveaway.FinishedCallbackHandler(editor, texts, users, kb, log),
-		),
-	}
-
-	opts := make([]bot.Option, 0, len(pageButtons)+len(handlers))
-	opts = append(opts, pageButtons...)
-
-	for name, h := range handlers {
-		opts = append(opts, bot.WithMessageTextHandler(name, bot.MatchTypeCommandStartOnly, h))
-	}
-
-	return opts
 }

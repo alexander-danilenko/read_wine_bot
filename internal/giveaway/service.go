@@ -48,14 +48,6 @@ type Drafts interface {
 	DeleteDraft(ctx context.Context, userID int64) error
 }
 
-// Steps holds the setup step each user is at, as their pending command. *user.Store
-// implements it.
-type Steps interface {
-	PendingCommand(ctx context.Context, telegramID int64) (string, error)
-	SetPendingCommand(ctx context.Context, telegramID int64, command string) error
-	MovePendingCommand(ctx context.Context, telegramID int64, from, to string) (bool, error)
-}
-
 // ErrPostGone means the channel post no longer exists, so the bot cannot put a button on it.
 var ErrPostGone = errors.New("channel post not found")
 
@@ -72,12 +64,10 @@ type Telegram interface {
 	AttachButton(ctx context.Context, chatID, messageID int64, label string) error
 }
 
-// Service holds the giveaway rules: who may start one, how the setup collects its inputs,
-// and what a tap records.
+// Service holds the giveaway rules: who may start one and what a tap records.
 type Service struct {
 	store  Storage
 	drafts Drafts
-	steps  Steps
 	texts  *i18n.Catalog
 	kyiv   *time.Location   // end dates and times are typed and shown in Kyiv time
 	now    func() time.Time // the clock; tests fix it
@@ -86,10 +76,10 @@ type Service struct {
 
 // NewService returns a Service.
 func NewService(
-	store Storage, drafts Drafts, steps Steps,
+	store Storage, drafts Drafts,
 	texts *i18n.Catalog, kyiv *time.Location, now func() time.Time, log *slog.Logger,
 ) *Service {
-	return &Service{store: store, drafts: drafts, steps: steps, texts: texts, kyiv: kyiv, now: now, log: log}
+	return &Service{store: store, drafts: drafts, texts: texts, kyiv: kyiv, now: now, log: log}
 }
 
 // Join records the user as a participant of the giveaway on the channel post. It also

@@ -62,25 +62,6 @@ func post(m models.MaybeInaccessibleMessage) (int64, int64, bool) {
 	}
 }
 
-func startText(r StartResult) i18n.Key {
-	switch r {
-	case Created:
-		return i18n.GiveawayCreated
-	case Exists:
-		return i18n.GiveawayExists
-	case Taken:
-		return i18n.GiveawayTaken
-	case NotAdmin:
-		return i18n.GiveawayNotAdmin
-	case NoRights:
-		return i18n.GiveawayNoRights
-	case Failed:
-		return i18n.GiveawayFailed
-	default:
-		return i18n.GiveawayFailed
-	}
-}
-
 func joinText(r JoinResult) i18n.Key {
 	switch r {
 	case Joined:

@@ -54,18 +54,22 @@ func TestText(t *testing.T) {
 	}
 }
 
-func TestSummaryPlaceholders(t *testing.T) {
+func TestReviewReadyPlaceholder(t *testing.T) {
 	c, err := i18n.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for _, lang := range []string{"en", "uk"} {
-		got := c.Text(lang, i18n.GiveawaySummary, "Read Wine", "2026-10-25 19:00", 3, "Go")
-		for _, part := range []string{"Read Wine", "2026-10-25 19:00", "3", "Go"} {
-			if !strings.Contains(got, part) {
-				t.Errorf("%s summary %q lacks %q", lang, got, part)
-			}
+		if got := c.Text(
+			lang,
+			i18n.ReviewReady,
+			"https://t.me/c/1/2",
+		); !strings.Contains(
+			got,
+			`href="https://t.me/c/1/2"`,
+		) {
+			t.Errorf("%s review.ready %q lacks the post link", lang, got)
 		}
 	}
 }

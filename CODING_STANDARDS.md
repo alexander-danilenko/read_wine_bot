@@ -35,3 +35,12 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - **Interface segregation:** interfaces have 1-3 methods and are declared in the package that uses them, not the one that implements them.
 - **Dependency inversion:** constructors take dependencies as parameters (`NewService(store Store, log *slog.Logger)`). Accept interfaces, return concrete types. Wiring happens only in the root `main` package.
 - Do not create an interface for a single implementation unless a test needs a fake.
+
+## Mini App (web/)
+
+- Plain MUI components, themed from Telegram's colors in `web/src/theme.ts`. No other UI library, router or state library; the npm packages allowed are listed in CLAUDE.md.
+- Mobile first: one column, full-width primary buttons, touch targets of at least 48 px, inputs with the right `type` and `inputMode`.
+- Accessible: every input has a label, icon-only controls have an `aria-label`, dialogs are labelled by their title.
+- Every text comes from `web/src/locales/{en,uk}.json`; both files have the same keys. API errors show the text for their `code`, next to the form field named in `field`.
+- The API client is generated from `web/openapi.json` (`npm run gen`); never write request or response types by hand.
+- End times are Kyiv wall-clock strings (`YYYY-MM-DDTHH:MM`) everywhere; never convert them with the phone's time zone.

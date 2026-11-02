@@ -55,8 +55,7 @@ const changedProfile = "is_bot <> ? OR first_name <> ? OR last_name <> ? OR user
 	"OR language_code <> " + keptLanguageCode
 
 // Record saves the user's profile, creating the user on first use, and writes a new revision
-// when the profile differs from the saved one. It leaves the saved language and pending
-// command as they are.
+// when the profile differs from the saved one. It leaves the saved language as it is.
 func (s *Store) Record(ctx context.Context, p Profile) error {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Every branch starts with a write, so concurrent updates of one user queue on its row

@@ -120,7 +120,7 @@ func newService(t *testing.T, store *fakeStore) *giveaway.Service {
 		t.Fatal(err)
 	}
 
-	return giveaway.NewService(store, store, nil, texts, time.UTC, time.Now, slog.New(slog.DiscardHandler))
+	return giveaway.NewService(store, store, texts, time.UTC, time.Now, slog.New(slog.DiscardHandler))
 }
 
 func TestServiceJoin(t *testing.T) {
@@ -180,7 +180,7 @@ func TestServiceJoinAfterEnd(t *testing.T) {
 				EndsAt: tt.endsAt, FinishedAt: tt.finished,
 			}}
 			now := func() time.Time { return tt.now }
-			svc := giveaway.NewService(store, store, nil, texts, time.UTC, now, slog.New(slog.DiscardHandler))
+			svc := giveaway.NewService(store, store, texts, time.UTC, now, slog.New(slog.DiscardHandler))
 
 			got, lang := svc.Join(t.Context(), channelID, 42, fanID)
 			if got != tt.want || lang != "uk" {
