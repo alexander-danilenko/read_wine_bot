@@ -16,7 +16,7 @@ func TestAppMoveAttachFails(t *testing.T) {
 	s.tg.attachErr = giveaway.ErrPostGone
 
 	_, err := app.Move(t.Context(), s.tg, adminID, v.ID, "https://t.me/c/1234567890/50")
-	wantAppError(t, err, giveaway.CodePostGone, giveaway.FieldPostLink)
+	wantAppError(t, err, giveaway.CodePostGone, "")
 
 	if got := s.store.rows[v.ID].MessageID; got != 42 {
 		t.Errorf("MessageID = %d after a failed move, want 42", got)
@@ -51,7 +51,7 @@ func TestAppRestoreAfterEnd(t *testing.T) {
 	s.now = s.now.Add(48 * time.Hour)
 
 	_, err := app.Restore(t.Context(), s.tg, adminID, v.ID)
-	wantAppError(t, err, giveaway.CodeEndInPast, "")
+	wantAppError(t, err, giveaway.CodeEndInPast, giveaway.FieldEndsAt)
 }
 
 // Pending results show only to a current admin of their channel.
