@@ -32,7 +32,7 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 - **Single responsibility:** one package, one reason to change. Telegram handlers translate updates into calls to domain code; they hold no giveaway rules and no queries.
 - **Open/closed:** extend with new types and composition, not with boolean flags on existing functions.
 - **Liskov substitution:** every implementation of an interface honours the same contract for errors, nil values and context cancellation.
-- **Interface segregation:** interfaces have 1-3 methods and are declared in the package that uses them, not the one that implements them.
+- **Interface segregation:** interfaces hold only the methods their user calls (`interfacebloat` caps them at 10) and are declared in the package that uses them, not the one that implements them.
 - **Dependency inversion:** constructors take dependencies as parameters (`NewService(store Store, log *slog.Logger)`). Accept interfaces, return concrete types. Wiring happens only in the root `main` package.
 - Do not create an interface for a single implementation unless a test needs a fake.
 
