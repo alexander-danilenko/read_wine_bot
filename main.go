@@ -33,7 +33,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "2.1.0"
+const version = "2.2.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -112,10 +112,12 @@ func newMiniApp(
 	token string, b *bot.Bot, static *webapp.Static, app *giveaway.App,
 	users *user.Store, texts *i18n.Catalog, log *slog.Logger,
 ) *http.ServeMux {
-	ops := webapp.NewOperations(giveaway.NewBotAPI(b), app, log)
+	tg := giveaway.NewBotAPI(b)
+	photos := webapp.NewPhotos(token, tg, log)
+	ops := webapp.NewOperations(tg, app, photos, log)
 	auth := webapp.NewAuth(token, users, users, texts.Langs(), log)
 
-	return webapp.NewMux(static, auth, ops, version)
+	return webapp.NewMux(static, auth, ops, photos, version)
 }
 
 // serve runs the bot, the regular tasks and the Mini App server until ctx is done. They share

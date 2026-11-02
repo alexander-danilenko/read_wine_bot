@@ -71,6 +71,7 @@ type fakeTelegram struct {
 	attachedTo  int64 // the post of the last attach
 	removedFrom int64 // the post of the last removal
 	resolveErr  error // ResolveChannel fails with it; otherwise every link names channelID
+	channelErr  error // Channel fails with it; otherwise every channel is "Read Wine" with a photo
 }
 
 func (f *fakeTelegram) ResolveChannel(context.Context, string) (int64, error) {
@@ -79,6 +80,14 @@ func (f *fakeTelegram) ResolveChannel(context.Context, string) (int64, error) {
 	}
 
 	return channelID, nil
+}
+
+func (f *fakeTelegram) Channel(_ context.Context, chatID int64) (giveaway.ChannelInfo, error) {
+	if f.channelErr != nil {
+		return giveaway.ChannelInfo{}, f.channelErr
+	}
+
+	return giveaway.ChannelInfo{ID: chatID, Title: "Read Wine", PhotoID: "photo-1"}, nil
 }
 
 func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, error) {

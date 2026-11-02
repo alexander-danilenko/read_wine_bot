@@ -32,8 +32,7 @@ func Built() fs.FS {
 }
 
 // contentSecurityPolicy lets the page load only its own files and Telegram's Mini App script.
-// Emotion (MUI's styling) inserts <style> tags, so inline styles are allowed; inline scripts are
-// not. frame-ancestors covers Telegram Web, which shows Mini Apps in an iframe.
+// Telegram's script inserts <style> tags, so inline styles are allowed; inline scripts are not. frame-ancestors covers Telegram Web, which shows Mini Apps in an iframe.
 const contentSecurityPolicy = "default-src 'self'; script-src 'self' https://telegram.org; " +
 	"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; " +
 	"form-action 'none'; frame-ancestors https://web.telegram.org"

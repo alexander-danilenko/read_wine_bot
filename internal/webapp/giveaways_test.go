@@ -42,6 +42,10 @@ func (f *fakeGiveaways) List(
 	return []giveaway.View{f.view}, nil, f.err
 }
 
+func (f *fakeGiveaways) Channels(context.Context, giveaway.ChannelReader, ...[]giveaway.View) []giveaway.Channel {
+	return nil
+}
+
 func (f *fakeGiveaways) Finished(_ context.Context, userID int64, _, limit int) ([]giveaway.View, bool, error) {
 	f.userID, f.limit = userID, limit
 
@@ -146,7 +150,12 @@ func (f *fakeGiveaways) act(name string, userID int64) (giveaway.View, error) {
 func newGiveawayMux(t *testing.T, fake *fakeGiveaways) *http.ServeMux {
 	t.Helper()
 
-	ops := webapp.NewOperations(nil, fake, slog.New(slog.DiscardHandler))
+	ops := webapp.NewOperations(
+		nil,
+		fake,
+		webapp.NewPhotos(testToken, nil, slog.New(slog.DiscardHandler)),
+		slog.New(slog.DiscardHandler),
+	)
 
 	return newTestMux(t, ops, map[int64]string{42: "uk"})
 }

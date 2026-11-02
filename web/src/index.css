@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* theme.ts sets the --c-* colors from Telegram's theme, raised to WCAG AA contrast. */
+@theme inline {
+  --color-page: var(--c-page);
+  --color-card: var(--c-card);
+  --color-fg: var(--c-text);
+  --color-hint: var(--c-hint);
+  --color-accent: var(--c-accent);
+  --color-on-accent: var(--c-on-accent);
+  --color-danger: var(--c-danger);
+  --color-on-danger: var(--c-on-danger);
+  --color-ok: var(--c-ok);
+  --color-warn: var(--c-warn);
+}
+
+body {
+  @apply bg-page text-fg antialiased;
+}

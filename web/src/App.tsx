@@ -1,8 +1,3 @@
-import Container from "@mui/material/Container";
-import CssBaseline from "@mui/material/CssBaseline";
-import Snackbar from "@mui/material/Snackbar";
-import { ThemeProvider } from "@mui/material/styles";
-import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, must, type Giveaway } from "./api/client";
 import { TextContext, translator, type Lang } from "./i18n";
@@ -11,8 +6,8 @@ import GiveawayForm from "./screens/GiveawayForm";
 import GiveawayList from "./screens/GiveawayList";
 import Review from "./screens/Review";
 import { webApp } from "./telegram";
-import { themeFrom } from "./theme";
-import { ErrorText, Loading, NotifyContext, useLoad } from "./ui";
+import { applyTheme } from "./theme";
+import { ErrorText, Loading, NotifyContext, Toast, useLoad } from "./ui";
 
 type Screen =
   | { name: "list" }
@@ -28,37 +23,29 @@ function firstScreen(): Screen {
   return Number.isInteger(id) && id > 0 ? { name: "review", id } : { name: "list" };
 }
 
+// useTelegramTheme repaints the page when the user switches Telegram's theme or dark mode.
 function useTelegramTheme() {
-  const make = () => themeFrom(webApp?.colorScheme ?? "light", webApp?.themeParams ?? {});
-  const [theme, setTheme] = useState(make);
-
   useEffect(() => {
     if (!webApp) return;
     webApp.ready();
     webApp.expand();
-    const changed = () => setTheme(make());
-    webApp.onEvent("themeChanged", changed);
-    return () => webApp?.offEvent("themeChanged", changed);
+    webApp.onEvent("themeChanged", applyTheme);
+    return () => webApp?.offEvent("themeChanged", applyTheme);
   }, []);
-
-  return theme;
 }
 
 export default function App() {
-  const theme = useTelegramTheme();
+  useTelegramTheme();
   const fallbackLang: Lang = navigator.language.startsWith("en") ? "en" : "uk";
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container component="main" maxWidth="sm" sx={{ py: 2, px: 2, minHeight: "100vh" }}>
-        {webApp?.initData ? (
-          <Signed fallbackLang={fallbackLang} />
-        ) : (
-          <Typography sx={{ py: 6, textAlign: "center" }}>{translator(fallbackLang)("app.openFromBot")}</Typography>
-        )}
-      </Container>
-    </ThemeProvider>
+    <main className="mx-auto min-h-screen max-w-xl p-4">
+      {webApp?.initData ? (
+        <Signed fallbackLang={fallbackLang} />
+      ) : (
+        <p className="py-12 text-center">{translator(fallbackLang)("app.openFromBot")}</p>
+      )}
+    </main>
   );
 }
 
@@ -69,6 +56,7 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
   const [screen, setScreen] = useState<Screen>(firstScreen);
   const [tab, setTab] = useState(0);
   const [notice, setNotice] = useState<string>();
+  const hideNotice = useCallback(() => setNotice(undefined), []);
 
   const back = useCallback(() => {
     setScreen((s) => (s.name === "edit" ? { name: "details", id: s.giveaway.id } : { name: "list" }));
@@ -130,13 +118,7 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
     <TextContext.Provider value={t}>
       <NotifyContext.Provider value={setNotice}>
         {body}
-        <Snackbar
-          open={notice !== undefined}
-          message={notice}
-          autoHideDuration={4000}
-          onClose={() => setNotice(undefined)}
-          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        />
+        <Toast message={notice} onDone={hideNotice} />
       </NotifyContext.Provider>
     </TextContext.Provider>
   );

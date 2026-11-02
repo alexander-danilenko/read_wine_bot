@@ -1,16 +1,8 @@
-import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
-import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemText from "@mui/material/ListItemText";
-import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
 import { useState } from "react";
 import { api, Failure, must, type Review as ReviewData } from "../api/client";
 import { useT, type TextKey } from "../i18n";
 import { openLink } from "../telegram";
-import { Confirm, ErrorText, Loading, Section, useLoad, useNotify } from "../ui";
+import { Button, Card, Confirm, ErrorText, Loading, Pill, Section, Title, useLoad, useNotify } from "../ui";
 
 type Winner = ReviewData["winners"][number];
 
@@ -20,7 +12,7 @@ const subscriptionText: Record<Winner["subscriptions"][number], TextKey> = {
   unknown: "review.unknown",
 };
 
-const subscriptionColor = { subscribed: "success", not_subscribed: "error", unknown: "default" } as const;
+const subscriptionTone = { subscribed: "ok", not_subscribed: "danger", unknown: "neutral" } as const;
 
 function name(w: Winner): string {
   return [w.first_name, w.last_name].filter(Boolean).join(" ") || (w.username ? `@${w.username}` : String(w.user_id));
@@ -75,51 +67,48 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
 
   return (
     <Section>
-      <Typography variant="h6" component="h1">
-        {t("review.title")}
-      </Typography>
+      <Title>{t("review.title")}</Title>
       {failure !== undefined && <ErrorText error={failure} />}
-      <Button variant="outlined" size="large" fullWidth onClick={() => openLink(data.giveaway.post_link)}>
+      <Button variant="outline" full onClick={() => openLink(data.giveaway.post_link)}>
         {t("details.post")}
       </Button>
-      <Paper>
+      <Card className="overflow-hidden">
         {data.winners.length === 0 ? (
-          <Typography sx={{ p: 2 }}>{t("review.noWinners")}</Typography>
+          <p className="p-4">{t("review.noWinners")}</p>
         ) : (
-          <List aria-label={t("review.winners")}>
+          <ul aria-label={t("review.winners")} className="divide-y divide-hint/20">
             {data.winners.map((w) => (
-              <ListItem key={w.user_id} sx={{ flexDirection: "column", alignItems: "stretch", gap: 1 }} divider>
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  <ListItemText primary={name(w)} secondary={t("review.place", { n: w.place })} />
+              <li key={w.user_id} className="flex flex-col gap-2 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">{name(w)}</p>
+                    <p className="text-sm text-hint">{t("review.place", { n: w.place })}</p>
+                  </div>
                   <Button
                     onClick={() => reroll(w)}
-                    loading={busy === w.user_id}
+                    busy={busy === w.user_id}
                     disabled={busy !== undefined}
                     aria-label={t("review.rerollLabel", { name: name(w) })}
                   >
                     {t("review.reroll")}
                   </Button>
-                </Stack>
-                <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   {w.subscriptions.map((s, i) => (
-                    <Chip
-                      key={data.channels[i]?.id ?? i}
-                      size="small"
-                      variant="outlined"
-                      color={subscriptionColor[s]}
-                      label={`${data.channels[i]?.title ?? ""}: ${t(subscriptionText[s])}`}
-                    />
+                    <Pill key={data.channels[i]?.id ?? i} tone={subscriptionTone[s]}>
+                      {`${data.channels[i]?.title ?? ""}: ${t(subscriptionText[s])}`}
+                    </Pill>
                   ))}
-                </Stack>
-              </ListItem>
+                </div>
+              </li>
             ))}
-          </List>
+          </ul>
         )}
-      </Paper>
-      <Button variant="contained" size="large" fullWidth onClick={() => setAsking("publish")} disabled={busy !== undefined}>
+      </Card>
+      <Button variant="primary" full onClick={() => setAsking("publish")} disabled={busy !== undefined}>
         {t("review.publish")}
       </Button>
-      <Button color="error" size="large" fullWidth onClick={() => setAsking("skip")} disabled={busy !== undefined}>
+      <Button variant="danger-text" full onClick={() => setAsking("skip")} disabled={busy !== undefined}>
         {t("review.skip")}
       </Button>
       <Confirm

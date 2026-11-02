@@ -218,9 +218,47 @@ func (a *App) Finished(ctx context.Context, userID int64, offset, limit int) ([]
 	}
 
 	more := len(gs) > limit
-	views, err := a.views(ctx, gs[:min(len(gs), limit)])
 
-	return views, more, err
+	views, err := a.views(ctx, gs[:min(len(gs), limit)])
+	if err != nil {
+		return nil, false, err
+	}
+
+	return views, more, nil
+}
+
+// Channel is a channel as the giveaway lists show it, read live from Telegram, never stored.
+type Channel struct {
+	ID      int64
+	Title   string
+	PhotoID string // Telegram file ID of the small channel photo, "" for none
+}
+
+// Channels returns the channels of the giveaways in lists, each once. A title or photo that
+// cannot be read is left empty: the lists still work without it.
+func (a *App) Channels(ctx context.Context, tg ChannelReader, lists ...[]View) []Channel {
+	var channels []Channel
+
+	seen := map[int64]bool{}
+
+	for _, v := range slices.Concat(lists...) {
+		if seen[v.ChatID] {
+			continue
+		}
+
+		seen[v.ChatID] = true
+		c := Channel{ID: v.ChatID}
+
+		info, err := tg.Channel(ctx, v.ChatID)
+		if err != nil {
+			a.log.WarnContext(ctx, "read channel", "chat_id", v.ChatID, "error", err)
+		}
+
+		c.Title, c.PhotoID = info.Title, info.PhotoID
+		channels = append(channels, c)
+	}
+
+	return channels
 }
 
 // Get returns giveaway id in any state, but only to its creator: anyone else gets not_found,

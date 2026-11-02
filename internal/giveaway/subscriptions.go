@@ -17,10 +17,15 @@ type Channels interface {
 
 // SubscriptionTelegram is what winner subscriptions need from the Telegram API.
 type SubscriptionTelegram interface {
-	// Channel returns the title and username of channel chatID.
-	Channel(ctx context.Context, chatID int64) (ChannelInfo, error)
+	ChannelReader
 	// IsSubscribed reports whether the user is subscribed to channel chatID.
 	IsSubscribed(ctx context.Context, chatID, userID int64) (bool, error)
+}
+
+// ChannelReader reads a channel's title and photo file ID. BotAPI implements it.
+type ChannelReader interface {
+	// Channel returns the title, username and photo file ID of channel chatID.
+	Channel(ctx context.Context, chatID int64) (ChannelInfo, error)
 }
 
 // ChannelInfo is what the review shows of a channel.
@@ -28,6 +33,7 @@ type ChannelInfo struct {
 	ID       int64
 	Title    string
 	Username string // "" for a channel without a public username
+	PhotoID  string // file ID of the small (160x160) channel photo, "" for none
 }
 
 // Subscription is whether a winner is subscribed to one channel.

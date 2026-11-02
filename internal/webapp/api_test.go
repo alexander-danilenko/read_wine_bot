@@ -24,7 +24,7 @@ func newTestMux(t *testing.T, ops *webapp.Operations, saved map[int64]string) *h
 	users := &fakeUsers{saved: saved}
 	auth := webapp.NewAuth(testToken, users, users, []string{"en", "uk"}, slog.New(slog.DiscardHandler))
 
-	return webapp.NewMux(static, auth, ops, "test")
+	return webapp.NewMux(static, auth, ops, webapp.NewPhotos(testToken, nil, slog.New(slog.DiscardHandler)), "test")
 }
 
 // call sends GET path as u (no Authorization header when u is nil) and returns the response.

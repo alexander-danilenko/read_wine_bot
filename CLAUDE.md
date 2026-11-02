@@ -45,7 +45,7 @@ Follows go.dev's "Organizing a Go module" for a single command: the main package
 ```text
 *.go              # main package in the repo root: wiring only (config, logger, DB, bot, shutdown), no business logic
 internal/<name>/  # every other package, one responsibility each
-web/              # the Mini App (Vite + React + MUI); builds into internal/webapp/dist, which the binary embeds
+web/              # the Mini App (Vite + React + Tailwind CSS); builds into internal/webapp/dist, which the binary embeds
 docs/channel-analytics.md  # ready SQL over the channel audience log
 docs/telegram-ux.md        # rules for everything the user sees in Telegram
 docs/hand-check-store-sql.md  # how to check a Store query against the local database
@@ -60,7 +60,7 @@ CODING_STANDARDS.md  # Go style, fail-fast and SOLID rules that /code-review enf
 
 - Solve it with the standard library first (`net/http`, `encoding/json`, `log/slog`, `context`, `errors`, `slices`, `maps`, `testing`).
 - Approved modules: `gorm.io/gorm`, `gorm.io/driver/postgres`, `github.com/go-telegram/bot`, `github.com/danielgtaylor/huma/v2` (the Mini App API and its OpenAPI spec, with the `humago` adapter only). Add nothing else without the owner's approval.
-- The Mini App's npm packages are limited the same way: runtime `react`, `react-dom`, `@mui/material`, `@emotion/react`, `@emotion/styled`, `openapi-fetch`; build-only `vite`, `@vitejs/plugin-react`, `typescript`, `openapi-typescript`, `@types/react`, `@types/react-dom`.
+- The Mini App's npm packages are limited the same way: runtime `react`, `react-dom`, `openapi-fetch`; build-only `vite`, `@vitejs/plugin-react`, `tailwindcss`, `@tailwindcss/vite`, `typescript`, `openapi-typescript`, `@types/react`, `@types/react-dom`.
 - After changing an API operation, run `UPDATE_OPENAPI=1 go test ./internal/webapp/ -run OpenAPI` to rewrite `web/openapi.json`; the test fails while it is out of date.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
 - Keep `CGO_ENABLED=0` builds working: the Docker image is static.

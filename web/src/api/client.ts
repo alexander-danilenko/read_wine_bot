@@ -3,6 +3,7 @@ import { webApp } from "../telegram";
 import type { components, paths } from "./schema";
 
 export type Giveaway = components["schemas"]["GiveawayBody"];
+export type Channel = components["schemas"]["ListChannelBody"];
 export type Review = components["schemas"]["ReviewOutputBody"];
 export type ApiError = components["schemas"]["APIError"];
 export type ErrorCode = ApiError["code"];

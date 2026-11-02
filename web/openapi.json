@@ -170,6 +170,13 @@
       "FinishedOutputBody": {
         "additionalProperties": false,
         "properties": {
+          "channels": {
+            "description": "The channels of these giveaways, each once",
+            "items": {
+              "$ref": "#/components/schemas/ListChannelBody"
+            },
+            "type": "array"
+          },
           "giveaways": {
             "description": "The caller's finished giveaways, latest draw first",
             "items": {
@@ -184,7 +191,8 @@
         },
         "required": [
           "giveaways",
-          "more"
+          "more",
+          "channels"
         ],
         "type": "object"
       },
@@ -254,11 +262,60 @@
         ],
         "type": "object"
       },
+      "GiveawayDetailsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/ListChannelBody",
+            "description": "Its channel, read live from Telegram"
+          },
+          "giveaway": {
+            "$ref": "#/components/schemas/GiveawayBody",
+            "description": "The giveaway"
+          }
+        },
+        "required": [
+          "giveaway",
+          "channel"
+        ],
+        "type": "object"
+      },
+      "ListChannelBody": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Telegram ID of the channel",
+            "format": "int64",
+            "type": "integer"
+          },
+          "photo": {
+            "description": "URL of the small channel photo, empty for none",
+            "type": "string"
+          },
+          "title": {
+            "description": "Channel title, empty if Telegram cannot give it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "photo"
+        ],
+        "type": "object"
+      },
       "ListOutputBody": {
         "additionalProperties": false,
         "properties": {
+          "channels": {
+            "description": "The channels of these giveaways, each once",
+            "items": {
+              "$ref": "#/components/schemas/ListChannelBody"
+            },
+            "type": "array"
+          },
           "giveaways": {
-            "description": "The caller's running and cancelled giveaways, soonest end first",
+            "description": "The caller's running and cancelled giveaways, newest first",
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
@@ -274,7 +331,8 @@
         },
         "required": [
           "giveaways",
-          "review"
+          "review",
+          "channels"
         ],
         "type": "object"
       },
@@ -570,7 +628,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GiveawayBody"
+                  "$ref": "#/components/schemas/GiveawayDetailsOutputBody"
                 }
               }
             },

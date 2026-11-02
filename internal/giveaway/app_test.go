@@ -419,3 +419,29 @@ func TestAppListNewestFirst(t *testing.T) {
 		t.Errorf("list = %+v, want the latest created first", mine)
 	}
 }
+
+// Channels reads each channel of the lists once, live; a channel Telegram cannot describe
+// stays in the result without title or photo.
+func TestAppChannels(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store)
+	v := mustCreate(t, s, app, adminID, appFields(s))
+
+	got := app.Channels(t.Context(), s.tg, []giveaway.View{v, v}, []giveaway.View{v})
+	want := giveaway.Channel{ID: channelID, Title: "Read Wine", PhotoID: "photo-1"}
+
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("channels = %+v, want only %+v", got, want)
+	}
+
+	s.tg.channelErr = errBoom
+
+	if got := app.Channels(
+		t.Context(),
+		s.tg,
+		[]giveaway.View{v},
+	); len(got) != 1 ||
+		got[0] != (giveaway.Channel{ID: channelID}) {
+		t.Errorf("channels = %+v, want the channel without title or photo", got)
+	}
+}

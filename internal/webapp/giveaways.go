@@ -13,6 +13,7 @@ import (
 // GiveawayReader lists and reads the caller's giveaways. *giveaway.App implements it.
 type GiveawayReader interface {
 	List(ctx context.Context, tg giveaway.Telegram, userID int64) ([]giveaway.View, []giveaway.View, error)
+	Channels(ctx context.Context, tg giveaway.ChannelReader, lists ...[]giveaway.View) []giveaway.Channel
 	Finished(ctx context.Context, userID int64, offset, limit int) ([]giveaway.View, bool, error)
 	Get(ctx context.Context, userID int64, id uint) (giveaway.View, error)
 }
@@ -65,6 +66,27 @@ func (giveawayBody) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schem
 	return s
 }
 
+// listChannelBody is a channel as the lists and the giveaway screen show it, read live from Telegram.
+type listChannelBody struct {
+	ID    int64  `doc:"Telegram ID of the channel"                      json:"id"`
+	Title string `doc:"Channel title, empty if Telegram cannot give it" json:"title"`
+	Photo string `doc:"URL of the small channel photo, empty for none"  json:"photo"`
+}
+
+func (o *Operations) toListChannels(cs []giveaway.Channel) []listChannelBody {
+	out := make([]listChannelBody, 0, len(cs))
+	for _, c := range cs {
+		body := listChannelBody{ID: c.ID, Title: c.Title}
+		if c.PhotoID != "" {
+			body.Photo = o.photos.URL(c.PhotoID)
+		}
+
+		out = append(out, body)
+	}
+
+	return out
+}
+
 func toBody(v giveaway.View) giveawayBody {
 	return giveawayBody{
 		ID: v.ID, PostLink: v.PostLink, ChatID: v.ChatID, MessageID: v.MessageID, EndsAt: v.EndsAt,
@@ -85,14 +107,22 @@ type giveawayOutput struct {
 	Body giveawayBody
 }
 
+type giveawayDetailsOutput struct {
+	Body struct {
+		Giveaway giveawayBody    `doc:"The giveaway"                         json:"giveaway"`
+		Channel  listChannelBody `doc:"Its channel, read live from Telegram" json:"channel"`
+	}
+}
+
 type idInput struct {
 	ID uint `doc:"Giveaway ID" path:"id"`
 }
 
 type listOutput struct {
 	Body struct {
-		Giveaways []giveawayBody `doc:"The caller's running and cancelled giveaways, soonest end first"               json:"giveaways"`
-		Review    []giveawayBody `doc:"Giveaways whose results wait for review in channels the caller is an admin of" json:"review"`
+		Giveaways []giveawayBody    `doc:"The caller's running and cancelled giveaways, newest first"                    json:"giveaways"`
+		Review    []giveawayBody    `doc:"Giveaways whose results wait for review in channels the caller is an admin of" json:"review"`
+		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                                    json:"channels"`
 	}
 }
 
@@ -103,8 +133,9 @@ type finishedInput struct {
 
 type finishedOutput struct {
 	Body struct {
-		Giveaways []giveawayBody `doc:"The caller's finished giveaways, latest draw first" json:"giveaways"`
-		More      bool           `doc:"Whether more giveaways follow"                      json:"more"`
+		Giveaways []giveawayBody    `doc:"The caller's finished giveaways, latest draw first" json:"giveaways"`
+		More      bool              `doc:"Whether more giveaways follow"                      json:"more"`
+		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"         json:"channels"`
 	}
 }
 
@@ -221,6 +252,7 @@ func (o *Operations) listGiveaways(ctx context.Context, _ *struct{}) (*listOutpu
 
 	out := &listOutput{}
 	out.Body.Giveaways, out.Body.Review = toBodies(mine), toBodies(review)
+	out.Body.Channels = o.toListChannels(o.reader.Channels(ctx, o.tg, mine, review))
 
 	return out, nil
 }
@@ -238,19 +270,30 @@ func (o *Operations) listFinished(ctx context.Context, in *finishedInput) (*fini
 
 	out := &finishedOutput{}
 	out.Body.Giveaways, out.Body.More = toBodies(vs), more
+	out.Body.Channels = o.toListChannels(o.reader.Channels(ctx, o.tg, vs))
 
 	return out, nil
 }
 
-func (o *Operations) getGiveaway(ctx context.Context, in *idInput) (*giveawayOutput, error) {
+func (o *Operations) getGiveaway(ctx context.Context, in *idInput) (*giveawayDetailsOutput, error) {
 	c, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	v, err := o.reader.Get(ctx, c.User.ID, in.ID)
+	if err != nil {
+		return nil, o.apiErr(ctx, err)
+	}
 
-	return o.giveaway(ctx, v, err)
+	out := &giveawayDetailsOutput{}
+	out.Body.Giveaway = toBody(v)
+
+	if cs := o.toListChannels(o.reader.Channels(ctx, o.tg, []giveaway.View{v})); len(cs) > 0 {
+		out.Body.Channel = cs[0]
+	}
+
+	return out, nil
 }
 
 func (o *Operations) createGiveaway(ctx context.Context, in *createInput) (*giveawayOutput, error) {

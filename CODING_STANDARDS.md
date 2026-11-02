@@ -38,7 +38,7 @@ A misconfigured bot must not start. Validate first: `main` checks everything it 
 
 ## Mini App (web/)
 
-- Plain MUI components, themed from Telegram's colors in `web/src/theme.ts`. No other UI library, router or state library; the npm packages allowed are listed in CLAUDE.md.
+- Tailwind CSS utility classes and the few small components in `web/src/ui.tsx`. Colors come only from the theme tokens in `web/src/index.css` (`bg-page`, `text-hint`, `bg-accent` and so on), which `web/src/theme.ts` sets from Telegram's theme and raises to WCAG AA contrast; never hard-code a color. No UI library, router or state library; the npm packages allowed are listed in CLAUDE.md.
 - Mobile first: one column, full-width primary buttons, touch targets of at least 48 px, inputs with the right `type` and `inputMode`.
 - Accessible: every input has a label, icon-only controls have an `aria-label`, dialogs are labelled by their title.
 - Every text comes from `web/src/locales/{en,uk}.json`; both files have the same keys. API errors show the text for their `code`, next to the form field named in `field`.

@@ -19,6 +19,7 @@ type Operations struct {
 	actions       GiveawayActions
 	reviewReader  ReviewReader
 	reviewActions ReviewActions
+	photos        *Photos
 	log           *slog.Logger
 }
 
@@ -38,8 +39,10 @@ type Domain interface {
 }
 
 // NewOperations returns the API's operations over d. tg makes the Telegram calls.
-func NewOperations(tg Telegram, d Domain, log *slog.Logger) *Operations {
-	return &Operations{tg: tg, reader: d, writer: d, actions: d, reviewReader: d, reviewActions: d, log: log}
+func NewOperations(tg Telegram, d Domain, photos *Photos, log *slog.Logger) *Operations {
+	return &Operations{
+		tg: tg, reader: d, writer: d, actions: d, reviewReader: d, reviewActions: d, photos: photos, log: log,
+	}
 }
 
 // Register adds every operation to api.
@@ -55,12 +58,13 @@ func (o *Operations) Register(api huma.API) {
 }
 
 // NewMux routes the Mini App: the API behind Auth, and the static files.
-func NewMux(static http.Handler, auth *Auth, ops *Operations, version string) *http.ServeMux {
+func NewMux(static http.Handler, auth *Auth, ops *Operations, photos *Photos, version string) *http.ServeMux {
 	apiMux := http.NewServeMux()
 	ops.Register(NewAPI(apiMux, version))
 
 	mux := http.NewServeMux()
 	mux.Handle("/", static)
+	mux.Handle(photoPath, photos)
 	mux.Handle("/api/", auth.Wrap(finishWrites(apiMux)))
 
 	return mux

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -120,7 +123,57 @@ func (t BotAPI) Channel(ctx context.Context, chatID int64) (ChannelInfo, error) 
 		return ChannelInfo{}, err //nolint:wrapcheck // Reviewer logs it with the chat ID
 	}
 
-	return ChannelInfo{ID: c.ID, Title: c.Title, Username: c.Username}, nil
+	info := ChannelInfo{ID: c.ID, Title: c.Title, Username: c.Username}
+	if c.Photo != nil {
+		info.PhotoID = c.Photo.SmallFileID
+	}
+
+	return info, nil
+}
+
+// maxPhotoSize caps a downloaded channel photo; the small one is a 160x160 JPEG of a few KB.
+const (
+	maxPhotoSize    = 64 << 10
+	photoGetTimeout = 5 * time.Second
+)
+
+// errPhotoDownload stands for every download failure: the HTTP client's own errors quote the
+// download URL, which carries the bot token, so they never reach a log.
+var errPhotoDownload = errors.New("download channel photo")
+
+// ChannelPhoto downloads photo fileID and returns it with its content type, so the Mini App
+// gets the photo without ever seeing the download link.
+func (t BotAPI) ChannelPhoto(ctx context.Context, fileID string) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, photoGetTimeout)
+	defer cancel()
+
+	f, err := t.b.GetFile(ctx, &bot.GetFileParams{FileID: fileID})
+	if err != nil {
+		return nil, "", fmt.Errorf("get channel photo file: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.b.FileDownloadLink(f), nil)
+	if err != nil {
+		return nil, "", errPhotoDownload
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", errPhotoDownload
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxPhotoSize+1))
+	if err != nil || resp.StatusCode != http.StatusOK || len(data) > maxPhotoSize {
+		return nil, "", errPhotoDownload
+	}
+
+	kind := http.DetectContentType(data)
+	if !strings.HasPrefix(kind, "image/") {
+		return nil, "", fmt.Errorf("%w: got %s", errPhotoDownload, kind)
+	}
+
+	return data, kind, nil
 }
 
 func (t BotAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bool, error) {

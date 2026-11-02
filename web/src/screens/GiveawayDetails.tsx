@@ -1,19 +1,9 @@
-import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
 import { useState } from "react";
 import { api, Failure, must, type Giveaway } from "../api/client";
 import { useT, type TextKey } from "../i18n";
 import { openLink } from "../telegram";
 import { formatEnd } from "../time";
-import { Confirm, ErrorText, Loading, Section, statusColor, useLoad, useNotify } from "../ui";
+import { Avatar, Button, Card, Confirm, Dialog, ErrorText, Field, Loading, Pill, Section, statusTone, Title, useLoad, useNotify } from "../ui";
 
 type Action = "cancel" | "restore" | "finish-now";
 
@@ -28,14 +18,14 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
 
   if (g.loading && !g.data) return <Loading />;
   if (!g.data) return <ErrorText error={g.error} onRetry={g.reload} />;
-  const giveaway = g.data;
+  const { giveaway, channel } = g.data;
 
   // run calls an action and shows its result; a stale giveaway reloads (someone changed it).
   const run = async (call: () => Promise<Giveaway>, done: TextKey) => {
     setBusy(true);
     setFailure(undefined);
     try {
-      g.set(await call());
+      g.set({ giveaway: await call(), channel }); // actions return the giveaway only
       setAsking(undefined);
       setLink("");
       notify(t(done));
@@ -64,58 +54,54 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
 
   return (
     <Section>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
-        <Typography variant="h6" component="h1" noWrap>
-          {giveaway.button_text}
-        </Typography>
-        <Chip label={t(`status.${giveaway.status}`)} color={statusColor(giveaway.status)} />
-      </Stack>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar channel={channel} size="size-12" />
+          <Title>{channel.title || giveaway.post_link}</Title>
+        </div>
+        <Pill tone={statusTone(giveaway.status)}>{t(`status.${giveaway.status}`)}</Pill>
+      </div>
       {failure !== undefined && !moveError && <ErrorText error={failure} />}
-      <Paper sx={{ p: 2 }}>
-        <Typography>
-          {giveaway.ends_at ? t("list.ends", { time: formatEnd(giveaway.ends_at) }) : t("list.noEnd")}
-        </Typography>
-        <Typography color="text.secondary">{t("list.participants", { n: giveaway.participants })}</Typography>
-        <Typography color="text.secondary">
+      <Card className="flex flex-col gap-1 p-4">
+        <p>{giveaway.ends_at ? t("list.ends", { time: formatEnd(giveaway.ends_at) }) : t("list.noEnd")}</p>
+        <p className="text-hint">{t("list.participants", { n: giveaway.participants })}</p>
+        <p className="text-hint">
           {t("form.winners")}: {giveaway.winners}
-        </Typography>
-      </Paper>
-      <Button variant="outlined" size="large" fullWidth onClick={() => openLink(giveaway.post_link)}>
+        </p>
+        <p className="text-hint">
+          {t("form.buttonText")}: {giveaway.button_text}
+        </p>
+      </Card>
+      <Button variant="outline" full onClick={() => openLink(giveaway.post_link)}>
         {t("details.post")}
       </Button>
       {giveaway.status === "review" && (
-        <Button variant="contained" size="large" fullWidth onClick={props.onReview}>
+        <Button variant="primary" full onClick={props.onReview}>
           {t("details.openReview")}
         </Button>
       )}
       {changeable && (
         <>
-          <Button variant="outlined" size="large" fullWidth onClick={() => props.onEdit(giveaway)}>
+          <Button variant="outline" full onClick={() => props.onEdit(giveaway)}>
             {t("details.edit")}
           </Button>
-          <Button variant="outlined" size="large" fullWidth onClick={() => setAsking("move")}>
+          <Button variant="outline" full onClick={() => setAsking("move")}>
             {t("details.move")}
           </Button>
         </>
       )}
       {running && (
         <>
-          <Button variant="outlined" size="large" fullWidth onClick={() => setAsking("finish-now")}>
+          <Button variant="outline" full onClick={() => setAsking("finish-now")}>
             {t("details.finishNow")}
           </Button>
-          <Button color="error" size="large" fullWidth onClick={() => setAsking("cancel")}>
+          <Button variant="danger-text" full onClick={() => setAsking("cancel")}>
             {t("details.cancelGiveaway")}
           </Button>
         </>
       )}
       {giveaway.status === "cancelled" && (
-        <Button
-          variant="contained"
-          size="large"
-          fullWidth
-          loading={busy}
-          onClick={() => act("restore", "details.restored")}
-        >
+        <Button variant="primary" full busy={busy} onClick={() => act("restore", "details.restored")}>
           {t("details.restore")}
         </Button>
       )}
@@ -138,28 +124,32 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
         onConfirm={() => act("cancel", "details.cancelled")}
         onClose={() => setAsking(undefined)}
       />
-      <Dialog open={asking === "move"} onClose={() => setAsking(undefined)} fullWidth maxWidth="xs" aria-labelledby="move-title">
-        <DialogTitle id="move-title">{t("details.moveTitle")}</DialogTitle>
-        <DialogContent>
-          <TextField
-            label={t("form.postLink")}
-            value={link}
-            onChange={(e) => setLink(e.target.value)}
-            placeholder="https://t.me/channel/124"
-            autoFocus
-            fullWidth
-            margin="dense"
-            error={!!moveError}
-            helperText={moveError ? t(`error.${moveError.code}`) : t("details.moveHelp")}
-            slotProps={{ htmlInput: { inputMode: "url", autoCapitalize: "none", autoCorrect: "off", spellCheck: false } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAsking(undefined)}>{t("app.cancel")}</Button>
-          <Button variant="contained" onClick={move} loading={busy} disabled={!link}>
-            {t("details.move")}
-          </Button>
-        </DialogActions>
+      <Dialog
+        open={asking === "move"}
+        title={t("details.moveTitle")}
+        onClose={() => setAsking(undefined)}
+        actions={
+          <>
+            <Button onClick={() => setAsking(undefined)}>{t("app.cancel")}</Button>
+            <Button variant="primary" onClick={move} busy={busy} disabled={!link}>
+              {t("details.move")}
+            </Button>
+          </>
+        }
+      >
+        <Field
+          label={t("form.postLink")}
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          placeholder="https://t.me/channel/124"
+          autoFocus
+          error={moveError ? t(`error.${moveError.code}`) : undefined}
+          help={t("details.moveHelp")}
+          inputMode="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+        />
       </Dialog>
     </Section>
   );
