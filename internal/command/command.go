@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -30,7 +29,7 @@ const (
 type entry struct {
 	command     string
 	description i18n.Key // starts with an emoji, so the eye finds the command
-	query       string   // the screen, as a query added to the Mini App's URL
+	query       string   // the screen, as a query added to the Mini App's URL; parseScreen in web/src/App.tsx reads it
 	text        i18n.Key // the reply above the button
 	button      i18n.Key // the button that opens the screen
 }
@@ -98,33 +97,30 @@ func SetMenuButton(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL 
 	return nil
 }
 
-// ScreenHandler returns a handler that answers command, one of the menu's, in a private chat
-// with one line and a button that opens the command's screen of the Mini App at appURL. The
-// texts are in the language the user chose, or else the language of their Telegram app. A
-// command outside the menu is a wiring mistake, so it panics at startup.
-func ScreenHandler(
-	command string, texts *i18n.Catalog, langs language.Reader, kb Sender, appURL string, log *slog.Logger,
-) bot.HandlerFunc {
-	i := slices.IndexFunc(menu(), func(e entry) bool { return e.command == command })
-	if i < 0 {
-		panic("command: /" + command + " opens no screen")
+// ScreenHandlers returns, for each command in the menu, a handler that answers it in a private
+// chat with one line and a button that opens the command's screen of the Mini App at appURL.
+// The texts are in the language the user chose, or else the language of their Telegram app.
+func ScreenHandlers(
+	texts *i18n.Catalog, langs language.Reader, kb Sender, appURL string, log *slog.Logger,
+) map[string]bot.HandlerFunc {
+	handlers := make(map[string]bot.HandlerFunc, len(menu()))
+	for _, e := range menu() {
+		handlers[e.command] = func(ctx context.Context, b *bot.Bot, update *models.Update) {
+			msg := update.Message
+			if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+				return
+			}
+
+			lang := language.UserLanguage(ctx, langs, log, msg.From)
+			open := models.InlineKeyboardButton{
+				Text:   texts.Text(lang, e.button),
+				WebApp: &models.WebAppInfo{URL: appURL + e.query},
+			}
+			kb.SendHTML(ctx, b, msg.From.ID, texts.Text(lang, e.text), [][]models.InlineKeyboardButton{{open}})
+		}
 	}
 
-	e := menu()[i]
-
-	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
-		msg := update.Message
-		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
-			return
-		}
-
-		lang := language.UserLanguage(ctx, langs, log, msg.From)
-		open := models.InlineKeyboardButton{
-			Text:   texts.Text(lang, e.button),
-			WebApp: &models.WebAppInfo{URL: appURL + e.query},
-		}
-		kb.SendHTML(ctx, b, msg.From.ID, texts.Text(lang, e.text), [][]models.InlineKeyboardButton{{open}})
-	}
+	return handlers
 }
 
 // Register lists the commands in Telegram's command menu of private chats, in every language

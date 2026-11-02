@@ -32,7 +32,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "2.7.0"
+const version = "2.7.1"
 
 func main() {
 	if err := run(); err != nil {
@@ -272,7 +272,14 @@ func handlers(
 ) []bot.Option {
 	kb := keyboard.NewTracker(users, log)
 
-	return []bot.Option{
+	screens := command.ScreenHandlers(texts, users, kb, appURL, log)
+	screenOpts := make([]bot.Option, 0, len(screens))
+
+	for cmd, h := range screens {
+		screenOpts = append(screenOpts, bot.WithMessageTextHandler(cmd, bot.MatchTypeCommandStartOnly, h))
+	}
+
+	return append([]bot.Option{
 		// Runs before every handler: records every sender's profile and its revisions, and
 		// deletes the message with buttons on a command.
 		bot.WithMiddlewares(user.Middleware(users, kb, log)),
@@ -280,26 +287,6 @@ func handlers(
 			command.Start,
 			bot.MatchTypeCommandStartOnly,
 			command.StartHandler(texts, users, kb, appURL, version, log),
-		),
-		bot.WithMessageTextHandler(
-			command.Help,
-			bot.MatchTypeCommandStartOnly,
-			command.ScreenHandler(command.Help, texts, users, kb, appURL, log),
-		),
-		bot.WithMessageTextHandler(
-			command.List,
-			bot.MatchTypeCommandStartOnly,
-			command.ScreenHandler(command.List, texts, users, kb, appURL, log),
-		),
-		bot.WithMessageTextHandler(
-			command.New,
-			bot.MatchTypeCommandStartOnly,
-			command.ScreenHandler(command.New, texts, users, kb, appURL, log),
-		),
-		bot.WithMessageTextHandler(
-			command.Language,
-			bot.MatchTypeCommandStartOnly,
-			command.ScreenHandler(command.Language, texts, users, kb, appURL, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.JoinCallback,
@@ -309,7 +296,7 @@ func handlers(
 		// Any other message gets no answer. Without this, go-telegram logs every unmatched update.
 		bot.WithDefaultHandler(answerStaleButton(log)),
 		bot.WithAllowedUpdates(allowedUpdates()),
-	}
+	}, screenOpts...)
 }
 
 // answerStaleButton answers a tap on a button no handler matches, such as one left from the

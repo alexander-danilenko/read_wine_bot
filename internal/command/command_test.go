@@ -164,14 +164,7 @@ func TestScreenCommandsOpenTheApp(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.command, func(t *testing.T) {
 			sent := &sentMessage{}
-			h := command.ScreenHandler(
-				tc.command,
-				texts,
-				savedLanguage("en"),
-				sent,
-				appURL,
-				slog.New(slog.DiscardHandler),
-			)
+			h := command.ScreenHandlers(texts, savedLanguage("en"), sent, appURL, slog.New(slog.DiscardHandler))[tc.command]
 			h(t.Context(), nil, &models.Update{Message: &models.Message{
 				From: &models.User{
 					ID: 42,
@@ -207,8 +200,8 @@ func TestScreenCommandUsesSavedLanguage(t *testing.T) {
 	}}
 	log := slog.New(slog.DiscardHandler)
 
-	command.ScreenHandler(command.Help, texts, savedLanguage(""), en, appURL, log)(t.Context(), nil, msg)
-	command.ScreenHandler(command.Help, texts, savedLanguage("uk"), uk, appURL, log)(t.Context(), nil, msg)
+	command.ScreenHandlers(texts, savedLanguage(""), en, appURL, log)[command.Help](t.Context(), nil, msg)
+	command.ScreenHandlers(texts, savedLanguage("uk"), uk, appURL, log)[command.Help](t.Context(), nil, msg)
 
 	if en.text == uk.text || en.rows[0][0].Text == uk.rows[0][0].Text {
 		t.Errorf("en %q and uk %q replies match, want the saved uk to win over the app's en", en.text, uk.text)
@@ -222,7 +215,7 @@ func TestScreenCommandIgnoresGroups(t *testing.T) {
 	}
 
 	sent := &sentMessage{}
-	h := command.ScreenHandler(command.New, texts, savedLanguage(""), sent, appURL, slog.New(slog.DiscardHandler))
+	h := command.ScreenHandlers(texts, savedLanguage(""), sent, appURL, slog.New(slog.DiscardHandler))[command.New]
 	h(t.Context(), nil, &models.Update{Message: &models.Message{
 		From: &models.User{ID: 42}, Chat: models.Chat{ID: -5, Type: models.ChatTypeGroup}, Text: "/new",
 	}})
