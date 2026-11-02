@@ -17,3 +17,6 @@
 
 # GoReleaser output
 /dist/
+
+# Plans: temporary handoff artifacts, never committed
+/docs/plans/
