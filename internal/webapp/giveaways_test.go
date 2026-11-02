@@ -31,6 +31,7 @@ type fakeGiveaways struct {
 	review     giveaway.ReviewView
 	winnerID   int64
 	rerolled   int
+	channels   []giveaway.Channel
 }
 
 func (f *fakeGiveaways) List(
@@ -46,6 +47,14 @@ func (f *fakeGiveaways) List(
 
 func (f *fakeGiveaways) Channels(context.Context, giveaway.ChannelReader, ...[]giveaway.View) []giveaway.Channel {
 	return nil
+}
+
+func (f *fakeGiveaways) MyChannels(
+	_ context.Context, _ giveaway.AdminChannelsTelegram, userID int64,
+) ([]giveaway.Channel, error) {
+	f.userID = userID
+
+	return f.channels, f.err
 }
 
 func (f *fakeGiveaways) Archived(_ context.Context, userID int64, offset, limit int) (giveaway.Page, error) {
@@ -156,6 +165,8 @@ func newGiveawayMux(t *testing.T, fake *fakeGiveaways) *http.ServeMux {
 		nil,
 		fake,
 		webapp.NewPhotos(testToken, nil, slog.New(slog.DiscardHandler)),
+		&fakeUsers{},
+		testBot,
 		slog.New(slog.DiscardHandler),
 	)
 

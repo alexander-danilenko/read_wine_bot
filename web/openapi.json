@@ -343,9 +343,13 @@
         ],
         "type": "object"
       },
-      "MeOutputBody": {
+      "MeBody": {
         "additionalProperties": false,
         "properties": {
+          "add_link": {
+            "description": "Adds the bot to a channel with giveaway rights",
+            "type": "string"
+          },
           "first_name": {
             "description": "The user's first name",
             "type": "string"
@@ -357,11 +361,17 @@
               "uk"
             ],
             "type": "string"
+          },
+          "partner_link": {
+            "description": "Adds the bot to a partner channel",
+            "type": "string"
           }
         },
         "required": [
           "language",
-          "first_name"
+          "first_name",
+          "add_link",
+          "partner_link"
         ],
         "type": "object"
       },
@@ -375,6 +385,22 @@
         },
         "required": [
           "post_link"
+        ],
+        "type": "object"
+      },
+      "MyChannelsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "description": "Channels where both the bot and the caller are admins",
+            "items": {
+              "$ref": "#/components/schemas/ListChannelBody"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "channels"
         ],
         "type": "object"
       },
@@ -424,6 +450,23 @@
           "winners",
           "channels",
           "rerolled"
+        ],
+        "type": "object"
+      },
+      "SetLanguageInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "language": {
+            "description": "The language to save",
+            "enum": [
+              "en",
+              "uk"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "language"
         ],
         "type": "object"
       },
@@ -491,6 +534,34 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/channels": {
+      "get": {
+        "operationId": "listMyChannels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyChannelsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Channels where both the bot and the caller are admins"
+      }
+    },
     "/api/giveaways": {
       "get": {
         "operationId": "listGiveaways",
@@ -921,7 +992,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MeOutputBody"
+                  "$ref": "#/components/schemas/MeBody"
                 }
               }
             },
@@ -939,6 +1010,44 @@
           }
         },
         "summary": "Who is using the app and in which language"
+      }
+    },
+    "/api/me/language": {
+      "put": {
+        "operationId": "setLanguage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetLanguageInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Save the language the bot and the app use for the caller"
       }
     },
     "/api/reviews/{id}": {

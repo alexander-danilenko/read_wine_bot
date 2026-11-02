@@ -33,7 +33,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "2.4.1"
+const version = "2.5.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -93,31 +93,40 @@ func run() error {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
 
-	if err := registerChannelLog(ctx, b, channel.NewStore(conn), users, log); err != nil {
-		return err
-	}
-
-	if err := describeBot(ctx, b, texts, cfg.AppURL); err != nil {
+	if err = setUpBot(ctx, b, channel.NewStore(conn), users, texts, cfg.AppURL, log); err != nil {
 		return err
 	}
 
 	drawer := newDrawer(store, users, texts, cfg.AppURL, log)
-	mux := newMiniApp(cfg.TelegramBotToken, b, static, giveaway.NewApp(editor, reviewer, store), users, texts, log)
+
+	app := giveaway.NewApp(editor, reviewer, store)
+
+	mux, err := newMiniApp(ctx, cfg.TelegramBotToken, b, static, app, users, texts, log)
+	if err != nil {
+		return err
+	}
 
 	return serve(ctx, stop, b, drawer, mux, cfg.ListenAddr)
 }
 
-// newMiniApp routes the Mini App: its static files and its API over the giveaway rules.
+// newMiniApp routes the Mini App: its static files and its API over the giveaway rules. Only
+// getMe tells the bot's username, which the API's add links need. A bot's username cannot
+// change while it runs, so it is read once here.
 func newMiniApp(
-	token string, b *bot.Bot, static *webapp.Static, app *giveaway.App,
+	ctx context.Context, token string, b *bot.Bot, static *webapp.Static, app *giveaway.App,
 	users *user.Store, texts *i18n.Catalog, log *slog.Logger,
-) *http.ServeMux {
+) (*http.ServeMux, error) {
+	me, err := b.GetMe(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read the bot's username: %w", err)
+	}
+
 	tg := giveaway.NewBotAPI(b)
 	photos := webapp.NewPhotos(token, tg, log)
-	ops := webapp.NewOperations(tg, app, photos, log)
+	ops := webapp.NewOperations(tg, app, photos, users, me.Username, log)
 	auth := webapp.NewAuth(token, users, users, texts.Langs(), log)
 
-	return webapp.NewMux(static, auth, ops, photos, version)
+	return webapp.NewMux(static, auth, ops, photos, version), nil
 }
 
 // serve runs the bot, the regular tasks and the Mini App server until ctx is done. They share
@@ -154,6 +163,18 @@ func serve(
 	}
 
 	return nil
+}
+
+// setUpBot starts the channel log and tells Telegram what the bot offers.
+func setUpBot(
+	ctx context.Context, b *bot.Bot, audience *channel.Store, users *user.Store, texts *i18n.Catalog,
+	appURL string, log *slog.Logger,
+) error {
+	if err := registerChannelLog(ctx, b, audience, users, log); err != nil {
+		return err
+	}
+
+	return describeBot(ctx, b, texts, appURL)
 }
 
 // describeBot tells Telegram what the bot offers and needs: the command menu, the menu button

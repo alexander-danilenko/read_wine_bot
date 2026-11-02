@@ -19,7 +19,10 @@ type Operations struct {
 	actions       GiveawayActions
 	reviewReader  ReviewReader
 	reviewActions ReviewActions
+	channels      ChannelLister
+	langs         LanguageSaver
 	photos        *Photos
+	bot           string // the bot's username, without the @, for the add links
 	log           *slog.Logger
 }
 
@@ -36,23 +39,28 @@ type Domain interface {
 	GiveawayActions
 	ReviewReader
 	ReviewActions
+	ChannelLister
 }
 
-// NewOperations returns the API's operations over d. tg makes the Telegram calls.
-func NewOperations(tg Telegram, d Domain, photos *Photos, log *slog.Logger) *Operations {
+// ChannelLister lists the caller's channels. *giveaway.App implements it.
+type ChannelLister interface {
+	MyChannels(ctx context.Context, tg giveaway.AdminChannelsTelegram, userID int64) ([]giveaway.Channel, error)
+}
+
+// NewOperations returns the API's operations over d. tg makes the Telegram calls, langs saves
+// the language a user picks, and bot is the bot's username for the links that add it.
+func NewOperations(
+	tg Telegram, d Domain, photos *Photos, langs LanguageSaver, bot string, log *slog.Logger,
+) *Operations {
 	return &Operations{
-		tg: tg, reader: d, writer: d, actions: d, reviewReader: d, reviewActions: d, photos: photos, log: log,
+		tg: tg, reader: d, writer: d, actions: d, reviewReader: d, reviewActions: d, channels: d, langs: langs,
+		photos: photos, bot: bot, log: log,
 	}
 }
 
 // Register adds every operation to api.
 func (o *Operations) Register(api huma.API) {
-	huma.Register(api, huma.Operation{
-		OperationID: "getMe",
-		Method:      http.MethodGet,
-		Path:        "/api/me",
-		Summary:     "Who is using the app and in which language",
-	}, o.me)
+	o.registerMe(api)
 	o.registerGiveaways(api)
 	o.registerReviews(api)
 }

@@ -151,6 +151,16 @@ func (f *fakeUsers) Language(_ context.Context, id int64) (string, error) {
 	return f.saved[id], nil
 }
 
+func (f *fakeUsers) SetLanguage(_ context.Context, id int64, lang string) error {
+	if f.saved == nil {
+		f.saved = map[int64]string{}
+	}
+
+	f.saved[id] = lang
+
+	return nil
+}
+
 // authorize returns the Authorization header value for u, launched now.
 func authorize(t *testing.T, u models.User) string {
 	t.Helper()

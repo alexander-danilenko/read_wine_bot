@@ -16,12 +16,18 @@ import (
 func newTestMux(t *testing.T, ops *webapp.Operations, saved map[int64]string) *http.ServeMux {
 	t.Helper()
 
+	return newUsersMux(t, ops, &fakeUsers{saved: saved})
+}
+
+// newUsersMux routes the Mini App over ops, with users as the saved languages Auth reads.
+func newUsersMux(t *testing.T, ops *webapp.Operations, users *fakeUsers) *http.ServeMux {
+	t.Helper()
+
 	static, err := webapp.NewStatic(builtFS())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	users := &fakeUsers{saved: saved}
 	auth := webapp.NewAuth(testToken, users, users, []string{"en", "uk"}, slog.New(slog.DiscardHandler))
 
 	return webapp.NewMux(static, auth, ops, webapp.NewPhotos(testToken, nil, slog.New(slog.DiscardHandler)), "test")
