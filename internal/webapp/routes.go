@@ -19,6 +19,7 @@ type Operations struct {
 	actions       GiveawayActions
 	reviewReader  ReviewReader
 	reviewActions ReviewActions
+	winners       WinnersSender
 	channels      ChannelLister
 	langs         LanguageSaver
 	photos        *Photos
@@ -39,6 +40,7 @@ type Domain interface {
 	GiveawayActions
 	ReviewReader
 	ReviewActions
+	WinnersSender
 	ChannelLister
 }
 
@@ -53,8 +55,18 @@ func NewOperations(
 	tg Telegram, d Domain, photos *Photos, langs LanguageSaver, bot string, log *slog.Logger,
 ) *Operations {
 	return &Operations{
-		tg: tg, reader: d, writer: d, actions: d, reviewReader: d, reviewActions: d, channels: d, langs: langs,
-		photos: photos, bot: bot, log: log,
+		tg:            tg,
+		reader:        d,
+		writer:        d,
+		actions:       d,
+		reviewReader:  d,
+		reviewActions: d,
+		winners:       d,
+		channels:      d,
+		langs:         langs,
+		photos:        photos,
+		bot:           bot,
+		log:           log,
 	}
 }
 

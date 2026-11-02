@@ -25,6 +25,10 @@ type ReviewActions interface {
 	) (giveaway.ReviewView, error)
 	Publish(ctx context.Context, tg giveaway.ReviewTelegramAll, userID int64, id uint, rerolled int) error
 	Skip(ctx context.Context, tg giveaway.ReviewTelegramAll, userID int64, id uint, rerolled int) error
+}
+
+// WinnersSender sends the caller the current winners to forward. *giveaway.App implements it.
+type WinnersSender interface {
 	SendWinners(ctx context.Context, tg giveaway.ReviewTelegramAll, userID int64, id uint) error
 }
 
@@ -174,7 +178,7 @@ func (o *Operations) sendWinners(ctx context.Context, in *idInput) (*struct{}, e
 		return nil, err
 	}
 
-	if err := o.reviewActions.SendWinners(ctx, o.tg, c.User.ID, in.ID); err != nil {
+	if err := o.winners.SendWinners(ctx, o.tg, c.User.ID, in.ID); err != nil {
 		return nil, o.apiErr(ctx, err)
 	}
 
