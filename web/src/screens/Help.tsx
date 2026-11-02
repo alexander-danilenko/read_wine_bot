@@ -3,22 +3,7 @@ import { useState, type ReactNode } from "react";
 import type { Me } from "../api/client";
 import { useT } from "../i18n";
 import { openLink } from "../telegram";
-import { Button, Card, inputClass, Section, Title, useNotify } from "../ui";
-
-// HelpCard is one titled section of Help, with an icon that marks whom it is for.
-export function HelpCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
-  return (
-    <Card className="flex flex-col gap-4 p-4">
-      <h2 className="flex items-center gap-3 text-lg font-semibold">
-        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
-          {icon}
-        </span>
-        {title}
-      </h2>
-      {children}
-    </Card>
-  );
-}
+import { Button, inputClass, Section, Title, TitledCard, useNotify } from "../ui";
 
 // Step is one numbered step of the admin section.
 function Step({ n, children }: { n: number; children: ReactNode }) {
@@ -90,7 +75,7 @@ export default function Help({ me }: { me: Me }) {
       <Title>{t("help.title")}</Title>
       <p className="text-hint">{t("help.intro")}</p>
 
-      <HelpCard icon={<Megaphone className="size-5" />} title={t("help.admins")}>
+      <TitledCard icon={<Megaphone className="size-5" />} title={t("help.admins")}>
         <ol className="flex flex-col gap-4">
           <Step n={1}>
             <p>{t("help.step1")}</p>
@@ -111,13 +96,13 @@ export default function Help({ me }: { me: Me }) {
           <Plus aria-hidden className="size-5" />
           {t("help.add")}
         </Button>
-      </HelpCard>
+      </TitledCard>
 
-      <HelpCard icon={<Handshake className="size-5" />} title={t("help.partners")}>
+      <TitledCard icon={<Handshake className="size-5" />} title={t("help.partners")}>
         <p>{t("help.partner1")}</p>
         <p className="text-hint">{t("help.partner2")}</p>
         <PartnerLink link={me.partner_link} />
-      </HelpCard>
+      </TitledCard>
     </Section>
   );
 }

@@ -273,6 +273,21 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`rounded-2xl bg-card ${className}`}>{children}</div>;
 }
 
+// TitledCard is a card under a heading, with an icon that marks what the card is about.
+export function TitledCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <Card className="flex flex-col gap-4 p-4">
+      <h2 className="flex items-center gap-3 text-lg font-semibold">
+        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+          {icon}
+        </span>
+        {title}
+      </h2>
+      {children}
+    </Card>
+  );
+}
+
 export function Section({ children }: { children: ReactNode }) {
   return <div className="flex flex-col gap-4">{children}</div>;
 }

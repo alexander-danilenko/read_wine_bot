@@ -26,6 +26,9 @@ type Screen =
   | { name: "edit"; id: number; from: ListAt }
   | { name: "review"; id: number; from: ListAt };
 
+// bareScreens are the screens named by a query key alone, with no value: ?new, ?help, ?settings.
+const bareScreens = ["new", "help", "settings"] as const;
+
 // positive is the whole number above 0 that text holds, or undefined.
 function positive(text: string | null): number | undefined {
   return text !== null && /^[1-9]\d{0,9}$/.test(text) ? Number(text) : undefined;
@@ -44,7 +47,7 @@ function parseScreen(search: string): Screen {
     const id = positive(q.get(key));
     return id ? { name, id, from: home } : fallback;
   }
-  for (const name of ["new", "help", "settings"] as const) {
+  for (const name of bareScreens) {
     if (q.has(name)) return { name, from: home };
   }
 
@@ -70,8 +73,7 @@ function screenURL(screen: Screen): string {
       q.set(screen.name, String(screen.id));
       break;
   }
-  const bare = screen.name === "new" || screen.name === "help" || screen.name === "settings";
-  const query = bare ? screen.name : q.toString();
+  const query = (bareScreens as readonly string[]).includes(screen.name) ? screen.name : q.toString();
   return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
 }
 
@@ -143,7 +145,6 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
     return () => webApp?.BackButton.offClick(back);
   }, [screen, back]);
 
-  // Braces keep the effect from returning what scrollTo returns: React would take it for a cleanup.
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [screen]);

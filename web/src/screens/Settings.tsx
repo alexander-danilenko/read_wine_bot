@@ -3,8 +3,7 @@ import { useState } from "react";
 import { api, must, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
 import { openLink } from "../telegram";
-import { Avatar, Button, ErrorText, Loading, Section, Title, useLoad } from "../ui";
-import { HelpCard } from "./Help";
+import { Avatar, Button, ErrorText, Loading, Section, Title, TitledCard, useLoad } from "../ui";
 
 // Each language is shown in its own name, so every user finds theirs.
 const languages: { code: Lang; label: string }[] = [
@@ -33,7 +32,7 @@ function LanguagePicker({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   };
 
   return (
-    <HelpCard icon={<Languages className="size-5" />} title={t("settings.language")}>
+    <TitledCard icon={<Languages className="size-5" />} title={t("settings.language")}>
       <div role="radiogroup" aria-label={t("settings.language")} className="grid grid-cols-2 gap-2">
         {languages.map(({ code, label }) => {
           const selected = me.language === code;
@@ -53,7 +52,7 @@ function LanguagePicker({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
         })}
       </div>
       {error !== undefined && <ErrorText error={error} />}
-    </HelpCard>
+    </TitledCard>
   );
 }
 
@@ -80,10 +79,10 @@ function Channels() {
   }
 
   return (
-    <HelpCard icon={<Megaphone className="size-5" />} title={t("settings.channels")}>
+    <TitledCard icon={<Megaphone className="size-5" />} title={t("settings.channels")}>
       <p className="-mt-2 text-sm text-hint">{t("settings.channelsHint")}</p>
       {body}
-    </HelpCard>
+    </TitledCard>
   );
 }
 

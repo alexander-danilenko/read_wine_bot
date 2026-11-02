@@ -30,18 +30,8 @@ func NewTracker(store Store, log *slog.Logger) *Tracker {
 	return &Tracker{store: store, log: log}
 }
 
-// Send deletes the user's previous message with buttons, then sends text with rows.
-func (t *Tracker) Send(
-	ctx context.Context,
-	b *bot.Bot,
-	userID int64,
-	text string,
-	rows [][]models.InlineKeyboardButton,
-) {
-	t.send(ctx, b, userID, text, rows, "")
-}
-
-// SendHTML is Send for an HTML text, shown without link previews.
+// SendHTML deletes the user's previous message with buttons, then sends the HTML text with
+// rows, shown without link previews.
 func (t *Tracker) SendHTML(
 	ctx context.Context,
 	b *bot.Bot,
@@ -85,14 +75,7 @@ func (t *Tracker) Clear(ctx context.Context, b *bot.Bot, userID int64) {
 	}
 }
 
-// Discard deletes the message a tapped button belongs to.
-func (t *Tracker) Discard(ctx context.Context, b *bot.Bot, m models.MaybeInaccessibleMessage) {
-	if m.Message != nil {
-		discard(ctx, b, t.log, m.Message.Chat.ID, m.Message.ID)
-	}
-}
-
-// send sends text in parse mode mode; "" is plain text. See Send.
+// send sends text in parse mode mode; "" is plain text. See SendHTML.
 func (t *Tracker) send(
 	ctx context.Context,
 	b *bot.Bot,
