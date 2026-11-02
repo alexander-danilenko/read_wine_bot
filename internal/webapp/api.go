@@ -105,6 +105,7 @@ const securityScheme = "telegramInitData"
 // the deployed bot does not publish it.
 func NewAPI(mux *http.ServeMux, version string) huma.API { //nolint:ireturn // huma.API is the library's handle
 	huma.NewError = newHumaError
+	huma.DefaultArrayNullable = false // the operations always return lists, never null
 
 	config := huma.DefaultConfig("read_wine_bot Mini App API", version)
 	config.OpenAPIPath = ""

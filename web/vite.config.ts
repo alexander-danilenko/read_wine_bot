@@ -7,5 +7,7 @@ export default defineConfig({
   build: {
     outDir: "../internal/webapp/dist",
     emptyOutDir: true,
+    // One bundle of React + MUI (about 160 kB gzipped) loads once and is cached as immutable.
+    chunkSizeWarningLimit: 600,
   },
 });

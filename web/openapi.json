@@ -41,10 +41,7 @@
             "items": {
               "$ref": "#/components/schemas/ErrorDetail"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "field": {
             "description": "The request field the error concerns, when there is one",
@@ -178,10 +175,7 @@
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "more": {
             "description": "Whether more giveaways follow",
@@ -268,20 +262,14 @@
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "review": {
             "description": "Giveaways whose results wait for review in channels the caller is an admin of",
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -347,10 +335,7 @@
             "items": {
               "$ref": "#/components/schemas/ChannelBody"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "giveaway": {
             "$ref": "#/components/schemas/GiveawayBody",
@@ -366,10 +351,7 @@
             "items": {
               "$ref": "#/components/schemas/WinnerBody"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -406,10 +388,7 @@
               ],
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "user_id": {
             "description": "Telegram user ID",
