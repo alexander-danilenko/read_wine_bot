@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -19,7 +20,17 @@ var (
 	ErrMissingDatabaseURL = errors.New("DATABASE_URL is not set")
 	// ErrInvalidDatabaseURL means DATABASE_URL is not a postgres:// URL with a host.
 	ErrInvalidDatabaseURL = errors.New("DATABASE_URL is invalid, want postgres://user:password@host:port/database")
+	// ErrMissingAppURL means APP_URL is not set.
+	ErrMissingAppURL = errors.New("APP_URL is not set")
+	// ErrInvalidAppURL means APP_URL is not an https:// URL with a host and without a query or fragment.
+	ErrInvalidAppURL = errors.New("APP_URL is invalid, want https://host/path without ? or #")
+	// ErrInvalidListenAddr means LISTEN_ADDR is not a host:port address.
+	ErrInvalidListenAddr = errors.New("LISTEN_ADDR is invalid, want host:port or :port")
 )
+
+// defaultListenAddr is where the Mini App and its API listen when LISTEN_ADDR is unset. It is
+// safe in production: the container publishes this port behind the HTTPS proxy.
+const defaultListenAddr = ":8080"
 
 // tokenPattern matches a @BotFather token: a numeric bot ID, a colon, then a URL-safe secret.
 var tokenPattern = regexp.MustCompile(`^\d+:[\w-]+$`)
@@ -28,6 +39,8 @@ var tokenPattern = regexp.MustCompile(`^\d+:[\w-]+$`)
 type Config struct {
 	TelegramBotToken string
 	DatabaseURL      string // the PostgreSQL connection URL
+	AppURL           string // the public https:// URL of the Mini App, as registered with @BotFather
+	ListenAddr       string // the host:port the HTTP server listens on
 }
 
 // Load reads settings and validates them. Each setting comes from its environment variable when
@@ -50,6 +63,11 @@ func Load(ctx context.Context, dir string) (Config, error) {
 	cfg := Config{
 		TelegramBotToken: get("TELEGRAM_BOT_TOKEN"),
 		DatabaseURL:      get("DATABASE_URL"),
+		AppURL:           get("APP_URL"),
+		ListenAddr:       get("LISTEN_ADDR"),
+	}
+	if cfg.ListenAddr == "" {
+		cfg.ListenAddr = defaultListenAddr
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, fmt.Errorf("invalid config: %w", err)
@@ -64,6 +82,8 @@ func (c Config) validate() error {
 	return errors.Join(
 		validateToken(c.TelegramBotToken),
 		validateDatabaseURL(c.DatabaseURL),
+		validateAppURL(c.AppURL),
+		validateListenAddr(c.ListenAddr),
 	)
 }
 
@@ -87,6 +107,29 @@ func validateDatabaseURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
 		return ErrInvalidDatabaseURL
+	}
+
+	return nil
+}
+
+// validateAppURL requires https: Telegram opens Mini Apps only over HTTPS. The bot appends its own
+// query to this URL, so it must not carry one.
+func validateAppURL(raw string) error {
+	if raw == "" {
+		return ErrMissingAppURL
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return ErrInvalidAppURL
+	}
+
+	return nil
+}
+
+func validateListenAddr(addr string) error {
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return ErrInvalidListenAddr
 	}
 
 	return nil

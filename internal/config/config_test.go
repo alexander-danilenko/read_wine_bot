@@ -10,6 +10,8 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/config"
 )
 
+const appURL = "https://bot.example/app"
+
 // The .env walk continues above t.TempDir() into the real filesystem, so these tests assume no
 // .env file sits in the system temp directory or its parents.
 func TestLoad(t *testing.T) {
@@ -77,6 +79,7 @@ func TestLoad(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.env)
 			t.Setenv("DATABASE_URL", "postgres://bot@localhost/bot")
+			t.Setenv("APP_URL", appURL)
 
 			root := t.TempDir()
 			for dir, contents := range tc.files {
@@ -138,6 +141,7 @@ func TestLoadDatabaseURL(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("TELEGRAM_BOT_TOKEN", tc.token)
 			t.Setenv("DATABASE_URL", tc.url)
+			t.Setenv("APP_URL", appURL)
 
 			cfg, err := config.Load(t.Context(), t.TempDir())
 			if len(tc.wantErrs) == 0 {
@@ -156,6 +160,54 @@ func TestLoadDatabaseURL(t *testing.T) {
 
 			if strings.Contains(err.Error(), "p4ss") {
 				t.Errorf("error %q leaks the database password", err)
+			}
+		})
+	}
+}
+
+func TestLoadAppURLAndListenAddr(t *testing.T) {
+	tests := []struct {
+		name       string
+		appURL     string
+		listenAddr string
+		wantListen string
+		wantErr    error
+	}{
+		{name: "https with path", appURL: appURL, wantListen: ":8080"},
+		{name: "listen addr set", appURL: appURL, listenAddr: "127.0.0.1:9000", wantListen: "127.0.0.1:9000"},
+		{name: "app url missing", wantErr: config.ErrMissingAppURL},
+		{name: "http scheme", appURL: "http://bot.example/app", wantErr: config.ErrInvalidAppURL},
+		{name: "no host", appURL: "https:///app", wantErr: config.ErrInvalidAppURL},
+		{name: "with query", appURL: "https://bot.example/?a=1", wantErr: config.ErrInvalidAppURL},
+		{name: "with fragment", appURL: "https://bot.example/#x", wantErr: config.ErrInvalidAppURL},
+		{
+			name:       "listen addr without port",
+			appURL:     appURL,
+			listenAddr: "localhost",
+			wantErr:    config.ErrInvalidListenAddr,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TELEGRAM_BOT_TOKEN", "1:secret")
+			t.Setenv("DATABASE_URL", "postgres://bot@localhost/bot")
+			t.Setenv("APP_URL", tc.appURL)
+			t.Setenv("LISTEN_ADDR", tc.listenAddr)
+
+			cfg, err := config.Load(t.Context(), t.TempDir())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tc.wantErr)
+			}
+
+			if err == nil && (cfg.AppURL != tc.appURL || cfg.ListenAddr != tc.wantListen) {
+				t.Errorf(
+					"AppURL, ListenAddr = %q, %q, want %q, %q",
+					cfg.AppURL,
+					cfg.ListenAddr,
+					tc.appURL,
+					tc.wantListen,
+				)
 			}
 		})
 	}

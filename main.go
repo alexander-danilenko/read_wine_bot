@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
@@ -27,12 +28,13 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/keyboard"
 	"github.com/alexander-danilenko/read_wine_bot/internal/language"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
+	"github.com/alexander-danilenko/read_wine_bot/internal/webapp"
 )
 
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.2.0"
+const version = "1.3.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -48,6 +50,12 @@ func run() error {
 	cfg, err := config.Load(ctx, ".")
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// A binary built without the Mini App stops here.
+	static, err := webapp.NewStatic(webapp.Built())
+	if err != nil {
+		return fmt.Errorf("load mini app: %w", err)
 	}
 
 	// A broken locale file stops the bot here.
@@ -98,15 +106,41 @@ func run() error {
 
 	drawer := newDrawer(store, users, reviewer, texts, log)
 
-	// Regular tasks. They share ctx with the bot, so the same signal stops them all. Waiting
-	// for them before returning keeps the deferred database close from cutting a run short.
-	var wg sync.WaitGroup
-	wg.Go(func() { cron.Every(ctx, time.Minute, func(ctx context.Context) { drawer.DrawDue(ctx, b) }) })
+	return serve(ctx, stop, b, drawer, static, cfg.ListenAddr)
+}
 
-	slog.InfoContext(ctx, "bot started", "version", version)
+// serve runs the bot, the regular tasks and the Mini App server until ctx is done. They share
+// ctx, so the same signal stops them all, and a failing server stops the others through stop.
+// Waiting for them before returning keeps the deferred database close from cutting a run short.
+func serve(
+	ctx context.Context, stop context.CancelFunc, b *bot.Bot, drawer *giveaway.Drawer, static http.Handler, addr string,
+) error {
+	mux := http.NewServeMux()
+	mux.Handle("GET /", static)
+
+	// A busy port stops the bot here.
+	srv, err := webapp.Listen(ctx, addr, mux)
+	if err != nil {
+		return fmt.Errorf("start mini app server: %w", err)
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Go(func() { cron.Every(ctx, time.Minute, func(ctx context.Context) { drawer.DrawDue(ctx, b) }) })
+	wg.Go(func() {
+		if err = srv.Run(ctx); err != nil {
+			stop()
+		}
+	})
+
+	slog.InfoContext(ctx, "bot started", "version", version, "listen_addr", srv.Addr().String())
 	b.Start(ctx)
 	wg.Wait()
 	slog.InfoContext(ctx, "bot stopped")
+
+	if err != nil {
+		return fmt.Errorf("mini app server: %w", err)
+	}
 
 	return nil
 }

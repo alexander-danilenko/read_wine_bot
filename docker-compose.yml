@@ -28,6 +28,8 @@ services:
 #    environment:
 #      # Inside compose the database host is the service name, not localhost.
 #      DATABASE_URL: postgres://postgres:postgres@db:5432/read_wine_bot?sslmode=disable
+#    ports:
+#      - "127.0.0.1:8080:8080" # the Mini App; put an HTTPS tunnel or proxy in front for Telegram
 #    depends_on:
 #      db:
 #        condition: service_healthy
