@@ -24,6 +24,8 @@ type meBody struct {
 }
 
 // TransformSchema lists the languages as an enum in the spec, so the generated client knows them.
+// It is not an enum tag: a tag key on one field only makes golines and tagalign rewrite each
+// other's alignment, and an unexported embedded struct would drop its fields from the schema.
 func (meBody) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
 	if lang, ok := s.Properties["language"]; ok {
 		lang.Enum = []any{"en", "uk"}
