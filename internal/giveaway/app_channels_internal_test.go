@@ -66,10 +66,12 @@ func TestMyChannels(t *testing.T) {
 		{
 			name: "only channels the viewer is an admin of, in store order",
 			tg: &channelAdmins{
-				fakeSubscriptionTelegram: titled(all),
-				admins:                   map[int64][]int64{channelA: {viewer}, channelB: {7}, channelC: {7, viewer}},
+				fakeSubscriptionTelegram: &fakeSubscriptionTelegram{
+					titles: all, usernames: map[int64]string{channelC: "c_wine"},
+				},
+				admins: map[int64][]int64{channelA: {viewer}, channelB: {7}, channelC: {7, viewer}},
 			},
-			want: []Channel{{ID: channelA, Title: "A"}, {ID: channelC, Title: "C"}},
+			want: []Channel{{ID: channelA, Title: "A"}, {ID: channelC, Title: "C", Username: "c_wine"}},
 		},
 		{
 			name: "a failed admin check leaves the channel out",

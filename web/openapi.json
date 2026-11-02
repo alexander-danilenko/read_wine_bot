@@ -296,11 +296,16 @@
           "title": {
             "description": "Channel title, empty if Telegram cannot give it",
             "type": "string"
+          },
+          "username": {
+            "description": "Public username without @, empty for a private channel",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "title",
+          "username",
           "photo"
         ],
         "type": "object"

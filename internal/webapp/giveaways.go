@@ -70,15 +70,16 @@ func (giveawayBody) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schem
 
 // listChannelBody is a channel as the lists and the giveaway screen show it, read live from Telegram.
 type listChannelBody struct {
-	ID    int64  `doc:"Telegram ID of the channel"                      json:"id"`
-	Title string `doc:"Channel title, empty if Telegram cannot give it" json:"title"`
-	Photo string `doc:"URL of the small channel photo, empty for none"  json:"photo"`
+	ID       int64  `doc:"Telegram ID of the channel"                             json:"id"`
+	Title    string `doc:"Channel title, empty if Telegram cannot give it"        json:"title"`
+	Username string `doc:"Public username without @, empty for a private channel" json:"username"`
+	Photo    string `doc:"URL of the small channel photo, empty for none"         json:"photo"`
 }
 
 func (o *Operations) toListChannels(cs []giveaway.Channel) []listChannelBody {
 	out := make([]listChannelBody, 0, len(cs))
 	for _, c := range cs {
-		body := listChannelBody{ID: c.ID, Title: c.Title}
+		body := listChannelBody{ID: c.ID, Title: c.Title, Username: c.Username}
 		if c.PhotoID != "" {
 			body.Photo = o.photos.URL(c.PhotoID)
 		}

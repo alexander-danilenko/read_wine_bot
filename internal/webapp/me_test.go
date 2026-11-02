@@ -98,7 +98,9 @@ func TestSetLanguageRejectsUnknown(t *testing.T) {
 }
 
 func TestMyChannels(t *testing.T) {
-	fake := &fakeGiveaways{channels: []giveaway.Channel{{ID: -1001, Title: "A"}, {ID: -1003, Title: "C"}}}
+	fake := &fakeGiveaways{
+		channels: []giveaway.Channel{{ID: -1001, Title: "A"}, {ID: -1003, Title: "C", Username: "c_wine"}},
+	}
 	mux := newMeMux(t, fake, &fakeUsers{})
 
 	rec := call(t, mux, "/api/channels", &models.User{ID: 42})
@@ -108,8 +110,9 @@ func TestMyChannels(t *testing.T) {
 
 	var got struct {
 		Channels []struct {
-			ID    int64  `json:"id"`
-			Title string `json:"title"`
+			ID       int64  `json:"id"`
+			Title    string `json:"title"`
+			Username string `json:"username"`
 		} `json:"channels"`
 	}
 
@@ -117,7 +120,8 @@ func TestMyChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fake.userID != 42 || len(got.Channels) != 2 || got.Channels[1].Title != "C" {
+	if fake.userID != 42 || len(got.Channels) != 2 || got.Channels[1].Title != "C" ||
+		got.Channels[1].Username != "c_wine" {
 		t.Errorf("channels = %+v for user %d, want A and C for 42", got.Channels, fake.userID)
 	}
 }

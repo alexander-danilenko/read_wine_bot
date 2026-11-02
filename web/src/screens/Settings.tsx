@@ -1,4 +1,4 @@
-import { Languages, Megaphone, Plus } from "lucide-react";
+import { ChevronRight, Languages, Megaphone, Plus } from "lucide-react";
 import { useState } from "react";
 import { api, must, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
@@ -69,9 +69,23 @@ function Channels() {
     body = (
       <ul className="-mx-4 divide-y divide-hint/20">
         {list.data.channels.map((c) => (
-          <li key={c.id} className="flex min-h-14 items-center gap-3 px-4 py-2">
-            <Avatar channel={c} />
-            <span className="min-w-0 flex-1 truncate">{c.title}</span>
+          <li key={c.id}>
+            {c.username ? (
+              <button
+                type="button"
+                onClick={() => openLink(`https://t.me/${c.username}`)}
+                className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+              >
+                <Avatar channel={c} />
+                <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                <ChevronRight aria-hidden className="size-5 shrink-0 text-hint" />
+              </button>
+            ) : (
+              <div className="flex min-h-14 items-center gap-3 px-4 py-2">
+                <Avatar channel={c} />
+                <span className="min-w-0 flex-1 truncate">{c.title}</span>
+              </div>
+            )}
           </li>
         ))}
       </ul>

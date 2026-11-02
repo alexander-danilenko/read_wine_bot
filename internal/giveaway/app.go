@@ -235,9 +235,10 @@ func (a *App) Archived(ctx context.Context, userID int64, offset, limit int) (Pa
 
 // Channel is a channel as the giveaway lists show it, read live from Telegram, never stored.
 type Channel struct {
-	ID      int64
-	Title   string
-	PhotoID string // Telegram file ID of the small channel photo, "" for none
+	ID       int64
+	Title    string
+	Username string // public username without the @, "" for a private channel
+	PhotoID  string // Telegram file ID of the small channel photo, "" for none
 }
 
 // Channels returns the channels of the giveaways in lists, each once. A title or photo that
@@ -260,7 +261,7 @@ func (a *App) Channels(ctx context.Context, tg ChannelReader, lists ...[]View) [
 			a.log.WarnContext(ctx, "read channel", "chat_id", v.ChatID, "error", err)
 		}
 
-		c.Title, c.PhotoID = info.Title, info.PhotoID
+		c.Title, c.Username, c.PhotoID = info.Title, info.Username, info.PhotoID
 		channels = append(channels, c)
 	}
 
@@ -310,7 +311,7 @@ func (a *App) MyChannels(ctx context.Context, tg AdminChannelsTelegram, userID i
 				a.log.WarnContext(ctx, "read channel", "chat_id", id, "error", err)
 			}
 
-			found[i] = &Channel{ID: id, Title: info.Title, PhotoID: info.PhotoID}
+			found[i] = &Channel{ID: id, Title: info.Title, Username: info.Username, PhotoID: info.PhotoID}
 		})
 	}
 
