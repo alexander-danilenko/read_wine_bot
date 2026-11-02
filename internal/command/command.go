@@ -48,23 +48,60 @@ func menu() []entry {
 	}
 }
 
+// Sender sends the one message with buttons in a user's private chat. *keyboard.Tracker
+// implements it.
+type Sender interface {
+	SendHTML(ctx context.Context, b *bot.Bot, userID int64, text string, rows [][]models.InlineKeyboardButton)
+}
+
 // StartHandler returns a handler that answers /start with the greeting, the command menu as
-// tappable commands with /help first, so a new user starts there, and the bot's version, so
-// the owner can see which build is deployed.
-func StartHandler(texts *i18n.Catalog, langs language.Reader, version string, log *slog.Logger) bot.HandlerFunc {
+// tappable commands with /help first, so a new user starts there, the bot's version, so the
+// owner can see which build is deployed, and a button that opens the Mini App at appURL.
+func StartHandler(
+	texts *i18n.Catalog, langs language.Reader, kb Sender, appURL, version string, log *slog.Logger,
+) bot.HandlerFunc {
 	entries := append(
 		[]entry{{Help, i18n.CommandHelp}},
 		slices.DeleteFunc(menu(), func(e entry) bool { return e.command == Help })...,
 	)
 
-	return reply(langs, log, func(lang string) string {
+	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		msg := update.Message
+		if msg == nil || msg.From == nil || msg.Chat.Type != models.ChatTypePrivate {
+			return
+		}
+
+		lang := language.UserLanguage(ctx, langs, log, msg.From)
+
 		lines := make([]string, 0, len(entries))
 		for _, e := range entries {
 			lines = append(lines, "/"+e.command+" — "+texts.Text(lang, e.description))
 		}
 
-		return texts.Text(lang, i18n.Greeting) + "\n\n" + strings.Join(lines, "\n") + "\n\nv" + version
+		text := texts.Text(lang, i18n.Greeting) + "\n\n" + strings.Join(lines, "\n") + "\n\nv" + version
+		open := models.InlineKeyboardButton{
+			Text:   texts.Text(lang, i18n.AppOpen),
+			WebApp: &models.WebAppInfo{URL: appURL},
+		}
+		kb.SendHTML(ctx, b, msg.From.ID, text, [][]models.InlineKeyboardButton{{open}})
+	}
+}
+
+// SetMenuButton makes the chat's menu button open the Mini App at appURL, labelled in the
+// default language: Telegram has one menu button for every language.
+func SetMenuButton(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL string) error {
+	_, err := b.SetChatMenuButton(ctx, &bot.SetChatMenuButtonParams{
+		MenuButton: models.MenuButtonWebApp{
+			Type:   models.MenuButtonTypeWebApp,
+			Text:   texts.Text(i18n.DefaultLang, i18n.AppMenu),
+			WebApp: models.WebAppInfo{URL: appURL},
+		},
 	})
+	if err != nil {
+		return fmt.Errorf("set menu button: %w", err)
+	}
+
+	return nil
 }
 
 // HelpHandler returns a handler that answers /help: how a giveaway works and the channel

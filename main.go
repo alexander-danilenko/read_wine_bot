@@ -34,7 +34,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "1.8.0"
+const version = "1.9.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -90,9 +90,7 @@ func run() error {
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
 	reviewer := newReviewer(store, channel.NewStore(conn), texts, log)
 	giveaways, editor := newGiveawayRules(store, users, texts, kyiv, log)
-	opts := append(handlers(users, giveaways, editor, reviewer, texts, log), bot.WithAllowedUpdates(allowedUpdates()))
-
-	b, err := bot.New(cfg.TelegramBotToken, opts...)
+	b, err := bot.New(cfg.TelegramBotToken, handlers(users, giveaways, editor, reviewer, texts, cfg.AppURL, log)...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
@@ -101,12 +99,11 @@ func run() error {
 		return err
 	}
 
-	if err := describeBot(ctx, b, texts); err != nil {
+	if err := describeBot(ctx, b, texts, cfg.AppURL); err != nil {
 		return err
 	}
 
-	drawer := newDrawer(store, users, reviewer, texts, log)
-
+	drawer := newDrawer(store, users, reviewer, texts, cfg.AppURL, log)
 	mux := newMiniApp(cfg.TelegramBotToken, b, static, giveaway.NewApp(editor, reviewer, store), users, texts, log)
 
 	return serve(ctx, stop, b, drawer, mux, cfg.ListenAddr)
@@ -156,11 +153,16 @@ func serve(
 	return nil
 }
 
-// describeBot tells Telegram what the bot offers and needs: the command menu, and the admin
+// describeBot tells Telegram what the bot offers and needs: the command menu, the menu button
+// that opens the Mini App, and the admin
 // rights Telegram pre-selects when an admin adds the bot to a channel.
-func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog) error {
+func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL string) error {
 	if err := command.Register(ctx, b, texts); err != nil {
 		return fmt.Errorf("register commands: %w", err)
+	}
+
+	if err := command.SetMenuButton(ctx, b, texts, appURL); err != nil {
+		return err //nolint:wrapcheck // SetMenuButton already says what failed
 	}
 
 	if err := giveaway.RequestRights(ctx, b); err != nil {
@@ -214,10 +216,11 @@ func allowedUpdates() bot.AllowedUpdates {
 
 // newDrawer returns the winner draw, which sends the results to the creator for review.
 func newDrawer(
-	store *giveaway.Store, users *user.Store, reviewer *giveaway.Reviewer, texts *i18n.Catalog, log *slog.Logger,
+	store *giveaway.Store, users *user.Store, reviewer *giveaway.Reviewer, texts *i18n.Catalog, appURL string,
+	log *slog.Logger,
 ) *giveaway.Drawer {
 	kb := keyboard.NewTracker(users, log)
-	notifier := giveaway.NewReviewNotifier(reviewer, users, texts, kb, log)
+	notifier := giveaway.NewReviewNotifier(reviewer, users, texts, kb, appURL, log)
 
 	return giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, notifier, time.Now, log)
 }
@@ -239,13 +242,15 @@ func newGiveawayRules(
 	return svc, giveaway.NewEditor(svc, store, store, store, store, store, store)
 }
 
-// handlers wires every update the bot handles to the package that handles it.
+// handlers wires every update the bot handles to the package that handles it, and asks
+// Telegram for those updates only.
 func handlers(
 	users *user.Store,
 	giveaways *giveaway.Service,
 	editor *giveaway.Editor,
 	reviewer *giveaway.Reviewer,
 	texts *i18n.Catalog,
+	appURL string,
 	log *slog.Logger,
 ) []bot.Option {
 	kb := keyboard.NewTracker(users, log)
@@ -274,7 +279,7 @@ func handlers(
 		bot.WithMessageTextHandler(
 			command.Start,
 			bot.MatchTypeCommandStartOnly,
-			command.StartHandler(texts, users, version, log),
+			command.StartHandler(texts, users, kb, appURL, version, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			language.CallbackPrefix,
@@ -304,6 +309,7 @@ func handlers(
 		// Forwarded posts and typed setup and edit values match no handler above, so they
 		// land here.
 		bot.WithDefaultHandler(giveaway.MessageHandler(giveaways, editor, texts, users, kb, log)),
+		bot.WithAllowedUpdates(allowedUpdates()),
 	}, menuHandlers(texts, users, kb, giveaways, editor, log))
 }
 

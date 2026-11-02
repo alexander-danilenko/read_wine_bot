@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func (h *handlerSetup) notifier(results giveaway.Results) *giveaway.ReviewNotifi
 		log,
 	)
 
-	return giveaway.NewReviewNotifier(rv, h.users, h.texts, h.kb, log)
+	return giveaway.NewReviewNotifier(rv, h.users, h.texts, h.kb, "https://bot.example/app", log)
 }
 
 func TestSendReviewToCreator(t *testing.T) {
@@ -74,8 +75,17 @@ func TestSendReviewToCreator(t *testing.T) {
 	}
 
 	rows := h.keyboard(t)
-	if len(rows) != 3 || !strings.HasPrefix(rows[0][0].CallbackData, giveaway.ReviewCallbackPrefix) {
-		t.Errorf("rows = %+v, want one reroll row, the publish row and the skip row", rows)
+	if len(rows) != 4 || !strings.HasPrefix(rows[0][0].CallbackData, giveaway.ReviewCallbackPrefix) {
+		t.Fatalf("rows = %+v, want one reroll row, the publish row, the skip row and the app row", rows)
+	}
+
+	app := rows[3][0]
+	if want := "https://bot.example/app?review=" + strconv.FormatUint(
+		uint64(g.ID),
+		10,
+	); app.WebApp == nil ||
+		app.WebApp.URL != want {
+		t.Errorf("last button = %+v, want a web_app button to %s", app, want)
 	}
 }
 

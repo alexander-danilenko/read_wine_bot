@@ -23,6 +23,9 @@ type Key string
 // reorder them.
 const (
 	Greeting         Key = "greeting"
+	AppOpen          Key = "app.open"
+	AppMenu          Key = "app.menu"
+	ReviewOpenApp    Key = "review.open_app"
 	CommandNew       Key = "command.new"
 	CommandEdit      Key = "command.edit"
 	CommandList      Key = "command.list"

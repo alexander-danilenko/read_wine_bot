@@ -292,13 +292,21 @@ func ReviewLinkHandler(
 type ReviewNotifier struct {
 	h        reviewHandler
 	creators Users
+	appURL   string // the Mini App, where the review also opens
 }
 
-// NewReviewNotifier returns a ReviewNotifier.
+// NewReviewNotifier returns a ReviewNotifier whose review message also opens the review in
+// the Mini App at appURL.
 func NewReviewNotifier(
-	rv *Reviewer, creators Users, texts *i18n.Catalog, kb *keyboard.Tracker, log *slog.Logger,
+	rv *Reviewer, creators Users, texts *i18n.Catalog, kb *keyboard.Tracker, appURL string, log *slog.Logger,
 ) *ReviewNotifier {
-	return &ReviewNotifier{h: reviewHandler{rv: rv, kb: kb, texts: texts, log: log}, creators: creators}
+	return &ReviewNotifier{h: reviewHandler{rv: rv, kb: kb, texts: texts, log: log}, creators: creators, appURL: appURL}
+}
+
+// ReviewAppURL returns the Mini App link that opens the review of giveaway id. The query only
+// chooses the screen; the API checks who may see it.
+func ReviewAppURL(appURL string, id uint) string {
+	return appURL + "?review=" + strconv.FormatUint(uint64(id), 10)
 }
 
 // SendReview sends the results review of g to its creator. While the creator is in a setup
@@ -336,5 +344,11 @@ func (n *ReviewNotifier) SendReview(ctx context.Context, b *bot.Bot, g Giveaway)
 		return
 	}
 
-	n.h.reply(ctx, b, g.CreatedBy, lang, r, 0)
+	subs := n.h.rv.Subscriptions(ctx, BotAPI{b: b}, r.Giveaway, r.Results.Winners)
+	text, rows := reviewView(n.h.rv, lang, r, subs)
+	rows = append(rows, []models.InlineKeyboardButton{{
+		Text:   n.h.texts.Text(lang, i18n.ReviewOpenApp),
+		WebApp: &models.WebAppInfo{URL: ReviewAppURL(n.appURL, g.ID)},
+	}})
+	showHTML(ctx, b, n.h.kb, 0, g.CreatedBy, text, rows)
 }

@@ -112,5 +112,8 @@
   "finished.review": " · <a href=\"%[1]s\">[📣 Review]</a>",
   "finished.empty": "You have no finished giveaways.",
   "page.prev": "< Page %[1]d",
-  "page.next": "Page %[1]d >"
+  "page.next": "Page %[1]d >",
+  "app.open": "🎁 Open giveaways",
+  "app.menu": "Giveaways",
+  "review.open_app": "📱 Review in the app"
 }

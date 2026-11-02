@@ -25,6 +25,8 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 | `can_restrict_members` | Ban users | Блокувати користувачів |
 
 - Main actions live in Telegram's command menu (≡ next to the message field), each with an emoji at the start of its description so the eye finds it. `/start` lists them as tappable commands. The bot sends no reply keyboard.
+- The Mini App opens from three places, all with an inline `web_app` button or the menu button, which are the launch types that carry signed `initData` ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)): the chat's menu button (`command.SetMenuButton`), the button under the `/start` reply, and "Review in the app" under the results review sent after a draw (`APP_URL?review=<id>`). Never open it from a reply-keyboard `web_app` button: Telegram sends that launch no `initData`.
+- Inline `web_app` buttons work only in private chats, so a channel post never carries one; the join button stays a callback button.
 
 ## How it is wired
 
