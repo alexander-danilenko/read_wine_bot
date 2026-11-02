@@ -4,7 +4,9 @@ import { TextContext, translator, type Lang } from "./i18n";
 import GiveawayDetails from "./screens/GiveawayDetails";
 import GiveawayForm from "./screens/GiveawayForm";
 import GiveawayList from "./screens/GiveawayList";
+import Help from "./screens/Help";
 import Review from "./screens/Review";
+import Settings from "./screens/Settings";
 import { webApp } from "./telegram";
 import { applyTheme } from "./theme";
 import { ErrorText, Loading, NotifyContext, Toast, useLoad } from "./ui";
@@ -18,6 +20,8 @@ const home: ListAt = { tab: 0, page: 1 };
 type Screen =
   | { name: "list"; at: ListAt }
   | { name: "new"; from: ListAt }
+  | { name: "help"; from: ListAt }
+  | { name: "settings"; from: ListAt }
   | { name: "details"; id: number; from: ListAt }
   | { name: "edit"; id: number; from: ListAt }
   | { name: "review"; id: number; from: ListAt };
@@ -28,7 +32,8 @@ function positive(text: string | null): number | undefined {
 }
 
 // parseScreen reads the screen from the URL's query string, which screenURL writes and the bot's
-// "Review in the app" button sets (?review=<id>). A parameter only chooses the screen: the API
+// buttons set: "Review in the app" (?review=<id>) and the replies to /help (?help), /new (?new)
+// and /language (?settings). A parameter only chooses the screen: the API
 // checks who may see it. Anything malformed opens the first page of Running.
 function parseScreen(search: string): Screen {
   const q = new URLSearchParams(search);
@@ -39,7 +44,9 @@ function parseScreen(search: string): Screen {
     const id = positive(q.get(key));
     return id ? { name, id, from: home } : fallback;
   }
-  if (q.has("new")) return { name: "new", from: home };
+  for (const name of ["new", "help", "settings"] as const) {
+    if (q.has(name)) return { name, from: home };
+  }
 
   const tab = q.get("tab");
   const page = q.has("page") ? positive(q.get("page")) : 1;
@@ -63,7 +70,8 @@ function screenURL(screen: Screen): string {
       q.set(screen.name, String(screen.id));
       break;
   }
-  const query = screen.name === "new" ? "new" : q.toString();
+  const bare = screen.name === "new" || screen.name === "help" || screen.name === "settings";
+  const query = bare ? screen.name : q.toString();
   return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
 }
 
@@ -119,7 +127,9 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
 
   // The URL follows the screen, so Telegram's "Reload page" reopens it. Replacing the entry
   // adds no history: Telegram's back button moves between screens.
-  useEffect(() => window.history.replaceState(null, "", screenURL(screen)), [screen]);
+  useEffect(() => {
+    window.history.replaceState(null, "", screenURL(screen));
+  }, [screen]);
 
   // Telegram's own back button moves between screens; the list has none.
   useEffect(() => {
@@ -133,11 +143,14 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
     return () => webApp?.BackButton.offClick(back);
   }, [screen, back]);
 
-  useEffect(() => window.scrollTo(0, 0), [screen]);
+  // Braces keep the effect from returning what scrollTo returns: React would take it for a cleanup.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [screen]);
 
   let body;
-  if (me.loading) body = <Loading />;
-  else if (me.error) body = <ErrorText error={me.error} onRetry={me.reload} />;
+  if (me.loading && !me.data) body = <Loading />;
+  else if (me.error || !me.data) body = <ErrorText error={me.error} onRetry={me.reload} />;
   else {
     switch (screen.name) {
       case "list": {
@@ -151,6 +164,8 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
             onOpen={(id) => setScreen({ name: "details", id, from: at })}
             onReview={(id) => setScreen({ name: "review", id, from: at })}
             onNew={() => setScreen({ name: "new", from: at })}
+            onHelp={() => setScreen({ name: "help", from: at })}
+            onSettings={() => setScreen({ name: "settings", from: at })}
           />
         );
         break;
@@ -177,6 +192,12 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
         );
         break;
       }
+      case "help":
+        body = <Help me={me.data} />;
+        break;
+      case "settings":
+        body = <Settings me={me.data} onMe={me.set} />;
+        break;
       case "review": {
         const from = screen.from;
         body = <Review key={screen.id} id={screen.id} onClosed={() => setScreen({ name: "list", at: from })} />;

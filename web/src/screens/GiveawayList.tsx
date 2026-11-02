@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { CircleHelp, Settings } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { api, must, type Channel, type Giveaway } from "../api/client";
 import { useT, type T } from "../i18n";
 import { formatEnd } from "../time";
@@ -132,29 +133,61 @@ interface Props {
 // ListProps is what one tab needs: its page and the actions on its rows.
 type ListProps = Props & { page: number; onPage: (page: number) => void };
 
-export default function GiveawayList(props: ListProps & { tab: number; onTab: (tab: number) => void }) {
+// HeaderIcon is a 48 px icon button of the list header; label names it for screen readers.
+function HeaderIcon({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="inline-flex size-12 items-center justify-center rounded-xl text-accent focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {children}
+    </button>
+  );
+}
+
+type GiveawayListProps = ListProps & {
+  tab: number;
+  onTab: (tab: number) => void;
+  onHelp: () => void;
+  onSettings: () => void;
+};
+
+export default function GiveawayList(props: GiveawayListProps) {
   const t = useT();
   const tabs = [t("list.running"), t("list.archive")];
   return (
     <Section>
-      <div role="tablist" className="grid grid-cols-2 border-b border-hint/30">
-        {tabs.map((label, i) => (
-          <button
-            key={label}
-            type="button"
-            role="tab"
-            id={`tab-${i}`}
-            aria-selected={props.tab === i}
-            aria-controls="tabpanel"
-            onClick={() => props.onTab(i)}
-            className={`-mb-px min-h-12 border-b-2 font-medium focus-visible:outline-2 focus-visible:outline-accent ${
-              props.tab === i ? "border-accent text-accent" : "border-transparent text-hint"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <header className="flex items-end gap-1 border-b border-hint/30">
+        <div role="tablist" className="grid flex-1 grid-cols-2">
+          {tabs.map((label, i) => (
+            <button
+              key={label}
+              type="button"
+              role="tab"
+              id={`tab-${i}`}
+              aria-selected={props.tab === i}
+              aria-controls="tabpanel"
+              onClick={() => props.onTab(i)}
+              className={`-mb-px min-h-12 border-b-2 font-medium focus-visible:outline-2 focus-visible:outline-accent ${
+                props.tab === i ? "border-accent text-accent" : "border-transparent text-hint"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <nav aria-label={t("nav.label")} className="flex">
+          <HeaderIcon label={t("nav.help")} onClick={props.onHelp}>
+            <CircleHelp aria-hidden className="size-6" />
+          </HeaderIcon>
+          <HeaderIcon label={t("nav.settings")} onClick={props.onSettings}>
+            <Settings aria-hidden className="size-6" />
+          </HeaderIcon>
+        </nav>
+      </header>
       <div role="tabpanel" id="tabpanel" aria-labelledby={`tab-${props.tab}`}>
         {props.tab === 0 ? <Running {...props} /> : <Archive {...props} />}
       </div>
