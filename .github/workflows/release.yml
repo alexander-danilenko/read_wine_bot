@@ -1,5 +1,6 @@
-# Publishes a GitHub Release when check passes on a main commit whose const version in main.go
-# has no tag yet. main.go is the one source of the version: nobody tags by hand.
+# Publishes a release when check passes on a main commit whose const version in main.go has no tag
+# yet: the Docker image on GHCR, then the git tag and the GitHub Release. main.go is the one source
+# of the version: nobody tags by hand.
 name: release
 
 on:
@@ -10,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  packages: write # push the image to ghcr.io
 
 jobs:
   release:
@@ -21,7 +23,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0 # GoReleaser builds the changelog from the previous tag
 
-      - name: Tag the version unless it is already released
+      - name: Read the version and check it is not released yet
         id: tag
         run: |
           version=$(sed -n 's/^const version = "\(.*\)"$/\1/p' main.go)
@@ -33,9 +35,38 @@ jobs:
             echo "v$version is already released"
             exit 0
           fi
-          git tag "v$version"
-          git push origin "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "new=true" >> "$GITHUB_OUTPUT"
+
+      # The image goes first: if its push fails, no tag exists yet, so a re-run retries cleanly.
+      - if: steps.tag.outputs.new == 'true'
+        name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - if: steps.tag.outputs.new == 'true'
+        # A docker-container builder: the default docker driver cannot push multi-platform images.
+        uses: docker/setup-buildx-action@v4
+
+      - if: steps.tag.outputs.new == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: . # the checked-out head_sha; the default git context would build the default branch
+          platforms: linux/amd64,linux/arm64
+          provenance: false # attestations are out of scope and show up as unknown/unknown images
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+
+      - if: steps.tag.outputs.new == 'true'
+        name: Tag the version
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
 
       - if: steps.tag.outputs.new == 'true'
         uses: actions/setup-go@v7
@@ -48,10 +79,9 @@ jobs:
           node-version: 26
 
       - if: steps.tag.outputs.new == 'true'
-        # Pinned to a commit: this job can write to the repo, so a moved tag must not change what runs.
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        uses: goreleaser/goreleaser-action@v7
         with:
-          version: v2.16.0 # the version .goreleaser.yaml was checked with
+          version: "~> v2" # the latest GoReleaser v2, the major .goreleaser.yaml is written for
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
