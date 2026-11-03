@@ -22,7 +22,7 @@
 | **What** | Giveaways on Telegram channel posts, with an admin review before the bot publishes the results |
 | **Who** | Channel owners, their admins and giveaway partners |
 | **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user in the Mini App's settings (`/language` opens them) |
-| **Stack** | Go 1.27, PostgreSQL 18, one static binary for Windows, macOS and Linux |
+| **Stack** | Go 1.27, PostgreSQL 18; a multi-arch Docker image and static binaries for Linux, macOS and Windows |
 
 ## ✨ What it does
 
@@ -58,57 +58,103 @@ For your own bot, put its username in the links.
 
 ## 🚀 Run your own
 
-You need:
+Requirements:
 
-- 🐘 a PostgreSQL database (tested with PostgreSQL 18). The bot creates its tables on the first start.
-- 🔑 a bot token from [@BotFather](https://t.me/BotFather).
-- 🌐 a public HTTPS address for the Mini App, for example a domain behind a reverse proxy. Telegram opens Mini Apps only over HTTPS. The bot listens on `LISTEN_ADDR` (default `:8080`); the proxy forwards the address to it. Set the same address as `APP_URL` and as the Mini App URL in @BotFather.
+- Docker with Compose.
+- A bot token from [@BotFather](https://t.me/BotFather).
+- A public HTTPS endpoint for the Mini App (reverse proxy or Cloudflare Tunnel) that forwards to the bot's `LISTEN_ADDR`. Register the same URL as the bot's Mini App URL in @BotFather. Telegram refuses `http://`, `localhost` and private addresses; for local work see [Test the Mini App locally](#-test-the-mini-app-locally).
 
-> [!IMPORTANT]
-> `APP_URL` must be a public `https://` address that anyone on the internet can open. With `http://`, `localhost` or an address only your network can reach, the Mini App does not open in Telegram. The only exception is a local test in Telegram Desktop: see [Test the Mini App locally](#-test-the-mini-app-locally).
+Configuration is environment-only:
 
-Then, on Windows, macOS or Linux:
+| Variable | Required | Description |
+| --- | --- | --- |
+| `TELEGRAM_BOT_TOKEN` | yes | Bot token from @BotFather |
+| `DATABASE_URL` | yes | `postgres://user:password@host:port/database`; the bot creates and migrates its tables on start |
+| `APP_URL` | yes | Public `https://` URL of the Mini App |
+| `LISTEN_ADDR` | no | HTTP listen address for the Mini App and its API, default `:8080` |
 
-1. Download the zip for your system from [Releases](https://github.com/alexander-danilenko/read_wine_bot/releases). The name holds the system (`windows`, `macos` or `linux`) and the processor (`amd64` for Intel and AMD, `arm64` for ARM and Apple Silicon).
-2. Extract the zip to a folder.
-3. In that folder, copy `.env.example` to `.env`.
-4. In `.env`, set the values that `.env.example` describes.
-5. Open a terminal in that folder and run the bot: `.\read_wine_bot.exe` on Windows, `./read_wine_bot` on macOS and Linux.
+The bot validates every setting, pings the database and calls `getMe` at startup, and exits with a descriptive error if any check fails.
 
-> [!IMPORTANT]
-> Start the bot from the folder that holds `.env`. It reads `.env` from the current directory and its parents, not from next to the binary. You can also use environment variables. They override the values in the file.
+### 🐳 Docker Compose
 
-Before it starts, the bot checks every setting, the database and the token. If a check fails, the bot stops with an error that names the problem.
+The image is `ghcr.io/alexander-danilenko/read_wine_bot`, built for `linux/amd64` and `linux/arm64`, tagged with each release version (`2.10.0`) and `latest`.
 
-> [!TIP]
-> If the system blocks the downloaded binary, unblock it once: `Unblock-File .\read_wine_bot.exe` in PowerShell on Windows, `xattr -d com.apple.quarantine read_wine_bot` on macOS.
+```yaml
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment: # not published outside the compose network
+      POSTGRES_USER: pgusername
+      POSTGRES_PASSWORD: pgpassword
+      POSTGRES_DB: pgdatabasename
+    volumes:
+      - pgdata:/var/lib/postgresql # Postgres 18 keeps data in /var/lib/postgresql/18/docker
 
-### 🐹 Build from source
+  bot:
+    image: ghcr.io/alexander-danilenko/read_wine_bot:latest
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: replace-with-the-bot-token
+      DATABASE_URL: postgres://pgusername:pgpassword@db:5432/pgdatabasename?sslmode=disable
+      APP_URL: https://bot.example.com
+      LISTEN_ADDR: ":${PORT:-8080}"
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    depends_on:
+      - db # the bot exits while the database is not ready, and the restart policy retries
+    stop_grace_period: 2m # lets an in-flight winner draw finish its Telegram calls
 
-The binary embeds the Mini App, so build the app first. You need Go 1.27 or newer and Node.js 26:
+  # Optional Cloudflare Tunnel: route its public hostname to http://bot:8080.
+  # tunnel:
+  #   image: cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     TUNNEL_TOKEN: replace-with-the-tunnel-token
+  #   depends_on:
+  #     - bot
+
+volumes:
+  pgdata:
+```
+
+Pin a version tag instead of `latest` for reproducible deploys. Upgrade with `docker compose pull && docker compose up -d`; the schema migrates on start.
+
+<details>
+<summary>📦 Release binary</summary>
+
+[Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) carry static binaries for Linux, macOS and Windows on `amd64` and `arm64`, plus `.env.example`. The bot reads `.env` from the working directory and each parent directory; a nearer file wins, and a non-empty environment variable overrides every file. On macOS, clear the quarantine flag once: `xattr -d com.apple.quarantine read_wine_bot`.
+
+</details>
+
+<details>
+<summary>🐹 Build from source</summary>
+
+Needs Go 1.27+ and Node.js 26. The binary embeds the Mini App, so build `web/` first; `go install` skips that step and the bot refuses to start.
 
 ```sh
-git clone https://github.com/alexander-danilenko/read_wine_bot.git
-cd read_wine_bot
 npm --prefix web ci --ignore-scripts
 npm --prefix web run build
 go build .
 ```
 
-> [!WARNING]
-> `go install` does not work: it builds without the Mini App, and the bot then stops at startup.
+Or build the image: `docker build -t read_wine_bot .`
+
+</details>
 
 ### 🧪 Test the Mini App locally
 
-Telegram opens a Mini App only over HTTPS. The `Caddyfile` serves `https://bot-local.readwine.com.ua` with a certificate from Caddy's local CA and forwards it to the bot on `:8080`. It works in Telegram Desktop on the same Mac; a phone does not resolve the name.
+The `Caddyfile` serves `https://bot-local.readwine.com.ua` with Caddy's local CA and proxies to `:8080`. This works in Telegram Desktop on the same machine only.
 
-1. Install Caddy: `brew install caddy`
-2. Point the name at this Mac: `echo "127.0.0.1 bot-local.readwine.com.ua" | sudo tee -a /etc/hosts`
-3. Trust Caddy's local CA (asks for your password once): `sudo caddy trust`
-4. Start Caddy from the repo root: `sudo caddy run` (port 443 needs `sudo`)
-5. In `.env`, set `APP_URL=https://bot-local.readwine.com.ua`
-6. Start PostgreSQL, build the app and run the bot: `docker compose up -d`, `npm --prefix web run build`, `go run .`
-7. In Telegram Desktop, send `/start` to the bot and tap the app button.
+```sh
+brew install caddy
+echo "127.0.0.1 bot-local.readwine.com.ua" | sudo tee -a /etc/hosts
+sudo caddy trust
+sudo caddy run                               # from the repo root
+docker compose up -d                         # local PostgreSQL from docker-compose.yml
+npm --prefix web run build && go run .       # with APP_URL=https://bot-local.readwine.com.ua in .env
+```
 
 ## 🧭 Where to read next
 
