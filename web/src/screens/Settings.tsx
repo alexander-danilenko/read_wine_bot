@@ -90,7 +90,7 @@ function ChannelCard({
 }: {
   icon: ReactNode;
   title: string;
-  hint: string;
+  hint?: string;
   empty: string;
   list: ReturnType<typeof useLoad<ChannelLists>>;
   pick: (lists: ChannelLists) => Channel[];
@@ -114,7 +114,7 @@ function ChannelCard({
 
   return (
     <TitledCard icon={icon} title={title}>
-      <p className="-mt-2 text-sm text-hint">{hint}</p>
+      {hint && <p className="-mt-2 text-sm text-hint">{hint}</p>}
       {body}
       {action}
     </TitledCard>
@@ -148,7 +148,6 @@ export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void 
       <ChannelCard
         icon={<Handshake className="size-5" />}
         title={t("settings.partners")}
-        hint={t("settings.partnersHint")}
         empty={t("settings.noPartners")}
         list={channels}
         pick={(l) => l.partners}

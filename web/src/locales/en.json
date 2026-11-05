@@ -129,7 +129,6 @@
   "settings.channelsHint": "Channels where both you and I are admins.",
   "settings.noChannels": "I'm not an admin in any of your channels yet.",
   "settings.partners": "Partner channels",
-  "settings.partnersHint": "Every other channel where I'm an admin. Everyone who opens this app sees this list.",
   "settings.noPartners": "No partner channels yet.",
   "settings.add": "Add to channel"
 }
