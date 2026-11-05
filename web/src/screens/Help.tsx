@@ -1,9 +1,9 @@
-import { Check, Copy, Handshake, Megaphone, Plus } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Check, Handshake, Megaphone, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Me } from "../api/client";
 import { useT } from "../i18n";
 import { openLink } from "../telegram";
-import { Button, inputClass, Section, Title, TitledCard, useNotify } from "../ui";
+import { Button, PartnerLink, Section, Title, TitledCard } from "../ui";
 
 // Step is one numbered step of the admin section.
 function Step({ n, children }: { n: number; children: ReactNode }) {
@@ -25,44 +25,6 @@ function Right({ name, why }: { name: string; why: string }) {
         <b className="font-medium">{name}</b> <span className="text-hint">— {why}</span>
       </span>
     </li>
-  );
-}
-
-// PartnerLink copies the partner link. Where the browser refuses the copy, the link shows in a
-// read-only field for the user to copy by hand.
-function PartnerLink({ link }: { link: string }) {
-  const t = useT();
-  const notify = useNotify();
-  const [manual, setManual] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      notify(t("help.copied"));
-    } catch {
-      setManual(true);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-3">
-      <Button variant="outline" full onClick={copy}>
-        <Copy aria-hidden className="size-5" />
-        {t("help.copy")}
-      </Button>
-      {manual && (
-        <label className="flex flex-col gap-1 text-sm">
-          {t("help.copyFailed")}
-          <input
-            readOnly
-            value={link}
-            aria-label={t("help.copyLabel")}
-            onFocus={(e) => e.currentTarget.select()}
-            className={`${inputClass(false)} w-full`}
-          />
-        </label>
-      )}
-    </div>
   );
 }
 

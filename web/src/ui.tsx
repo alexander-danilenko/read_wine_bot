@@ -1,3 +1,4 @@
+import { Copy } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -335,6 +336,44 @@ export function Toast({ message, onDone }: { message?: string; onDone: () => voi
   return (
     <div role="status" className="pointer-events-none fixed inset-x-4 bottom-4 flex justify-center">
       {message !== undefined && <div className="max-w-sm rounded-xl bg-fg px-4 py-3 text-page shadow-lg">{message}</div>}
+    </div>
+  );
+}
+
+// PartnerLink copies the partner link. Where the browser refuses the copy, the link shows in a
+// read-only field for the user to copy by hand.
+export function PartnerLink({ link }: { link: string }) {
+  const t = useT();
+  const notify = useNotify();
+  const [manual, setManual] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      notify(t("help.copied"));
+    } catch {
+      setManual(true);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Button variant="outline" full onClick={copy}>
+        <Copy aria-hidden className="size-5" />
+        {t("help.copy")}
+      </Button>
+      {manual && (
+        <label className="flex flex-col gap-1 text-sm">
+          {t("help.copyFailed")}
+          <input
+            readOnly
+            value={link}
+            aria-label={t("help.copyLabel")}
+            onFocus={(e) => e.currentTarget.select()}
+            className={`${inputClass(false)} w-full`}
+          />
+        </label>
+      )}
     </div>
   );
 }

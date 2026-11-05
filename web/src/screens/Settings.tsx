@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { api, must, type Channel, type ChannelLists, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
 import { openLink } from "../telegram";
-import { Avatar, Button, ErrorText, Loading, Section, Title, TitledCard, useLoad } from "../ui";
+import { Avatar, Button, ErrorText, Loading, PartnerLink, Section, Title, TitledCard, useLoad } from "../ui";
 
 // Each language is shown in its own name, so every user finds theirs.
 const languages: { code: Lang; label: string }[] = [
@@ -77,7 +77,8 @@ function ChannelRow({ channel }: { channel: Channel }) {
   );
 }
 
-// ChannelCard lists channels read-only, or shows loading, a retryable error or the empty text.
+// ChannelCard lists channels read-only, or shows loading, a retryable error or the empty text,
+// then the card's action.
 function ChannelCard({
   icon,
   title,
@@ -85,6 +86,7 @@ function ChannelCard({
   empty,
   list,
   pick,
+  action,
 }: {
   icon: ReactNode;
   title: string;
@@ -92,6 +94,7 @@ function ChannelCard({
   empty: string;
   list: ReturnType<typeof useLoad<ChannelLists>>;
   pick: (lists: ChannelLists) => Channel[];
+  action: ReactNode;
 }) {
   let body;
   if (list.loading && !list.data) body = <Loading />;
@@ -113,13 +116,14 @@ function ChannelCard({
     <TitledCard icon={icon} title={title}>
       <p className="-mt-2 text-sm text-hint">{hint}</p>
       {body}
+      {action}
     </TitledCard>
   );
 }
 
-// Settings shows the language picker, the user's channels, the partner channels (every other
-// channel where the bot is an admin, shown to everyone) and the link that adds the bot to
-// another channel with the rights giveaways need.
+// Settings shows the language picker, the user's channels with the link that adds the bot to
+// another channel with the rights giveaways need, and the partner channels (every other channel
+// where the bot is an admin, shown to everyone) with the partner link to copy.
 export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   const t = useT();
   const channels = useLoad(() => must(api.GET("/api/channels")), []);
@@ -134,6 +138,12 @@ export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void 
         empty={t("settings.noChannels")}
         list={channels}
         pick={(l) => l.channels}
+        action={
+          <Button variant="primary" full onClick={() => openLink(me.add_link)}>
+            <Plus aria-hidden className="size-5" />
+            {t("settings.add")}
+          </Button>
+        }
       />
       <ChannelCard
         icon={<Handshake className="size-5" />}
@@ -142,11 +152,8 @@ export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void 
         empty={t("settings.noPartners")}
         list={channels}
         pick={(l) => l.partners}
+        action={<PartnerLink link={me.partner_link} />}
       />
-      <Button variant="primary" full onClick={() => openLink(me.add_link)}>
-        <Plus aria-hidden className="size-5" />
-        {t("settings.add")}
-      </Button>
     </Section>
   );
 }
