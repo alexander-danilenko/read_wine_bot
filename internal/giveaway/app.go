@@ -275,16 +275,29 @@ type AdminChannelsTelegram interface {
 	IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error)
 }
 
-// MyChannels returns the channels where both the bot and userID are admins, in the order the
-// store lists them. A channel whose admin check fails is left out, so it never shows to someone
-// who may not be its admin. A title or photo that cannot be read is left empty. Both are logged.
-func (a *App) MyChannels(ctx context.Context, tg AdminChannelsTelegram, userID int64) ([]Channel, error) {
+// ChannelLists are the channels where the bot is an admin, split by whether the viewer is one too.
+type ChannelLists struct {
+	Mine     []Channel // the viewer is an admin too
+	Partners []Channel // every other channel, whatever rights the bot has there
+}
+
+// MyChannels returns the channels where the bot is an admin, split into the ones userID is
+// also an admin of and the partners, each in the order the store lists them. A channel whose
+// admin check fails is a partner, so it never shows as the user's own: partners show to
+// everyone anyway. A title or photo that cannot be read is left empty for the user's own
+// channel; a partner without a readable title is left out. Both are logged.
+func (a *App) MyChannels(ctx context.Context, tg AdminChannelsTelegram, userID int64) (ChannelLists, error) {
 	ids, err := a.reviewer.channels.AdminChannels(ctx)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // the store's error says what it read
+		return ChannelLists{}, err //nolint:wrapcheck // the store's error says what it read
 	}
 
-	found := make([]*Channel, len(ids)) // nil for a channel the user is not an admin of
+	type found struct {
+		channel *Channel // nil for a partner whose title cannot be read
+		mine    bool
+	}
+
+	all := make([]found, len(ids))
 
 	var wg sync.WaitGroup
 
@@ -298,33 +311,39 @@ func (a *App) MyChannels(ctx context.Context, tg AdminChannelsTelegram, userID i
 			isAdmin, err := tg.IsChannelAdmin(ctx, id, userID)
 			if err != nil {
 				a.log.WarnContext(ctx, "check channel admin", "chat_id", id, "error", err)
-
-				return
-			}
-
-			if !isAdmin {
-				return
 			}
 
 			info, err := tg.Channel(ctx, id)
 			if err != nil {
 				a.log.WarnContext(ctx, "read channel", "chat_id", id, "error", err)
+
+				if !isAdmin {
+					return
+				}
 			}
 
-			found[i] = &Channel{ID: id, Title: info.Title, Username: info.Username, PhotoID: info.PhotoID}
+			all[i] = found{
+				channel: &Channel{ID: id, Title: info.Title, Username: info.Username, PhotoID: info.PhotoID},
+				mine:    isAdmin,
+			}
 		})
 	}
 
 	wg.Wait()
 
-	channels := make([]Channel, 0, len(ids))
-	for _, c := range found {
-		if c != nil {
-			channels = append(channels, *c)
+	lists := ChannelLists{Mine: make([]Channel, 0, len(ids)), Partners: make([]Channel, 0, len(ids))}
+
+	for _, f := range all {
+		switch {
+		case f.channel == nil:
+		case f.mine:
+			lists.Mine = append(lists.Mine, *f.channel)
+		default:
+			lists.Partners = append(lists.Partners, *f.channel)
 		}
 	}
 
-	return channels, nil
+	return lists, nil
 }
 
 // Get returns giveaway id in any state, but only to its creator: anyone else gets not_found,

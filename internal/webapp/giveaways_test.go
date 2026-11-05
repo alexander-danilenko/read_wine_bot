@@ -31,7 +31,7 @@ type fakeGiveaways struct {
 	review     giveaway.ReviewView
 	winnerID   int64
 	rerolled   int
-	channels   []giveaway.Channel
+	channels   giveaway.ChannelLists
 }
 
 func (f *fakeGiveaways) List(
@@ -51,7 +51,7 @@ func (f *fakeGiveaways) Channels(context.Context, giveaway.ChannelReader, ...[]g
 
 func (f *fakeGiveaways) MyChannels(
 	_ context.Context, _ giveaway.AdminChannelsTelegram, userID int64,
-) ([]giveaway.Channel, error) {
+) (giveaway.ChannelLists, error) {
 	f.userID = userID
 
 	return f.channels, f.err

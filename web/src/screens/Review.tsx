@@ -1,22 +1,57 @@
-import { Send } from "lucide-react";
+import { ExternalLink, Send } from "lucide-react";
 import { useState } from "react";
 import { api, Failure, must, type Review as ReviewData } from "../api/client";
-import { useT, type TextKey } from "../i18n";
+import { useT } from "../i18n";
 import { openLink } from "../telegram";
-import { Button, Card, Confirm, ErrorText, Loading, Pill, Section, Title, useLoad, useNotify } from "../ui";
+import { Button, Card, Confirm, ErrorText, Loading, Section, Title, useLoad, useNotify } from "../ui";
 
 type Winner = ReviewData["winners"][number];
 
-const subscriptionText: Record<Winner["subscriptions"][number], TextKey> = {
-  subscribed: "review.subscribed",
-  not_subscribed: "review.notSubscribed",
-  unknown: "review.unknown",
-};
+type ReviewChannel = ReviewData["channels"][number];
 
-const subscriptionTone = { subscribed: "ok", not_subscribed: "danger", unknown: "neutral" } as const;
+// ChannelTag is a channel the winner is subscribed to: a link to it when it has a public
+// username, plain text otherwise. A long title is cut short; the link's tap area is 48 px tall.
+function ChannelTag({ channel }: { channel: ReviewChannel }) {
+  const t = useT();
+  const tag = (
+    <span className="flex min-w-0 items-center gap-1 rounded-full border border-current px-2.5 py-0.5 text-sm text-hint">
+      <span className="truncate">{channel.title}</span>
+      {channel.username && <ExternalLink aria-hidden className="size-3.5 shrink-0" />}
+    </span>
+  );
+  if (!channel.username) return <span className="flex min-h-12 min-w-0 max-w-full items-center">{tag}</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => openLink(`https://t.me/${channel.username}`)}
+      aria-label={t("review.openChannel", { name: channel.title })}
+      className="flex min-h-12 min-w-0 max-w-full items-center rounded-full focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {tag}
+    </button>
+  );
+}
+
+// subscribedChannels returns the channels the winner is confirmed subscribed to; channels
+// they are not subscribed to, or whose check failed, are left out.
+function subscribedChannels(w: Winner, channels: ReviewChannel[]): ReviewChannel[] {
+  return channels.filter((_, i) => w.subscriptions[i] === "subscribed");
+}
 
 function name(w: Winner): string {
   return [w.first_name, w.last_name].filter(Boolean).join(" ") || (w.username ? `@${w.username}` : String(w.user_id));
+}
+
+// ChannelTags lists a winner's channels; a winner subscribed to none shows nothing.
+function ChannelTags({ channels }: { channels: ReviewChannel[] }) {
+  if (channels.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-x-2">
+      {channels.map((c) => (
+        <ChannelTag key={c.id} channel={c} />
+      ))}
+    </div>
+  );
 }
 
 // Review is the results review: reroll winners, then publish or close. Publish and close
@@ -108,13 +143,7 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
                     {t("review.reroll")}
                   </Button>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {w.subscriptions.map((s, i) => (
-                    <Pill key={data.channels[i]?.id ?? i} tone={subscriptionTone[s]}>
-                      {`${data.channels[i]?.title ?? ""}: ${t(subscriptionText[s])}`}
-                    </Pill>
-                  ))}
-                </div>
+                <ChannelTags channels={subscribedChannels(w, data.channels)} />
               </li>
             ))}
           </ul>

@@ -1,6 +1,6 @@
-import { ChevronRight, Languages, Megaphone, Plus } from "lucide-react";
-import { useState } from "react";
-import { api, must, type Me } from "../api/client";
+import { ChevronRight, Handshake, Languages, Megaphone, Plus } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { api, must, type Channel, type ChannelLists, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
 import { openLink } from "../telegram";
 import { Avatar, Button, ErrorText, Loading, Section, Title, TitledCard, useLoad } from "../ui";
@@ -56,36 +56,53 @@ function LanguagePicker({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   );
 }
 
-// Channels lists, read-only, the channels where both the bot and the user are admins.
-function Channels() {
-  const t = useT();
-  const list = useLoad(() => must(api.GET("/api/channels")), []);
+// ChannelRow is one channel: a link to it when it has a public username, plain text otherwise.
+function ChannelRow({ channel }: { channel: Channel }) {
+  const content = (
+    <>
+      <Avatar channel={channel} />
+      <span className="min-w-0 flex-1 truncate">{channel.title}</span>
+    </>
+  );
+  if (!channel.username) return <div className="flex min-h-14 items-center gap-3 px-4 py-2">{content}</div>;
+  return (
+    <button
+      type="button"
+      onClick={() => openLink(`https://t.me/${channel.username}`)}
+      className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+    >
+      {content}
+      <ChevronRight aria-hidden className="size-5 shrink-0 text-hint" />
+    </button>
+  );
+}
 
+// ChannelCard lists channels read-only, or shows loading, a retryable error or the empty text.
+function ChannelCard({
+  icon,
+  title,
+  hint,
+  empty,
+  list,
+  pick,
+}: {
+  icon: ReactNode;
+  title: string;
+  hint: string;
+  empty: string;
+  list: ReturnType<typeof useLoad<ChannelLists>>;
+  pick: (lists: ChannelLists) => Channel[];
+}) {
   let body;
   if (list.loading && !list.data) body = <Loading />;
   else if (list.error || !list.data) body = <ErrorText error={list.error} onRetry={list.reload} />;
-  else if (list.data.channels.length === 0) body = <p className="text-hint">{t("settings.noChannels")}</p>;
+  else if (pick(list.data).length === 0) body = <p className="text-hint">{empty}</p>;
   else {
     body = (
       <ul className="-mx-4 divide-y divide-hint/20">
-        {list.data.channels.map((c) => (
+        {pick(list.data).map((c) => (
           <li key={c.id}>
-            {c.username ? (
-              <button
-                type="button"
-                onClick={() => openLink(`https://t.me/${c.username}`)}
-                className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-              >
-                <Avatar channel={c} />
-                <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                <ChevronRight aria-hidden className="size-5 shrink-0 text-hint" />
-              </button>
-            ) : (
-              <div className="flex min-h-14 items-center gap-3 px-4 py-2">
-                <Avatar channel={c} />
-                <span className="min-w-0 flex-1 truncate">{c.title}</span>
-              </div>
-            )}
+            <ChannelRow channel={c} />
           </li>
         ))}
       </ul>
@@ -93,22 +110,39 @@ function Channels() {
   }
 
   return (
-    <TitledCard icon={<Megaphone className="size-5" />} title={t("settings.channels")}>
-      <p className="-mt-2 text-sm text-hint">{t("settings.channelsHint")}</p>
+    <TitledCard icon={icon} title={title}>
+      <p className="-mt-2 text-sm text-hint">{hint}</p>
       {body}
     </TitledCard>
   );
 }
 
-// Settings shows the language picker, the user's channels and the link that adds the bot to
+// Settings shows the language picker, the user's channels, the partner channels (every other
+// channel where the bot is an admin, shown to everyone) and the link that adds the bot to
 // another channel with the rights giveaways need.
 export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   const t = useT();
+  const channels = useLoad(() => must(api.GET("/api/channels")), []);
   return (
     <Section>
       <Title>{t("settings.title")}</Title>
       <LanguagePicker me={me} onMe={onMe} />
-      <Channels />
+      <ChannelCard
+        icon={<Megaphone className="size-5" />}
+        title={t("settings.channels")}
+        hint={t("settings.channelsHint")}
+        empty={t("settings.noChannels")}
+        list={channels}
+        pick={(l) => l.channels}
+      />
+      <ChannelCard
+        icon={<Handshake className="size-5" />}
+        title={t("settings.partners")}
+        hint={t("settings.partnersHint")}
+        empty={t("settings.noPartners")}
+        list={channels}
+        pick={(l) => l.partners}
+      />
       <Button variant="primary" full onClick={() => openLink(me.add_link)}>
         <Plus aria-hidden className="size-5" />
         {t("settings.add")}

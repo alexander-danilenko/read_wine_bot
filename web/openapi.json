@@ -403,10 +403,18 @@
               "$ref": "#/components/schemas/ListChannelBody"
             },
             "type": "array"
+          },
+          "partners": {
+            "description": "Every other channel where the bot is an admin, by Telegram ID",
+            "items": {
+              "$ref": "#/components/schemas/ListChannelBody"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "channels"
+          "channels",
+          "partners"
         ],
         "type": "object"
       },
@@ -565,7 +573,7 @@
             "description": "Error"
           }
         },
-        "summary": "Channels where both the bot and the caller are admins"
+        "summary": "The caller's channels and the partner channels: every channel where the bot is an admin"
       }
     },
     "/api/giveaways": {

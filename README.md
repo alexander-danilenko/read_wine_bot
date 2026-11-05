@@ -52,7 +52,7 @@ Send `/start` to [@read_wine_bot](https://t.me/read_wine_bot) and open the app: 
 - 🤝 **Giveaway partner:** [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=manage_chat) with every permission disabled. Telegram shows subscriptions only to admins, and that is all the bot reads.
 
 > [!NOTE]
-> A partner channel appears in the results review of every giveaway the bot runs, and admins of other channels see which winners subscribe to it. To end a partnership, remove the bot from your admins.
+> A partner channel appears in the partner list in the bot's app settings, which everyone who opens the app can see, and in the results review of every giveaway the bot runs, where admins of other channels see which winners subscribe to it. To end a partnership, remove the bot from your admins.
 
 For your own bot, put its username in the links.
 

@@ -44,9 +44,9 @@ type Domain interface {
 	ChannelLister
 }
 
-// ChannelLister lists the caller's channels. *giveaway.App implements it.
+// ChannelLister lists the caller's channels and the partner channels. *giveaway.App implements it.
 type ChannelLister interface {
-	MyChannels(ctx context.Context, tg giveaway.AdminChannelsTelegram, userID int64) ([]giveaway.Channel, error)
+	MyChannels(ctx context.Context, tg giveaway.AdminChannelsTelegram, userID int64) (giveaway.ChannelLists, error)
 }
 
 // NewOperations returns the API's operations over d. tg makes the Telegram calls, langs saves

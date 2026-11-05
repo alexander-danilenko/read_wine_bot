@@ -46,7 +46,8 @@ type setLanguageInput struct {
 
 type myChannelsOutput struct {
 	Body struct {
-		Channels []listChannelBody `doc:"Channels where both the bot and the caller are admins" json:"channels"`
+		Channels []listChannelBody `doc:"Channels where both the bot and the caller are admins"         json:"channels"`
+		Partners []listChannelBody `doc:"Every other channel where the bot is an admin, by Telegram ID" json:"partners"`
 	}
 }
 
@@ -67,7 +68,7 @@ func (o *Operations) registerMe(api huma.API) {
 		OperationID: "listMyChannels",
 		Method:      http.MethodGet,
 		Path:        "/api/channels",
-		Summary:     "Channels where both the bot and the caller are admins",
+		Summary:     "The caller's channels and the partner channels: every channel where the bot is an admin",
 	}, o.myChannels)
 }
 
@@ -108,13 +109,14 @@ func (o *Operations) myChannels(ctx context.Context, _ *struct{}) (*myChannelsOu
 		return nil, err
 	}
 
-	cs, err := o.channels.MyChannels(ctx, o.tg, c.User.ID)
+	lists, err := o.channels.MyChannels(ctx, o.tg, c.User.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list channels of user %d: %w", c.User.ID, err)
 	}
 
 	out := &myChannelsOutput{}
-	out.Body.Channels = o.toListChannels(cs)
+	out.Body.Channels = o.toListChannels(lists.Mine)
+	out.Body.Partners = o.toListChannels(lists.Partners)
 
 	return out, nil
 }

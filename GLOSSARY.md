@@ -46,11 +46,11 @@ A Telegram channel where the bot is an admin. The bot was built for @read_wine a
 
 ### Giveaway partner
 
-A channel that runs giveaways together with a giveaway's creator: winners are expected to subscribe to it as well. The bot is an admin there without the rights to run giveaways, only so it can check winner subscriptions. Like every channel, a partner shows in the results review of every giveaway, not only the shared ones.
+A channel that runs giveaways together with a giveaway's creator: winners are expected to subscribe to it as well. The bot is an admin there without the rights to run giveaways, only so it can check winner subscriptions. Like every channel, a partner shows in the results review of every giveaway, not only the shared ones. The Mini App's settings list partner channels to everyone who opens the app: there, a partner channel is any channel where the bot is an admin and the viewer is not, whatever rights the bot has in it.
 
 ### Winner subscriptions
 
-The channels a winner is subscribed to, shown to admins in results review next to each winner. The bot checks them each time it shows the review, so a winner who unsubscribes after the draw shows up before the results are published. A channel whose check fails is shown as unknown, never as not subscribed. Every admin in results review sees every channel, including channels they do not administer.
+The channels a winner is subscribed to, shown to admins in results review next to each winner. The bot checks them each time it shows the review, so a winner who unsubscribes after the draw shows up before the results are published. Only confirmed subscriptions are shown: a channel the winner is not subscribed to, or whose check fails, does not appear. Every admin in results review sees every channel, including channels they do not administer.
 
 ## Users
 
