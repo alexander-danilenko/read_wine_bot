@@ -23,12 +23,14 @@ type Screen =
   | { name: "new"; from: ListAt }
   | { name: "help"; from: ListAt }
   | { name: "settings"; from: ListAt }
+  | { name: "partner"; from: ListAt }
   | { name: "details"; id: number; from: ListAt }
   | { name: "edit"; id: number; from: ListAt }
   | { name: "review"; id: number; from: ListAt };
 
-// bareScreens are the screens named by a query key alone, with no value: ?new, ?help, ?settings.
-const bareScreens = ["new", "help", "settings"] as const;
+// bareScreens are the screens named by a query key alone, with no value: ?new, ?help, ?settings,
+// ?partner (the partner screen as a primary admin previews it).
+const bareScreens = ["new", "help", "settings", "partner"] as const;
 
 // positive is the whole number above 0 that text holds, or undefined.
 function positive(text: string | null): number | undefined {
@@ -36,8 +38,8 @@ function positive(text: string | null): number | undefined {
 }
 
 // parseScreen reads the screen from the URL's query string, which screenURL writes and the bot's
-// buttons set: "Review in the app" (?review=<id>) and the replies to /help (?help), /new (?new)
-// and /language (?settings). A parameter only chooses the screen: the API
+// buttons set, such as "Review in the app" (?review=<id>). A parameter only chooses the screen:
+// the API
 // checks who may see it. Anything malformed opens the first page of Running.
 function parseScreen(search: string): Screen {
   const q = new URLSearchParams(search);
@@ -229,8 +231,13 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
       case "help":
         body = <Help me={me.data} />;
         break;
-      case "settings":
-        body = <Settings me={me.data} onMe={me.set} />;
+      case "settings": {
+        const from = screen.from;
+        body = <Settings me={me.data} onMe={me.set} onPartner={() => setScreen({ name: "partner", from })} />;
+        break;
+      }
+      case "partner":
+        body = <Partner me={me.data} />;
         break;
       case "review": {
         const from = screen.from;

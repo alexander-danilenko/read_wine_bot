@@ -6,7 +6,7 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 - A tap whose next step is another prompt edits the tapped message in place (`Tracker.Replace`). A tap that ends in a notice deletes the tapped message, and the notice goes below.
 - A tap on a bot link (`t.me/<bot>?start=<payload>`) sends `/start <payload>` as the user. Its handler deletes that message first (`dropLinkTap`), and its next prompt is a new message, because the command already deleted the live message with buttons. A link that no longer applies answers with a notice: a message shows no popup.
 - Notices about the user's own action go without a sound (`disable_notification`). Before a reply that waits on Telegram, such as checking a forwarded post, show "typing…" (`sendChatAction`).
-- `/cancel` leaves any step, like every command does. Register every command with `setMyCommands` in every locale (`command.Register`), at startup.
+- `/start` is the only command, and the command menu stays empty: everything happens in the Mini App. `command.ClearCommands` empties the menu in every locale at startup, so commands from older versions disappear.
 - Answer every callback query, even when nothing changes, or Telegram keeps a spinner on the button. The default handler answers buttons no handler matches, such as those left from 1.x.
 - Every step that waits for input has a Cancel button. An action that cannot be undone asks for confirmation first, and a second tap on the same confirmation is stale, not a repeat.
 - Offer the likely value as a button. A typed value that does not parse keeps the step and names the expected format.
@@ -24,8 +24,8 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 | `can_invite_users` | Add members | Додавати учасників |
 | `can_restrict_members` | Ban users | Блокувати користувачів |
 
-- Main actions live in Telegram's command menu (≡ next to the message field), each with an emoji at the start of its description so the eye finds it. `/start` lists them as tappable commands. The bot sends no reply keyboard.
-- The Mini App opens only with an inline `web_app` button or the menu button, the launch types that carry signed `initData` ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)): the chat's menu button (`command.SetMenuButton`), the button under the `/start` reply, the buttons under the replies to `/help` (`APP_URL?help`), `/list` (`APP_URL`), `/new` (`APP_URL?new`) and `/language` (`APP_URL?settings`) (`command.ScreenHandler`), and "Review in the app" under the results review sent after a draw (`APP_URL?review=<id>`). Never open it from a reply-keyboard `web_app` button: Telegram sends that launch no `initData`.
+- Main actions live in the Mini App, which the menu button next to the message field opens. The bot sends no reply keyboard.
+- The Mini App opens only with an inline `web_app` button or the menu button, the launch types that carry signed `initData` ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)): the chat's menu button (`command.SetMenuButton`), the button under the `/start` reply, and "Review in the app" under the results review sent after a draw (`APP_URL?review=<id>`). Never open it from a reply-keyboard `web_app` button: Telegram sends that launch no `initData`.
 - Inline `web_app` buttons work only in private chats, so a channel post never carries one; the join button stays a callback button.
 
 ## How it is wired

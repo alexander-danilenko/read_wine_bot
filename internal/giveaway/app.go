@@ -312,11 +312,15 @@ type ChannelLists struct {
 // MyChannels returns the channels where the bot is an admin, by userID's role, in the order the
 // store lists them. An admin of the primary channel gets it as Mine and every other channel as
 // Partners. A partner gets as Mine only the other channels they are an admin of, each with the
-// bot's extra rights there, and never the primary channel. A failed role lookup is an error.
+// bot's extra rights there, and never the primary channel. asPartner gives any user the partner's
+// lists, with the primary channel first, so a primary admin can see the partner screen and its
+// extra-rights warning on the primary channel. A failed role lookup is an error.
 // Every per-channel failure is logged: a channel whose admin check fails is left out, a partner
 // channel without a readable title is left out of Partners, the primary channel or a partner's
 // own channel keeps an empty title, and unread extra rights stay nil.
-func (a *App) MyChannels(ctx context.Context, tg ChannelsTelegram, userID int64) (ChannelLists, error) {
+func (a *App) MyChannels(
+	ctx context.Context, tg ChannelsTelegram, userID int64, asPartner bool,
+) (ChannelLists, error) {
 	role, err := a.Role(ctx, tg, userID)
 	if err != nil {
 		return ChannelLists{}, err
@@ -334,8 +338,13 @@ func (a *App) MyChannels(ctx context.Context, tg ChannelsTelegram, userID int64)
 		}
 	}
 
-	if role == RolePartner {
-		return ChannelLists{Mine: eachChannel(others, func(id int64) *Channel {
+	if asPartner || role == RolePartner {
+		own := others
+		if asPartner {
+			own = append([]int64{a.primary}, others...)
+		}
+
+		return ChannelLists{Mine: eachChannel(own, func(id int64) *Channel {
 			return a.partnerChannel(ctx, tg, id, userID)
 		}), Partners: []Channel{}}, nil
 	}

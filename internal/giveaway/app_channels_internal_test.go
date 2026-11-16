@@ -84,6 +84,7 @@ func TestMyChannels(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		asPartner    bool
 		tg           *channelMembers
 		wantMine     []Channel
 		wantPartners []Channel
@@ -125,6 +126,22 @@ func TestMyChannels(t *testing.T) {
 			wantMine: []Channel{
 				{ID: channelA, Title: "A", ExtraRights: []string{}},
 				{ID: channelC, Title: "C", ExtraRights: []string{"can_post_messages"}},
+			},
+			wantPartners: []Channel{},
+		},
+		{
+			name:      "an owner asking for the partner view gets the primary channel first, then their partner channels",
+			asPartner: true,
+			tg: &channelMembers{
+				fakeSubscriptionTelegram: titled(all),
+				members: map[int64]map[int64]models.ChatMember{
+					primaryChannel: {viewer: owner}, channelA: {viewer: owner},
+				},
+				bot: map[int64]models.ChatMember{primaryChannel: poster, channelA: manageOnly},
+			},
+			wantMine: []Channel{
+				{ID: primaryChannel, Title: "Read Wine", ExtraRights: []string{"can_post_messages"}},
+				{ID: channelA, Title: "A", ExtraRights: []string{}},
 			},
 			wantPartners: []Channel{},
 		},
@@ -172,7 +189,7 @@ func TestMyChannels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			app, logs := newChannelsApp(channelA, primaryChannel, channelB, channelC)
 
-			got, err := app.MyChannels(t.Context(), tc.tg, viewer)
+			got, err := app.MyChannels(t.Context(), tc.tg, viewer, tc.asPartner)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +218,7 @@ func TestMyChannelsPrimaryAdminWithUnreadablePartner(t *testing.T) {
 		},
 	}
 
-	got, err := app.MyChannels(t.Context(), tg, viewer)
+	got, err := app.MyChannels(t.Context(), tg, viewer, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +246,7 @@ func TestMyChannelsErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			app := &App{reviewer: &Reviewer{channels: tc.channels}, log: slog.New(slog.DiscardHandler)}
 
-			if _, err := app.MyChannels(t.Context(), tc.tg, viewer); err == nil {
+			if _, err := app.MyChannels(t.Context(), tc.tg, viewer, false); err == nil {
 				t.Error("err = nil, want an error")
 			}
 		})

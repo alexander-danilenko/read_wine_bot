@@ -32,6 +32,7 @@ type fakeGiveaways struct {
 	winnerID   int64
 	rerolled   int
 	channels   giveaway.ChannelLists
+	asPartner  bool
 	role       giveaway.Role
 }
 
@@ -57,9 +58,9 @@ func (f *fakeGiveaways) Channels(context.Context, giveaway.ChannelReader, ...[]g
 }
 
 func (f *fakeGiveaways) MyChannels(
-	_ context.Context, _ giveaway.ChannelsTelegram, userID int64,
+	_ context.Context, _ giveaway.ChannelsTelegram, userID int64, asPartner bool,
 ) (giveaway.ChannelLists, error) {
-	f.userID = userID
+	f.userID, f.asPartner = userID, asPartner
 
 	return f.channels, f.err
 }

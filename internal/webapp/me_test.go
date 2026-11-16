@@ -172,4 +172,18 @@ func TestMyChannels(t *testing.T) {
 	if want := []channel{{ID: -1002, Title: "B", Username: "b_wine"}}; !reflect.DeepEqual(got.Partners, want) {
 		t.Errorf("partners = %+v, want B with extra_rights null", got.Partners)
 	}
+
+	if fake.asPartner {
+		t.Error("asPartner = true without the query, want false")
+	}
+
+	if rec := call(
+		t,
+		mux,
+		"/api/channels?as_partner=true",
+		&models.User{ID: 42},
+	); rec.Code != http.StatusOK ||
+		!fake.asPartner {
+		t.Errorf("code = %d, asPartner = %v with as_partner=true, want 200 and true", rec.Code, fake.asPartner)
+	}
 }

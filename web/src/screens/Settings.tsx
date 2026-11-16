@@ -1,4 +1,4 @@
-import { Handshake, Languages, Megaphone } from "lucide-react";
+import { Eye, Handshake, Languages, Megaphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { api, must, type Channel, type ChannelLists, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
@@ -100,8 +100,8 @@ function ChannelCard({
 }
 
 // Settings shows the language picker, the primary channel, and the partner channels with the
-// partner link to copy.
-export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
+// partner link to copy and a way to see the partner screen.
+export default function Settings({ me, onMe, onPartner }: { me: Me; onMe: (me: Me) => void; onPartner: () => void }) {
   const t = useT();
   const channels = useLoad(() => must(api.GET("/api/channels")), []);
   return (
@@ -122,7 +122,15 @@ export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void 
         empty={t("settings.noPartners")}
         list={channels}
         pick={(l) => l.partners}
-        action={<PartnerLink link={me.partner_link} />}
+        action={
+          <>
+            <PartnerLink link={me.partner_link} />
+            <Button variant="text" full onClick={onPartner}>
+              <Eye aria-hidden className="size-5" />
+              {t("settings.partnerPreview")}
+            </Button>
+          </>
+        }
       />
     </Section>
   );

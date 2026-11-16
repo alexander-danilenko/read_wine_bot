@@ -33,7 +33,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "3.0.0"
+const version = "3.1.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -88,7 +88,7 @@ func run() error {
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
 	reviewer := newReviewer(store, channel.NewStore(conn), texts, cfg.PrimaryChannel, log)
 	giveaways, editor := newGiveawayRules(store, texts, kyiv, cfg.PrimaryChannel, log)
-	b, err := bot.New(cfg.TelegramBotToken, handlers(users, giveaways, texts, cfg.AppURL, log)...)
+	b, err := bot.New(cfg.TelegramBotToken, handlers(users, giveaways, texts, cfg.AppURL, cfg.PrimaryChannel, log)...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
@@ -185,12 +185,12 @@ var (
 	)
 )
 
-// describeBot tells Telegram what the bot offers and needs: the command menu, the menu button
+// describeBot tells Telegram what the bot offers and needs: an empty command menu, the menu button
 // that opens the Mini App, and the admin rights Telegram pre-selects when an admin adds the
 // bot to a channel. Then it stops the bot unless it can run giveaways in the primary channel.
 func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL string, primaryChannel int64) error {
-	if err := command.Register(ctx, b, texts); err != nil {
-		return fmt.Errorf("register commands: %w", err)
+	if err := command.ClearCommands(ctx, b, texts); err != nil {
+		return err //nolint:wrapcheck // ClearCommands already says what failed
 	}
 
 	if err := command.SetMenuButton(ctx, b, texts, appURL); err != nil {
@@ -287,29 +287,39 @@ func newGiveawayRules(
 	return svc, giveaway.NewEditor(svc, store, store, store, store, store, store, primary)
 }
 
+// primaryChannelOf reads the title and username of the primary channel for the /start greeting.
+func primaryChannelOf(chatID int64) command.Channel {
+	return func(ctx context.Context, b *bot.Bot) (string, string, error) {
+		c, err := b.GetChat(ctx, &bot.GetChatParams{ChatID: chatID})
+		if err != nil {
+			return "", "", fmt.Errorf("get primary channel: %w", err)
+		}
+
+		return c.Title, c.Username, nil
+	}
+}
+
 // handlers wires every update the bot handles to the package that handles it, and asks
-// Telegram for those updates only. Giveaways are managed in the Mini App; the chat keeps
-// /start, the commands that open the app's screens and the join button.
+// Telegram for those updates only. Everything is managed in the Mini App; the chat keeps /start
+// and the join button.
 func handlers(
-	users *user.Store, giveaways *giveaway.Service, texts *i18n.Catalog, appURL string, log *slog.Logger,
+	users *user.Store,
+	giveaways *giveaway.Service,
+	texts *i18n.Catalog,
+	appURL string,
+	primaryChannel int64,
+	log *slog.Logger,
 ) []bot.Option {
 	kb := keyboard.NewTracker(users, log)
 
-	screens := command.ScreenHandlers(texts, users, kb, appURL, log)
-	screenOpts := make([]bot.Option, 0, len(screens))
-
-	for cmd, h := range screens {
-		screenOpts = append(screenOpts, bot.WithMessageTextHandler(cmd, bot.MatchTypeCommandStartOnly, h))
-	}
-
-	return append([]bot.Option{
+	return []bot.Option{
 		// Runs before every handler: records every sender's profile and its revisions, and
 		// deletes the message with buttons on a command.
 		bot.WithMiddlewares(user.Middleware(users, kb, log)),
 		bot.WithMessageTextHandler(
 			command.Start,
 			bot.MatchTypeCommandStartOnly,
-			command.StartHandler(texts, users, kb, appURL, version, log),
+			command.StartHandler(texts, users, kb, primaryChannelOf(primaryChannel), appURL, version, log),
 		),
 		bot.WithCallbackQueryDataHandler(
 			giveaway.JoinCallback,
@@ -319,7 +329,7 @@ func handlers(
 		// Any other message gets no answer. Without this, go-telegram logs every unmatched update.
 		bot.WithDefaultHandler(answerStaleButton(log)),
 		bot.WithAllowedUpdates(allowedUpdates()),
-	}, screenOpts...)
+	}
 }
 
 // answerStaleButton answers a tap on a button no handler matches, such as one left from the

@@ -55,7 +55,9 @@ type RoleReader interface {
 // ChannelLister lists the channels where the bot is an admin by the caller's role.
 // *giveaway.App implements it.
 type ChannelLister interface {
-	MyChannels(ctx context.Context, tg giveaway.ChannelsTelegram, userID int64) (giveaway.ChannelLists, error)
+	MyChannels(
+		ctx context.Context, tg giveaway.ChannelsTelegram, userID int64, asPartner bool,
+	) (giveaway.ChannelLists, error)
 }
 
 // NewOperations returns the API's operations over d. tg makes the Telegram calls, langs saves

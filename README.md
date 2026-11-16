@@ -20,7 +20,7 @@ The bot is not a service for other channels. Each copy works for exactly one cha
 | --- | --- |
 | **For** | One primary channel and its admins; partner channels take part in its giveaways |
 | **Jobs** | Giveaways and channel analytics |
-| **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user in the Mini App's settings (`/language` opens them) |
+| **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user in the Mini App's settings |
 | **Stack** | Go 1.27, PostgreSQL 18, a React Mini App embedded in one static binary |
 
 ## ✨ What it does for the channel

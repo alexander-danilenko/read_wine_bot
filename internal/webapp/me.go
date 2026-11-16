@@ -115,13 +115,17 @@ func (o *Operations) setLanguage(ctx context.Context, in *setLanguageInput) (*me
 	return o.meFor(ctx, c, in.Body.Language)
 }
 
-func (o *Operations) myChannels(ctx context.Context, _ *struct{}) (*myChannelsOutput, error) {
+type myChannelsInput struct {
+	AsPartner bool `doc:"List the channels as a partner sees them, whatever the caller's role" query:"as_partner"`
+}
+
+func (o *Operations) myChannels(ctx context.Context, in *myChannelsInput) (*myChannelsOutput, error) {
 	c, err := caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	lists, err := o.channels.MyChannels(ctx, o.tg, c.User.ID)
+	lists, err := o.channels.MyChannels(ctx, o.tg, c.User.ID, in.AsPartner)
 	if err != nil {
 		return nil, fmt.Errorf("list channels of user %d: %w", c.User.ID, err)
 	}
