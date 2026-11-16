@@ -30,7 +30,7 @@ The chat is the bot's only UI. Keep it clean and keep every button working.
 
 ## How it is wired
 
-The chat keeps `/start`, the commands that open a Mini App screen and the join button; everything else, help and the language included, happens in the Mini App, whose API trusts only Telegram's signed launch data ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)). The database side of giveaway changes is in [ADR 0006](adr/0006-button-first-then-row.md) and [ADR 0007](adr/0007-giveaway-states-in-one-table.md).
+The chat keeps `/start`, the commands that open a Mini App screen and the join button; everything else, the language included, happens in the Mini App, whose API trusts only Telegram's signed launch data ([ADR 0009](adr/0009-mini-app-api-trusts-only-initdata.md)). The database side of giveaway changes is in [ADR 0006](adr/0006-button-first-then-row.md) and [ADR 0007](adr/0007-giveaway-states-in-one-table.md).
 
 ### Commands
 
