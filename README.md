@@ -12,7 +12,7 @@
 
 # 🍷 read_wine_bot
 
-[@read_wine_bot](https://t.me/read_wine_bot) is a Telegram bot that runs giveaways on channel posts. It was built for the [@read_wine](https://t.me/read_wine) channel and works in any channel that adds it as an admin.
+[@read_wine_bot](https://t.me/read_wine_bot) is a Telegram bot that runs giveaways on channel posts. It was built for the [@read_wine](https://t.me/read_wine) channel and runs giveaways only in its primary channel; every other channel that adds it is a giveaway partner.
 
 > [!WARNING]
 > The hosted [@read_wine_bot](https://t.me/read_wine_bot) has no guarantees. It can stop, lose data or change at any time. For your own channel, [host it yourself](#-run-your-own) with your own bot token.
@@ -46,13 +46,13 @@ flowchart LR
 
 ## 🔐 Add the bot to a channel
 
-Send `/start` to [@read_wine_bot](https://t.me/read_wine_bot) and open the app: its **Help** screen has both links and explains each permission.
+Send `/start` to [@read_wine_bot](https://t.me/read_wine_bot) and open the app: partners see their connect link there, and the **Help** screen explains each permission.
 
-- 📢 **Channel that runs giveaways:** [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages) with only **Post messages** (publishes the results) and **Edit messages of others** (adds the join button). Disable every other toggle.
+- 📢 **Primary channel** (self-hosting only, set by `PRIMARY_CHANNEL_ID`): [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages) with only **Post messages** (publishes the results) and **Edit messages of others** (adds the join button). Disable every other toggle.
 - 🤝 **Giveaway partner:** [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=manage_chat) with every permission disabled. Telegram shows subscriptions only to admins, and that is all the bot reads.
 
 > [!NOTE]
-> A partner channel appears in the partner list in the bot's app settings, which everyone who opens the app can see, and in the results review of every giveaway the bot runs, where admins of other channels see which winners subscribe to it. To end a partnership, remove the bot from your admins.
+> A partner channel appears in the bot's app settings only to the admins of the primary channel, and in the results review of every giveaway the bot runs, where admins of other channels see which winners subscribe to it. To end a partnership, remove the bot from your admins.
 
 For your own bot, put its username in the links.
 

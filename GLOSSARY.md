@@ -10,7 +10,7 @@ A prize draw the bot runs for the audience of the @read_wine Telegram channel. O
 
 ### Giveaway setup
 
-The form in the bot's Mini App that creates a giveaway: the admin pastes the link to the post, the end time (Kyiv time), the winner count and the join button text. The bot checks the admin's and its own rights, then attaches the join button. Nothing appears on the post until the form is accepted; a form left unsent leaves nothing behind.
+The form in the bot's Mini App that creates a giveaway: a full admin pastes the link to the post, which must be in the primary channel, the end time (Kyiv time), the winner count and the join button text. The bot checks the admin's role and its own rights, then attaches the join button. Nothing appears on the post until the form is accepted; a form left unsent leaves nothing behind.
 
 ### Winner draw
 
@@ -18,7 +18,7 @@ The once-a-minute step that finishes a due giveaway: it picks distinct participa
 
 ### Results review
 
-The step between the winner draw and the published results. The creator gets the results in private, and any current admin of the giveaway's channel can reroll winners one at a time, then publish the results as a reply to the giveaway post, or skip them to close the giveaway without posting. Publishing or skipping happens once and closes rerolls.
+The step between the winner draw and the published results. The creator gets the results in private, and any current full admin of the primary channel can reroll winners one at a time, then publish the results as a reply to the giveaway post, or skip them to close the giveaway without posting. A read-only admin can view the results but not reroll, publish or skip. Publishing or skipping happens once and closes rerolls.
 
 ### Reroll
 
@@ -42,11 +42,27 @@ A giveaway whose winners are recorded. Passing the end time does not finish a gi
 
 ### Channel
 
-A Telegram channel where the bot is an admin. The bot was built for @read_wine and can serve several channels. A giveaway belongs to the channel of its post: the giveaway's channel. Its audience takes part in giveaways.
+A Telegram channel where the bot is an admin. Only the primary channel runs giveaways; every other channel is a giveaway partner. A giveaway belongs to the channel of its post: the giveaway's channel. Its audience takes part in giveaways.
+
+### Primary channel
+
+The one channel the bot runs giveaways for, @read_wine, named by its numeric chat ID in the bot's settings. The bot refuses to start unless it is an admin there with the rights to post and edit. Giveaways of any other channel are hidden and never drawn.
+
+### Full admin
+
+The owner of the primary channel, or an admin there with both Post messages and Edit messages of others. A full admin creates giveaways and runs results review; changing or cancelling a giveaway also needs being its creator. Roles are read from Telegram on every request, so a change of rights applies at once.
+
+### Read-only admin
+
+Any other admin of the primary channel. A read-only admin sees every giveaway and results review of the primary channel but changes nothing: no creating, editing, cancelling, rerolling, publishing or skipping. They still receive the results in private and can set their language.
+
+### Partner
+
+Anyone who opens the app and is not an admin of the primary channel. A partner sees one screen: the channels where they and the bot are both admins, and how to connect another. A user who is both a primary admin and a partner admin has the primary role.
 
 ### Giveaway partner
 
-A channel that runs giveaways together with a giveaway's creator: winners are expected to subscribe to it as well. The bot is an admin there without the rights to run giveaways, only so it can check winner subscriptions. Like every channel, a partner shows in the results review of every giveaway, not only the shared ones. The Mini App's settings list partner channels to everyone who opens the app: there, a partner channel is any channel where the bot is an admin and the viewer is not, whatever rights the bot has in it.
+A channel that runs giveaways together with a giveaway's creator: winners are expected to subscribe to it as well. The bot is an admin there without the rights to run giveaways, only so it can check winner subscriptions, and warns the partner when it has any right beyond Manage chat. Like every channel, a partner shows in the results review of every giveaway. A partner sees only their own channels in the app; admins of the primary channel see every partner.
 
 ### Winner subscriptions
 
