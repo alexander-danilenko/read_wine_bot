@@ -12,6 +12,10 @@ A prize draw the bot runs for the audience of the @read_wine Telegram channel. O
 
 The form in the bot's Mini App that creates a giveaway: a full admin pastes the link to the post, which must be in the primary channel, the end time (Kyiv time), the winner count and the join button text. The bot checks the admin's role and its own rights, then attaches the join button. Nothing appears on the post until the form is accepted; a form left unsent leaves nothing behind.
 
+### Admin label
+
+An optional name admins give a giveaway in the Mini App, such as "Wine of the month", to tell giveaways apart in the list. Only admins see it; it never reaches the post, the join button or the results. A giveaway without one is shown as "Giveaway #12", by its ID.
+
 ### Winner draw
 
 The once-a-minute step that finishes a due giveaway: it picks distinct participants at random up to the winner count, passes each one through the candidate filter, records the winners, removes the join button and sends the results to the giveaway's creator in private for results review. A giveaway is drawn at most once; with too few eligible participants it finishes with fewer winners, possibly none.
