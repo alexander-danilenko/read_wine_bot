@@ -1,10 +1,16 @@
 package giveaway_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 )
@@ -44,7 +50,7 @@ func wantAppError(t *testing.T, err error, code, field string) {
 
 func TestAppCreate(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -74,7 +80,7 @@ func TestAppCreateRejects(t *testing.T) {
 	}{
 		{
 			name:      "not an admin of the channel",
-			change:    func(s *setup, _ *giveaway.Fields) { s.tg.admin = false },
+			change:    func(s *setup, _ *giveaway.Fields) { s.tg.role = giveaway.RolePartner },
 			wantCode:  giveaway.CodeNotAdmin,
 			wantField: giveaway.FieldPostLink,
 		},
@@ -82,6 +88,12 @@ func TestAppCreateRejects(t *testing.T) {
 			name:      "bot lacks rights",
 			change:    func(s *setup, _ *giveaway.Fields) { s.tg.noEdit = true },
 			wantCode:  giveaway.CodeBotNoRights,
+			wantField: giveaway.FieldPostLink,
+		},
+		{
+			name:      "post in another channel",
+			change:    func(s *setup, _ *giveaway.Fields) { s.tg.resolveTo = otherChannelID },
+			wantCode:  giveaway.CodeNotPrimaryChannel,
 			wantField: giveaway.FieldPostLink,
 		},
 		{
@@ -131,7 +143,7 @@ func TestAppCreateRejects(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newSetup(t)
-			app := giveaway.NewApp(s.ed, nil, s.store)
+			app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 			f := appFields(s)
 			tc.change(s, &f)
 
@@ -147,7 +159,7 @@ func TestAppCreateRejects(t *testing.T) {
 
 func TestAppCreateOnTakenPost(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	mustCreate(t, s, app, adminID, appFields(s))
 
@@ -162,7 +174,7 @@ func TestAppCreateOnTakenPost(t *testing.T) {
 // admin's next create, on the same post or another.
 func TestAppCreateAfterFailedAttach(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	s.tg.attachErr = giveaway.ErrPostGone
 
@@ -189,7 +201,7 @@ func TestAppCreateAfterFailedAttach(t *testing.T) {
 // AE5: the end is Kyiv wall-clock time whatever the phone's zone; the app sends it as typed.
 func TestAppCreateEndIsKyivTime(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 	f := appFields(s)
 	f.EndsAt = "2026-12-01T20:00"
 
@@ -209,33 +221,55 @@ func TestAppCreateEndIsKyivTime(t *testing.T) {
 	}
 }
 
-func TestAppGetOnlyForCreator(t *testing.T) {
+// Every primary admin gets any giveaway of the primary channel; a giveaway of another
+// channel, a draft and a missing ID all answer not_found, even to the creator.
+func TestAppGet(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
-
-	_, err := app.Get(t.Context(), otherAdminID, v.ID)
-	wantAppError(t, err, giveaway.CodeNotFound, "")
 
 	finished := s.store.rows[v.ID]
 	finished.FinishedAt = &s.now
 
-	_, err = app.Get(t.Context(), otherAdminID, v.ID)
-	wantAppError(t, err, giveaway.CodeNotFound, "")
-
-	got, err := app.Get(t.Context(), adminID, v.ID)
-	if err != nil || got.Status != giveaway.StatusFinished {
-		t.Errorf("creator Get = %+v, %v, want the finished giveaway", got, err)
+	got, err := app.Get(t.Context(), s.tg, otherAdminID, v.ID)
+	if err != nil || got.ID != v.ID || got.Status != giveaway.StatusFinished {
+		t.Errorf("another admin's Get = %+v, %v, want the finished giveaway", got, err)
 	}
 
-	_, err = app.Get(t.Context(), adminID, 999)
+	elsewhere := publish(t, s.store, &giveaway.Giveaway{ChatID: otherChannelID, MessageID: 42, CreatedBy: adminID})
+
+	_, err = app.Get(t.Context(), s.tg, adminID, elsewhere.ID)
+	wantAppError(t, err, giveaway.CodeNotFound, "")
+
+	text := "Take part"
+
+	_, err = app.Edit(t.Context(), s.tg, adminID, elsewhere.ID, giveaway.Changes{ButtonText: &text})
+	wantAppError(t, err, giveaway.CodeNotFound, "")
+
+	err = s.store.SaveDraft(
+		t.Context(),
+		&giveaway.Giveaway{ChatID: channelID, MessageID: 50, CreatedBy: adminID, Winners: 1},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	draft, err := s.store.Draft(t.Context(), adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = app.Get(t.Context(), s.tg, adminID, draft.ID)
+	wantAppError(t, err, giveaway.CodeNotFound, "")
+
+	_, err = app.Get(t.Context(), s.tg, adminID, 999)
 	wantAppError(t, err, giveaway.CodeNotFound, "")
 }
 
 func TestAppEdit(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -266,7 +300,7 @@ func TestAppEdit(t *testing.T) {
 
 func TestAppCancelAndRestore(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -306,7 +340,7 @@ func wantLists(t *testing.T, s *setup, app *giveaway.App, running, archived []ui
 		t.Errorf("running = %+v, err %v, want %v", r, err, running)
 	}
 
-	a, err := app.Archived(t.Context(), adminID, 0, 10)
+	a, err := app.Archived(t.Context(), s.tg, adminID, 0, 10)
 	if err != nil || !slices.Equal(pageIDs(a), archived) || a.Total != len(archived) {
 		t.Errorf("archive = %+v, err %v, want %v", a, err, archived)
 	}
@@ -314,7 +348,7 @@ func wantLists(t *testing.T, s *setup, app *giveaway.App, running, archived []ui
 
 func TestAppFinishNow(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -330,7 +364,7 @@ func TestAppFinishNow(t *testing.T) {
 
 func TestAppMove(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -355,43 +389,47 @@ func TestAppMove(t *testing.T) {
 	wantAppError(t, err, giveaway.CodeInvalidPostLink, giveaway.FieldPostLink)
 }
 
-func TestAppListAndFinished(t *testing.T) {
+// Every primary admin lists every giveaway of the primary channel, whoever created it, and
+// none of another channel.
+func TestAppListCoversPrimaryChannel(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
-	v := mustCreate(t, s, app, adminID, appFields(s))
+	byA := mustCreate(t, s, app, adminID, appFields(s))
 
 	other := appFields(s)
 	other.PostLink = "https://t.me/c/1234567890/43"
+	byB := mustCreate(t, s, app, otherAdminID, other)
 
-	mustCreate(t, s, app, otherAdminID, other)
+	elsewhere := publish(t, s.store, &giveaway.Giveaway{ChatID: otherChannelID, MessageID: 42, CreatedBy: otherAdminID})
 
-	mine, review, err := app.List(t.Context(), s.tg, adminID, 0, 10)
+	running, review, err := app.List(t.Context(), s.tg, otherAdminID, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(mine.Views) != 1 || mine.Views[0].ID != v.ID || mine.Total != 1 || len(review) != 0 {
-		t.Fatalf("list = %+v, review %+v, want only the admin's giveaway", mine, review)
+	if want := []uint{byB.ID, byA.ID}; !slices.Equal(pageIDs(running), want) || running.Total != 2 || len(review) != 0 {
+		t.Fatalf("B's list = %+v, review %+v, want %v", running, review, want)
 	}
 
-	// After the draw the other admin's giveaway waits for review: every channel admin sees it.
-	drawn := s.store.rows[v.ID+1]
-	drawn.FinishedAt, drawn.ResultsPending = &s.now, true
+	// After the draw A's giveaway waits for review: B sees it too. The other channel's stays hidden.
+	for _, id := range []uint{byA.ID, elsewhere.ID} {
+		s.store.rows[id].FinishedAt, s.store.rows[id].ResultsPending = &s.now, true
+	}
 
-	_, review, err = app.List(t.Context(), s.tg, adminID, 0, 10)
+	_, review, err = app.List(t.Context(), s.tg, otherAdminID, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(review) != 1 || review[0].Status != giveaway.StatusReview {
-		t.Errorf("review = %+v, want the drawn giveaway", review)
+	if len(review) != 1 || review[0].ID != byA.ID || review[0].Status != giveaway.StatusReview {
+		t.Errorf("review = %+v, want only A's drawn giveaway", review)
 	}
 }
 
 func TestAppArchived(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	ids := make([]uint, 0, 3)
 
@@ -402,11 +440,15 @@ func TestAppArchived(t *testing.T) {
 	}
 
 	// Drawn an hour ago, cancelled now, drawn two hours ago: the archive orders them by when
-	// each left the running list.
+	// each left the running list. It holds the primary channel's giveaways whoever created
+	// them, and none of another channel.
 	early, late := s.now.Add(-2*time.Hour), s.now.Add(-time.Hour)
 	s.store.rows[ids[0]].FinishedAt = &late
 	s.store.rows[ids[1]].Published, s.store.rows[ids[1]].CancelledAt = false, &s.now
-	s.store.rows[ids[2]].FinishedAt = &early
+	s.store.rows[ids[2]].FinishedAt, s.store.rows[ids[2]].CreatedBy = &early, otherAdminID
+
+	elsewhere := publish(t, s.store, &giveaway.Giveaway{ChatID: otherChannelID, MessageID: 42, CreatedBy: adminID})
+	s.store.rows[elsewhere.ID].FinishedAt = &s.now
 
 	for _, tc := range []struct {
 		offset int
@@ -416,7 +458,7 @@ func TestAppArchived(t *testing.T) {
 		{offset: 2, want: []uint{ids[2]}},
 		{offset: 10, want: nil}, // past the end
 	} {
-		page, err := app.Archived(t.Context(), adminID, tc.offset, 2)
+		page, err := app.Archived(t.Context(), s.tg, adminID, tc.offset, 2)
 		if err != nil || page.Total != 3 || !slices.Equal(pageIDs(page), tc.want) {
 			t.Errorf("offset %d: page %+v, err %v, want %v of 3", tc.offset, page, err, tc.want)
 		}
@@ -435,7 +477,7 @@ func pageIDs(p giveaway.Page) []uint {
 
 func TestAppListNewestFirst(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 
 	first := mustCreate(t, s, app, adminID, appFields(s))
 
@@ -457,13 +499,13 @@ func TestAppListNewestFirst(t *testing.T) {
 // stays in the result without title or photo.
 func TestAppChannels(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
 	got := app.Channels(t.Context(), s.tg, []giveaway.View{v, v}, []giveaway.View{v})
 	want := giveaway.Channel{ID: channelID, Title: "Read Wine", PhotoID: "photo-1"}
 
-	if len(got) != 1 || got[0] != want {
+	if !reflect.DeepEqual(got, []giveaway.Channel{want}) {
 		t.Fatalf("channels = %+v, want only %+v", got, want)
 	}
 
@@ -473,8 +515,259 @@ func TestAppChannels(t *testing.T) {
 		t.Context(),
 		s.tg,
 		[]giveaway.View{v},
-	); len(got) != 1 ||
-		got[0] != (giveaway.Channel{ID: channelID}) {
+	); !reflect.DeepEqual(got, []giveaway.Channel{{ID: channelID}}) {
 		t.Errorf("channels = %+v, want the channel without title or photo", got)
+	}
+}
+
+// memberLookup answers ChatMember with m or err and records what it was asked.
+type memberLookup struct {
+	m              models.ChatMember
+	err            error
+	chatID, userID int64
+}
+
+func (f *memberLookup) ChatMember(_ context.Context, chatID, userID int64) (models.ChatMember, error) {
+	f.chatID, f.userID = chatID, userID
+
+	return f.m, f.err
+}
+
+func TestAppRole(t *testing.T) {
+	owner := models.ChatMember{Type: models.ChatMemberTypeOwner, Owner: &models.ChatMemberOwner{}}
+	left := models.ChatMember{Type: models.ChatMemberTypeLeft, Left: &models.ChatMemberLeft{}}
+
+	tests := []struct {
+		name    string
+		tg      *memberLookup
+		want    giveaway.Role
+		wantErr bool
+	}{
+		{"owner of the primary channel", &memberLookup{m: owner}, giveaway.RoleFull, false},
+		{"not in the primary channel", &memberLookup{m: left}, giveaway.RolePartner, false},
+		{"bot lost the channel (403)", &memberLookup{err: fmt.Errorf("%w, kicked", bot.ErrorForbidden)}, "", true},
+		{
+			"bot lost the channel (400)",
+			&memberLookup{err: fmt.Errorf("%w, chat not found", bot.ErrorBadRequest)},
+			"",
+			true,
+		},
+		{"network error", &memberLookup{err: errors.New("connection reset")}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSetup(t)
+			app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+
+			got, err := app.Role(t.Context(), tt.tg, adminID)
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Fatalf("Role() = %q, %v; want %q, error %v", got, err, tt.want, tt.wantErr)
+			}
+
+			if tt.tg.chatID != channelID || tt.tg.userID != adminID {
+				t.Errorf("looked up user %d in chat %d, want user %d in the primary channel %d",
+					tt.tg.userID, tt.tg.chatID, adminID, channelID)
+			}
+		})
+	}
+}
+
+// An admin without Post messages or Edit messages of others cannot create a giveaway, even one
+// who had the rights when they opened the form: the role is read again on submit, and the
+// refusal comes before anything reaches the store or the post.
+func TestAppCreateByReadOnlyAdmin(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+	s.tg.role = giveaway.RoleReadOnly
+
+	_, err := app.Create(t.Context(), s.tg, adminID, "en", appFields(s))
+	wantAppError(t, err, giveaway.CodeReadOnly, "")
+
+	if s.store.reads != 0 || len(s.store.rows) != 0 || s.tg.attached != 0 {
+		t.Errorf("store reads %d, rows %d, attached %d; want nothing touched",
+			s.store.reads, len(s.store.rows), s.tg.attached)
+	}
+}
+
+// A creator who lost a right gets read_only for every change of their own giveaway, and
+// nothing changes.
+func TestAppChangesByReadOnlyCreator(t *testing.T) {
+	text := "Take part"
+
+	for name, change := range map[string]func(*setup, *giveaway.App, uint) (giveaway.View, error){
+		"edit": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Edit(t.Context(), s.tg, adminID, id, giveaway.Changes{ButtonText: &text})
+		},
+		"move": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Move(t.Context(), s.tg, adminID, id, "https://t.me/c/1234567890/50")
+		},
+		"cancel": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Cancel(t.Context(), s.tg, adminID, id)
+		},
+		"restore": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Restore(t.Context(), s.tg, adminID, id)
+		},
+		"finish now": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.FinishNow(t.Context(), s.tg, adminID, id)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newSetup(t)
+			app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+			v := mustCreate(t, s, app, adminID, appFields(s))
+			before := *s.store.rows[v.ID]
+			s.tg.role = giveaway.RoleReadOnly
+
+			_, err := change(s, app, v.ID)
+			wantAppError(t, err, giveaway.CodeReadOnly, "")
+
+			if after := *s.store.rows[v.ID]; !reflect.DeepEqual(after, before) || s.tg.removed != 0 {
+				t.Errorf("giveaway changed: %+v, buttons removed %d", after, s.tg.removed)
+			}
+		})
+	}
+}
+
+// Only admins of the primary channel see its giveaways: a partner gets not_admin for the
+// lists and the details, and the store is never read for them.
+func TestAppReadsByPartner(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+	v := mustCreate(t, s, app, adminID, appFields(s))
+	s.tg.role, s.store.reads = giveaway.RolePartner, 0
+
+	_, _, err := app.List(t.Context(), s.tg, fanID, 0, 10)
+	wantAppError(t, err, giveaway.CodeNotAdmin, "")
+
+	_, err = app.Archived(t.Context(), s.tg, fanID, 0, 10)
+	wantAppError(t, err, giveaway.CodeNotAdmin, "")
+
+	_, err = app.Get(t.Context(), s.tg, fanID, v.ID)
+	wantAppError(t, err, giveaway.CodeNotAdmin, "")
+
+	if s.store.reads != 0 {
+		t.Errorf("store read %d times for a partner, want 0", s.store.reads)
+	}
+}
+
+// A failed role lookup fails the request: it never answers as for a partner (not_admin) or a
+// read-only admin, and a change or a create leaves everything as it was.
+func TestAppFailedRoleLookup(t *testing.T) {
+	errTelegram := errors.New("telegram is down")
+	text := "Take part"
+
+	reads := map[string]func(*setup, *giveaway.App, uint) error{
+		"list": func(s *setup, app *giveaway.App, _ uint) error {
+			_, _, err := app.List(t.Context(), s.tg, adminID, 0, 10)
+			return err
+		},
+		"archived": func(s *setup, app *giveaway.App, _ uint) error {
+			_, err := app.Archived(t.Context(), s.tg, adminID, 0, 10)
+			return err
+		},
+		"get": func(s *setup, app *giveaway.App, id uint) error {
+			_, err := app.Get(t.Context(), s.tg, adminID, id)
+			return err
+		},
+	}
+
+	for name, read := range reads {
+		t.Run(name, func(t *testing.T) {
+			s := newSetup(t)
+			app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+			v := mustCreate(t, s, app, adminID, appFields(s))
+			s.tg.roleErr = errTelegram
+
+			err := read(s, app, v.ID)
+
+			var appErr *giveaway.AppError
+			if err == nil || errors.As(err, &appErr) {
+				t.Errorf("err = %v, want a plain error, not an AppError", err)
+			}
+		})
+	}
+
+	t.Run("create", func(t *testing.T) {
+		s := newSetup(t)
+		app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+		s.tg.roleErr = errTelegram
+
+		_, err := app.Create(t.Context(), s.tg, adminID, "en", appFields(s))
+		wantAppError(t, err, giveaway.CodeFailed, "")
+
+		if len(s.store.rows) != 0 || s.tg.attached != 0 {
+			t.Errorf("rows %d, attached %d; want nothing saved or attached", len(s.store.rows), s.tg.attached)
+		}
+	})
+
+	changes := map[string]func(*setup, *giveaway.App, uint) (giveaway.View, error){
+		"edit": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Edit(t.Context(), s.tg, adminID, id, giveaway.Changes{ButtonText: &text})
+		},
+		"move": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Move(t.Context(), s.tg, adminID, id, "https://t.me/c/1234567890/50")
+		},
+		"cancel": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Cancel(t.Context(), s.tg, adminID, id)
+		},
+		"restore": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.Restore(t.Context(), s.tg, adminID, id)
+		},
+		"finish now": func(s *setup, app *giveaway.App, id uint) (giveaway.View, error) {
+			return app.FinishNow(t.Context(), s.tg, adminID, id)
+		},
+	}
+
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			s := newSetup(t)
+			app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+			v := mustCreate(t, s, app, adminID, appFields(s))
+			before := *s.store.rows[v.ID]
+			s.tg.roleErr = errTelegram
+
+			_, err := change(s, app, v.ID)
+			wantAppError(t, err, giveaway.CodeFailed, "")
+
+			if after := *s.store.rows[v.ID]; !reflect.DeepEqual(after, before) || s.tg.removed != 0 {
+				t.Errorf("giveaway changed: %+v, buttons removed %d", after, s.tg.removed)
+			}
+		})
+	}
+}
+
+// A giveaway's view says whether the caller may change it: only its creator, while a full
+// admin. Another full admin and a read-only creator see it unchangeable, on the details and
+// in the list.
+func TestAppCanChange(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+	v := mustCreate(t, s, app, adminID, appFields(s))
+
+	if !v.CanChange {
+		t.Error("the creator's new giveaway: can_change false, want true")
+	}
+
+	for _, tc := range []struct {
+		name   string
+		role   giveaway.Role
+		userID int64
+		want   bool
+	}{
+		{"creator", giveaway.RoleFull, adminID, true},
+		{"another full admin", giveaway.RoleFull, otherAdminID, false},
+		{"read-only creator", giveaway.RoleReadOnly, adminID, false},
+	} {
+		s.tg.role = tc.role
+
+		got, err := app.Get(t.Context(), s.tg, tc.userID, v.ID)
+		if err != nil || got.CanChange != tc.want {
+			t.Errorf("%s: details can_change %v, err %v; want %v", tc.name, got.CanChange, err, tc.want)
+		}
+
+		page, _, err := app.List(t.Context(), s.tg, tc.userID, 0, 10)
+		if err != nil || len(page.Views) != 1 || page.Views[0].CanChange != tc.want {
+			t.Errorf("%s: list %+v, err %v; want can_change %v", tc.name, page.Views, err, tc.want)
+		}
 	}
 }

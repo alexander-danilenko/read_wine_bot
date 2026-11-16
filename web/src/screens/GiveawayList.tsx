@@ -1,9 +1,9 @@
 import { CircleHelp, Settings } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
-import { api, must, type Channel, type Giveaway } from "../api/client";
+import { api, must, type Channel, type Giveaway, type Me } from "../api/client";
 import { useT, type T } from "../i18n";
 import { formatEnd } from "../time";
-import { Avatar, Button, Card, ErrorText, Loading, Pager, Pill, Section, statusTone, useLoad } from "../ui";
+import { Avatar, Button, Card, ErrorText, Loading, Pager, Pill, ReadOnlyNote, Section, statusTone, useLoad } from "../ui";
 
 const pageSize = 10;
 
@@ -71,7 +71,7 @@ function useLastPage(total: number | undefined, page: number, onPage: (page: num
   }, [total, page, onPage]);
 }
 
-function Running({ page, onPage, onOpen, onReview, onNew }: ListProps) {
+function Running({ role, page, onPage, onOpen, onReview, onNew }: ListProps) {
   const t = useT();
   const list = useLoad(
     () => must(api.GET("/api/giveaways", { params: { query: pageQuery(page) } })),
@@ -94,12 +94,15 @@ function Running({ page, onPage, onOpen, onReview, onNew }: ListProps) {
         <Empty>{t("list.empty")}</Empty>
       )}
       <Pager page={page} pages={pageCount(total)} onPage={onPage} />
-      <Button variant="primary" full onClick={onNew}>
-        <svg aria-hidden viewBox="0 0 24 24" className="size-5 fill-current">
-          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
-        </svg>
-        {t("list.new")}
-      </Button>
+      {role === "full" && (
+        <Button variant="primary" full onClick={onNew}>
+          <svg aria-hidden viewBox="0 0 24 24" className="size-5 fill-current">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
+          </svg>
+          {t("list.new")}
+        </Button>
+      )}
+      {role === "read_only" && <ReadOnlyNote />}
     </Section>
   );
 }
@@ -125,6 +128,7 @@ function Archive({ page, onPage, onOpen, onReview }: ListProps) {
 }
 
 interface Props {
+  role: Me["role"];
   onOpen: (id: number) => void;
   onReview: (id: number) => void;
   onNew: () => void;

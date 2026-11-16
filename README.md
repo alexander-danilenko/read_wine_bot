@@ -71,9 +71,10 @@ Configuration is environment-only:
 | `TELEGRAM_BOT_TOKEN` | yes | Bot token from @BotFather |
 | `DATABASE_URL` | yes | `postgres://user:password@host:port/database`; the bot creates and migrates its tables on start |
 | `APP_URL` | yes | Public `https://` URL of the Mini App |
+| `PRIMARY_CHANNEL_ID` | yes | Numeric chat ID of the channel whose admins run giveaways, the negative number @userinfobot shows; the bot must be an admin there with Post messages and Edit messages of others |
 | `LISTEN_ADDR` | no | HTTP listen address for the Mini App and its API, default `:8080` |
 
-The bot validates every setting, pings the database and calls `getMe` at startup, and exits with a descriptive error if any check fails.
+The bot validates every setting, pings the database, calls `getMe` and checks its rights in the primary channel at startup, and exits with a descriptive error if any check fails.
 
 ### 🐳 Docker Compose
 
@@ -98,6 +99,7 @@ services:
       TELEGRAM_BOT_TOKEN: replace-with-the-bot-token
       DATABASE_URL: postgres://pgusername:pgpassword@db:5432/pgdatabasename?sslmode=disable
       APP_URL: https://bot.example.com
+      PRIMARY_CHANNEL_ID: "-1001234567890"
       LISTEN_ADDR: ":${PORT:-8080}"
     ports:
       - "${PORT:-8080}:${PORT:-8080}"

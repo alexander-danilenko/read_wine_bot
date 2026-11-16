@@ -49,7 +49,9 @@ func call(t *testing.T, mux http.Handler, path string, u *models.User) *httptest
 }
 
 func TestMe(t *testing.T) {
-	mux := newTestMux(t, &webapp.Operations{}, map[int64]string{42: "en"})
+	log := slog.New(slog.DiscardHandler)
+	ops := webapp.NewOperations(nil, &fakeGiveaways{}, webapp.NewPhotos(testToken, nil, log), nil, testBot, log)
+	mux := newTestMux(t, ops, map[int64]string{42: "en"})
 
 	rec := call(t, mux, "/api/me", &models.User{ID: 42, FirstName: "Alice"})
 	if rec.Code != http.StatusOK {

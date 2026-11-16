@@ -35,7 +35,7 @@ func newReviewApp(t *testing.T, store *fakeReviewStore) *App {
 	log := slog.New(slog.DiscardHandler)
 	svc := &Service{texts: texts, kyiv: time.UTC, now: time.Now, log: log}
 
-	return NewApp(&Editor{svc: svc, counter: noCounts{}}, newTestReviewer(t, store), nil)
+	return NewApp(&Editor{svc: svc, counter: noCounts{}}, newTestReviewer(t, store), nil, drawChannel)
 }
 
 func newReviewTelegram() reviewTelegram {
@@ -108,6 +108,17 @@ func TestAppPublishOnce(t *testing.T) {
 	wantCode(t, err, CodeReviewClosed)
 }
 
+// A drawn giveaway outside the primary channel is not found, even by its creator.
+func TestAppReviewOtherChannel(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()}, bob())
+	store.giveaways[reviewID].ChatID = otherChannel
+	app, tg := newReviewApp(t, store), newReviewTelegram()
+
+	_, err := app.Review(t.Context(), tg, creatorID, reviewID)
+	wantCode(t, err, CodeNotFound)
+}
+
 // AE3: a user who is no longer a channel admin cannot see or act on the review.
 func TestAppReviewNotAdmin(t *testing.T) {
 	store := newFakeReviewStore()
@@ -174,4 +185,46 @@ func TestAppSendWinnersCannotMessage(t *testing.T) {
 
 	tg.sendFails = 2
 	wantCode(t, app.SendWinners(t.Context(), tg, creatorID, reviewID), CodeCannotMessage)
+}
+
+// The review says whether the caller may act on it: only a full admin may. An admin without
+// Post messages or Edit messages of others still sees the winners.
+func TestAppReviewCanAct(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()}, bob())
+	app, tg := newReviewApp(t, store), newReviewTelegram()
+	tg.admins[otherAdmin] = RoleReadOnly
+
+	full, err := app.Review(t.Context(), tg, creatorID, reviewID)
+	if err != nil || !full.CanAct {
+		t.Errorf("full admin's review: can_act %v, err %v; want true", full.CanAct, err)
+	}
+
+	v, err := app.Review(t.Context(), tg, otherAdmin, reviewID)
+	if err != nil || v.CanAct || len(v.Winners) != 1 {
+		t.Errorf("read-only review = %+v, err %v; want the winners with can_act false", v, err)
+	}
+}
+
+// A read-only admin may send the winners to themselves, but every action that changes the
+// results answers read_only and changes nothing.
+func TestAppReviewByReadOnlyAdmin(t *testing.T) {
+	store := newFakeReviewStore()
+	store.drawn([]user.User{ann()}, bob())
+	app, tg := newReviewApp(t, store), newReviewTelegram()
+	tg.admins[otherAdmin] = RoleReadOnly
+
+	_, err := app.Reroll(t.Context(), tg, otherAdmin, reviewID, ann().TelegramID)
+	wantCode(t, err, CodeReadOnly)
+	wantCode(t, app.Publish(t.Context(), tg, otherAdmin, reviewID, 0), CodeReadOnly)
+	wantCode(t, app.Skip(t.Context(), tg, otherAdmin, reviewID, 0), CodeReadOnly)
+
+	if got := winnerIDs(t, store); got[1] != ann().TelegramID || !store.pending(t) || len(tg.sent) != 0 {
+		t.Fatalf("state changed: winners %v, pending %v, sent %d", got, store.pending(t), len(tg.sent))
+	}
+
+	if err := app.SendWinners(t.Context(), tg, otherAdmin, reviewID); err != nil || len(tg.sent) != 1 ||
+		tg.sent[0].chatID != otherAdmin {
+		t.Errorf("send winners: err %v, sent %+v; want one message to the caller", err, tg.sent)
+	}
 }

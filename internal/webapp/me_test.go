@@ -2,8 +2,11 @@ package webapp_test
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/go-telegram/bot/models"
@@ -15,10 +18,11 @@ import (
 const testBot = "test_wine_bot"
 
 type meBody struct {
-	Language    string `json:"language"`
-	FirstName   string `json:"first_name"`
-	AddLink     string `json:"add_link"`
-	PartnerLink string `json:"partner_link"`
+	Language    string  `json:"language"`
+	FirstName   string  `json:"first_name"`
+	Role        string  `json:"role"`
+	PartnerLink string  `json:"partner_link"`
+	AddLink     *string `json:"add_link"`
 }
 
 func newMeMux(t *testing.T, fake *fakeGiveaways, users *fakeUsers) *http.ServeMux {
@@ -54,8 +58,8 @@ func TestMeLinks(t *testing.T) {
 	}
 
 	got := decodeMe(t, rec)
-	if got.AddLink != "https://t.me/"+testBot+"?startchannel&admin=post_messages+edit_messages" {
-		t.Errorf("add_link = %q", got.AddLink)
+	if got.AddLink != nil {
+		t.Errorf("add_link = %q, want none: the app no longer adds the bot to giveaway channels", *got.AddLink)
 	}
 
 	if got.PartnerLink != "https://t.me/"+testBot+"?startchannel&admin=manage_chat" {
@@ -63,17 +67,42 @@ func TestMeLinks(t *testing.T) {
 	}
 }
 
+func TestMeRole(t *testing.T) {
+	for _, role := range []giveaway.Role{giveaway.RoleFull, giveaway.RoleReadOnly, giveaway.RolePartner} {
+		fake := &fakeGiveaways{role: role}
+		mux := newMeMux(t, fake, &fakeUsers{})
+
+		rec := call(t, mux, "/api/me", &models.User{ID: 42})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: code = %d, body %s", role, rec.Code, rec.Body)
+		}
+
+		if got := decodeMe(t, rec); got.Role != string(role) || fake.userID != 42 {
+			t.Errorf("role = %q for user %d, want %q for 42", got.Role, fake.userID, role)
+		}
+	}
+}
+
+func TestMeRoleLookupFails(t *testing.T) {
+	mux := newMeMux(t, &fakeGiveaways{err: errors.New("telegram is down")}, &fakeUsers{})
+
+	rec := call(t, mux, "/api/me", &models.User{ID: 42})
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), `"internal"`) {
+		t.Errorf("code = %d, body %s; want 500 internal", rec.Code, rec.Body)
+	}
+}
+
 func TestSetLanguage(t *testing.T) {
 	users := &fakeUsers{saved: map[int64]string{42: "uk"}}
-	mux := newMeMux(t, &fakeGiveaways{}, users)
+	mux := newMeMux(t, &fakeGiveaways{role: giveaway.RoleFull}, users)
 
 	rec := send(t, mux, http.MethodPut, "/api/me/language", `{"language":"en"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("code = %d, body %s", rec.Code, rec.Body)
 	}
 
-	if got := decodeMe(t, rec); got.Language != "en" || got.AddLink == "" {
-		t.Errorf("answer = %+v, want the me body in en", got)
+	if got := decodeMe(t, rec); got.Language != "en" || got.Role != "full" || got.PartnerLink == "" {
+		t.Errorf("answer = %+v, want the whole me body in en with role full", got)
 	}
 
 	if users.saved[42] != "en" {
@@ -99,7 +128,10 @@ func TestSetLanguageRejectsUnknown(t *testing.T) {
 
 func TestMyChannels(t *testing.T) {
 	fake := &fakeGiveaways{channels: giveaway.ChannelLists{
-		Mine:     []giveaway.Channel{{ID: -1001, Title: "A"}, {ID: -1003, Title: "C", Username: "c_wine"}},
+		Mine: []giveaway.Channel{
+			{ID: -1001, Title: "A", ExtraRights: []string{}},
+			{ID: -1003, Title: "C", Username: "c_wine", ExtraRights: []string{"can_post_messages"}},
+		},
 		Partners: []giveaway.Channel{{ID: -1002, Title: "B", Username: "b_wine"}},
 	}}
 	mux := newMeMux(t, fake, &fakeUsers{})
@@ -110,9 +142,10 @@ func TestMyChannels(t *testing.T) {
 	}
 
 	type channel struct {
-		ID       int64  `json:"id"`
-		Title    string `json:"title"`
-		Username string `json:"username"`
+		ID          int64     `json:"id"`
+		Title       string    `json:"title"`
+		Username    string    `json:"username"`
+		ExtraRights *[]string `json:"extra_rights"`
 	}
 
 	var got struct {
@@ -124,12 +157,19 @@ func TestMyChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fake.userID != 42 || len(got.Channels) != 2 || got.Channels[1].Title != "C" ||
-		got.Channels[1].Username != "c_wine" {
-		t.Errorf("channels = %+v for user %d, want A and C for 42", got.Channels, fake.userID)
+	wantChannels := []channel{
+		{ID: -1001, Title: "A", ExtraRights: &[]string{}},
+		{ID: -1003, Title: "C", Username: "c_wine", ExtraRights: &[]string{"can_post_messages"}},
+	}
+	if fake.userID != 42 || !reflect.DeepEqual(got.Channels, wantChannels) {
+		t.Errorf(
+			"channels = %+v for user %d, want A with no extra rights and C with post for 42",
+			got.Channels,
+			fake.userID,
+		)
 	}
 
-	if len(got.Partners) != 1 || got.Partners[0] != (channel{ID: -1002, Title: "B", Username: "b_wine"}) {
-		t.Errorf("partners = %+v, want B", got.Partners)
+	if want := []channel{{ID: -1002, Title: "B", Username: "b_wine"}}; !reflect.DeepEqual(got.Partners, want) {
+		t.Errorf("partners = %+v, want B with extra_rights null", got.Partners)
 	}
 }

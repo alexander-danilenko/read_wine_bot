@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -32,7 +33,7 @@ import (
 // version is the bot's semantic version (semver.org), bumped by every commit that changes the
 // bot (see "Version" in CLAUDE.md). The startup log and the /start reply show it, so a deploy
 // can be checked.
-const version = "2.12.1"
+const version = "3.0.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -85,20 +86,20 @@ func run() error {
 	store := giveaway.NewStore(conn)
 
 	// bot.New calls getMe, so a wrong or revoked token stops the bot here.
-	reviewer := newReviewer(store, channel.NewStore(conn), texts, log)
-	giveaways, editor := newGiveawayRules(store, texts, kyiv, log)
+	reviewer := newReviewer(store, channel.NewStore(conn), texts, cfg.PrimaryChannel, log)
+	giveaways, editor := newGiveawayRules(store, texts, kyiv, cfg.PrimaryChannel, log)
 	b, err := bot.New(cfg.TelegramBotToken, handlers(users, giveaways, texts, cfg.AppURL, log)...)
 	if err != nil {
 		return fmt.Errorf("connect to telegram: %w", err)
 	}
 
-	if err = setUpBot(ctx, b, channel.NewStore(conn), users, texts, cfg.AppURL, log); err != nil {
+	if err = setUpBot(ctx, b, channel.NewStore(conn), users, texts, cfg.AppURL, cfg.PrimaryChannel, log); err != nil {
 		return err
 	}
 
-	drawer := newDrawer(store, users, texts, cfg.AppURL, log)
+	drawer := newDrawer(store, users, texts, cfg.AppURL, cfg.PrimaryChannel, log)
 
-	app := giveaway.NewApp(editor, reviewer, store)
+	app := giveaway.NewApp(editor, reviewer, store, cfg.PrimaryChannel)
 
 	mux, err := newMiniApp(ctx, cfg.TelegramBotToken, b, static, app, users, texts, log)
 	if err != nil {
@@ -164,22 +165,30 @@ func serve(
 	return nil
 }
 
-// setUpBot starts the channel log and tells Telegram what the bot offers.
+// setUpBot starts the channel log, tells Telegram what the bot offers and checks its rights in
+// the primary channel.
 func setUpBot(
 	ctx context.Context, b *bot.Bot, audience *channel.Store, users *user.Store, texts *i18n.Catalog,
-	appURL string, log *slog.Logger,
+	appURL string, primaryChannel int64, log *slog.Logger,
 ) error {
 	if err := registerChannelLog(ctx, b, audience, users, log); err != nil {
 		return err
 	}
 
-	return describeBot(ctx, b, texts, appURL)
+	return describeBot(ctx, b, texts, appURL, primaryChannel)
 }
+
+var (
+	errNotPrimaryAdmin        = errors.New("bot is not an admin of the primary channel")
+	errNoPrimaryChannelRights = errors.New(
+		"bot lacks Post messages and Edit messages of others in the primary channel",
+	)
+)
 
 // describeBot tells Telegram what the bot offers and needs: the command menu, the menu button
 // that opens the Mini App, and the admin rights Telegram pre-selects when an admin adds the
-// bot to a channel.
-func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL string) error {
+// bot to a channel. Then it stops the bot unless it can run giveaways in the primary channel.
+func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL string, primaryChannel int64) error {
 	if err := command.Register(ctx, b, texts); err != nil {
 		return fmt.Errorf("register commands: %w", err)
 	}
@@ -190,6 +199,17 @@ func describeBot(ctx context.Context, b *bot.Bot, texts *i18n.Catalog, appURL st
 
 	if err := giveaway.RequestRights(ctx, b); err != nil {
 		return fmt.Errorf("request channel admin rights: %w", err)
+	}
+
+	// Telegram answers 400 or 403 when the bot is not in the channel or the channel is gone.
+	canRun, err := giveaway.NewBotAPI(b).CanRunGiveaways(ctx, primaryChannel)
+	switch {
+	case errors.Is(err, bot.ErrorForbidden) || errors.Is(err, bot.ErrorBadRequest):
+		return errNotPrimaryAdmin
+	case err != nil:
+		return fmt.Errorf("check the bot's rights in the primary channel: %w", err)
+	case !canRun:
+		return errNoPrimaryChannelRights
 	}
 
 	return nil
@@ -237,31 +257,34 @@ func allowedUpdates() bot.AllowedUpdates {
 	}
 }
 
-// newDrawer returns the winner draw, which tells the creator that the results wait for review
-// in the Mini App.
+// newDrawer returns the winner draw of the primary channel, which tells the creator that the
+// results wait for review in the Mini App.
 func newDrawer(
-	store *giveaway.Store, users *user.Store, texts *i18n.Catalog, appURL string, log *slog.Logger,
+	store *giveaway.Store, users *user.Store, texts *i18n.Catalog, appURL string, primary int64, log *slog.Logger,
 ) *giveaway.Drawer {
 	notifier := giveaway.NewReviewNotifier(users, texts, keyboard.NewTracker(users, log), appURL, log)
 
-	return giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, notifier, time.Now, log)
+	return giveaway.NewDrawer(store, giveaway.AcceptAll, rand.Shuffle, notifier, time.Now, log, primary)
 }
 
-// newReviewer returns the results review rules. A replacement winner is picked with the
-// draw's filter and shuffle.
+// newReviewer returns the results review rules of the primary channel. A replacement winner is
+// picked with the draw's filter and shuffle.
 func newReviewer(
-	store *giveaway.Store, channels *channel.Store, texts *i18n.Catalog, log *slog.Logger,
+	store *giveaway.Store, channels *channel.Store, texts *i18n.Catalog, primary int64, log *slog.Logger,
 ) *giveaway.Reviewer {
-	return giveaway.NewReviewer(store, store, store, channels, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log)
+	return giveaway.NewReviewer(
+		store, store, store, channels, giveaway.AcceptAll, rand.Shuffle, texts, time.Now, log, primary,
+	)
 }
 
-// newGiveawayRules returns the giveaway rules the join button and the Mini App share.
+// newGiveawayRules returns the giveaway rules the join button and the Mini App share, for the
+// giveaways of the primary channel.
 func newGiveawayRules(
-	store *giveaway.Store, texts *i18n.Catalog, kyiv *time.Location, log *slog.Logger,
+	store *giveaway.Store, texts *i18n.Catalog, kyiv *time.Location, primary int64, log *slog.Logger,
 ) (*giveaway.Service, *giveaway.Editor) {
 	svc := giveaway.NewService(store, store, texts, kyiv, time.Now, log)
 
-	return svc, giveaway.NewEditor(svc, store, store, store, store, store, store)
+	return svc, giveaway.NewEditor(svc, store, store, store, store, store, store, primary)
 }
 
 // handlers wires every update the bot handles to the package that handles it, and asks

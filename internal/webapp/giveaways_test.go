@@ -32,11 +32,18 @@ type fakeGiveaways struct {
 	winnerID   int64
 	rerolled   int
 	channels   giveaway.ChannelLists
+	role       giveaway.Role
+}
+
+func (f *fakeGiveaways) Role(_ context.Context, _ giveaway.MemberReader, userID int64) (giveaway.Role, error) {
+	f.userID = userID
+
+	return f.role, f.err
 }
 
 func (f *fakeGiveaways) List(
 	_ context.Context,
-	_ giveaway.Telegram,
+	_ giveaway.MemberReader,
 	userID int64,
 	offset, limit int,
 ) (giveaway.Page, []giveaway.View, error) {
@@ -50,20 +57,22 @@ func (f *fakeGiveaways) Channels(context.Context, giveaway.ChannelReader, ...[]g
 }
 
 func (f *fakeGiveaways) MyChannels(
-	_ context.Context, _ giveaway.AdminChannelsTelegram, userID int64,
+	_ context.Context, _ giveaway.ChannelsTelegram, userID int64,
 ) (giveaway.ChannelLists, error) {
 	f.userID = userID
 
 	return f.channels, f.err
 }
 
-func (f *fakeGiveaways) Archived(_ context.Context, userID int64, offset, limit int) (giveaway.Page, error) {
+func (f *fakeGiveaways) Archived(
+	_ context.Context, _ giveaway.MemberReader, userID int64, offset, limit int,
+) (giveaway.Page, error) {
 	f.userID, f.offset, f.limit = userID, offset, limit
 
 	return giveaway.Page{Views: []giveaway.View{f.view}, Total: 21}, f.err
 }
 
-func (f *fakeGiveaways) Get(_ context.Context, userID int64, _ uint) (giveaway.View, error) {
+func (f *fakeGiveaways) Get(_ context.Context, _ giveaway.MemberReader, userID int64, _ uint) (giveaway.View, error) {
 	f.userID = userID
 
 	return f.view, f.err
@@ -205,7 +214,9 @@ func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder) webapp.APIError
 }
 
 func TestCreateGiveaway(t *testing.T) {
-	fake := &fakeGiveaways{view: giveaway.View{ID: 7, Status: giveaway.StatusActive, EndsAt: "2026-12-01T20:00"}}
+	fake := &fakeGiveaways{view: giveaway.View{
+		ID: 7, Status: giveaway.StatusActive, EndsAt: "2026-12-01T20:00", CanChange: true,
+	}}
 	mux := newGiveawayMux(t, fake)
 
 	rec := send(t, mux, http.MethodPost, "/api/giveaways",
@@ -220,16 +231,17 @@ func TestCreateGiveaway(t *testing.T) {
 	}
 
 	var got struct {
-		ID     uint   `json:"id"`
-		Status string `json:"status"`
-		EndsAt string `json:"ends_at"`
+		ID        uint   `json:"id"`
+		Status    string `json:"status"`
+		EndsAt    string `json:"ends_at"`
+		CanChange bool   `json:"can_change"`
 	}
 
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 
-	if got.ID != 7 || got.Status != "active" || got.EndsAt != "2026-12-01T20:00" {
+	if got.ID != 7 || got.Status != "active" || got.EndsAt != "2026-12-01T20:00" || !got.CanChange {
 		t.Errorf("body = %+v", got)
 	}
 }
@@ -256,6 +268,12 @@ func TestGiveawayErrors(t *testing.T) {
 			wantError: "not_found",
 		},
 		{name: "stale", err: &giveaway.AppError{Code: giveaway.CodeStale}, wantCode: 409, wantError: "stale"},
+		{
+			name:      "read-only admin",
+			err:       &giveaway.AppError{Code: giveaway.CodeReadOnly},
+			wantCode:  http.StatusForbidden,
+			wantError: "read_only",
+		},
 		{
 			name:      "invalid winners",
 			err:       &giveaway.AppError{Code: giveaway.CodeInvalidWinners, Field: giveaway.FieldWinners},

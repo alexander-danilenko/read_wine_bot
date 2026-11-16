@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
@@ -57,26 +59,30 @@ func (f *fakeStore) Join(_ context.Context, _ uint, telegramID int64) (bool, err
 	return added, nil
 }
 
-// fakeTelegram answers the admin and rights checks and records the attached button label.
+// fakeTelegram answers the role and rights checks and records the attached button label.
 type fakeTelegram struct {
-	admin       bool
-	adminErr    error
-	noEdit      bool // the bot may not edit the channel's posts
+	role        giveaway.Role // every user's role in every channel
+	roleErr     error         // ChatMember fails with it
+	noEdit      bool          // the bot may not edit the channel's posts
 	attachErr   error
 	removeErr   error
 	label       string
 	removed     int
-	adminChecks int
 	attached    int
 	attachedTo  int64 // the post of the last attach
 	removedFrom int64 // the post of the last removal
-	resolveErr  error // ResolveChannel fails with it; otherwise every link names channelID
+	resolveErr  error // ResolveChannel fails with it; otherwise every link names resolveTo
+	resolveTo   int64 // the channel every link names; 0 for channelID
 	channelErr  error // Channel fails with it; otherwise every channel is "Read Wine" with a photo
 }
 
 func (f *fakeTelegram) ResolveChannel(context.Context, string) (int64, error) {
 	if f.resolveErr != nil {
 		return 0, f.resolveErr
+	}
+
+	if f.resolveTo != 0 {
+		return f.resolveTo, nil
 	}
 
 	return channelID, nil
@@ -90,10 +96,30 @@ func (f *fakeTelegram) Channel(_ context.Context, chatID int64) (giveaway.Channe
 	return giveaway.ChannelInfo{ID: chatID, Title: "Read Wine", PhotoID: "photo-1"}, nil
 }
 
-func (f *fakeTelegram) IsChannelAdmin(context.Context, int64, int64) (bool, error) {
-	f.adminChecks++
+func (f *fakeTelegram) ChatMember(context.Context, int64, int64) (models.ChatMember, error) {
+	return member(f.role), f.roleErr
+}
 
-	return f.admin, f.adminErr
+// member returns a member record that has role.
+func member(role giveaway.Role) models.ChatMember {
+	switch role {
+	case giveaway.RoleFull:
+		return models.ChatMember{
+			Type: models.ChatMemberTypeAdministrator,
+			Administrator: &models.ChatMemberAdministrator{
+				CanPostMessages: true, CanEditMessages: true,
+			},
+		}
+	case giveaway.RoleReadOnly:
+		return models.ChatMember{
+			Type:          models.ChatMemberTypeAdministrator,
+			Administrator: &models.ChatMemberAdministrator{},
+		}
+	case giveaway.RolePartner:
+		return models.ChatMember{Type: models.ChatMemberTypeLeft, Left: &models.ChatMemberLeft{}}
+	default:
+		return models.ChatMember{Type: models.ChatMemberTypeLeft, Left: &models.ChatMemberLeft{}}
+	}
 }
 
 func (f *fakeTelegram) CanRunGiveaways(context.Context, int64) (bool, error) { return !f.noEdit, nil }

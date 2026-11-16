@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	drawChannel int64 = -1_001_234_567_890
+	drawChannel int64 = -1_001_234_567_890 // the primary channel
 	drawPost    int64 = 42
 	creatorID   int64 = 7_000_000_001
 )
@@ -32,8 +32,17 @@ type fakeDrawStore struct {
 	finished   map[uint][]int64
 }
 
-func (f *fakeDrawStore) Due(context.Context, time.Time) ([]Giveaway, error) {
-	return f.due, f.dueErr
+// Due returns the due giveaways of the channel, as Store.Due.
+func (f *fakeDrawStore) Due(_ context.Context, chatID int64, _ time.Time) ([]Giveaway, error) {
+	var gs []Giveaway
+
+	for _, g := range f.due {
+		if g.ChatID == chatID {
+			gs = append(gs, g)
+		}
+	}
+
+	return gs, f.dueErr
 }
 
 func (f *fakeDrawStore) Candidates(_ context.Context, giveawayID uint) ([]user.User, error) {
@@ -115,7 +124,7 @@ func newDrawer(
 	log := slog.New(slog.NewTextHandler(&logs, nil))
 
 	// The tests hand drawDue its Announcer, so the review sender is never reached.
-	return NewDrawer(store, filter, shuffle, nil, now, log), &logs
+	return NewDrawer(store, filter, shuffle, nil, now, log, drawChannel), &logs
 }
 
 func TestDrawPicksWinners(t *testing.T) {
@@ -197,6 +206,23 @@ func TestDrawSkipsGiveawayNoLongerDue(t *testing.T) {
 
 	if strings.Contains(logs.String(), "level=ERROR") {
 		t.Errorf("ErrNotFound logged as an error: %s", logs)
+	}
+}
+
+// A due giveaway outside the primary channel is never drawn.
+func TestDrawOnlyPrimaryChannel(t *testing.T) {
+	elsewhere := dueGiveaway(2, 1)
+	elsewhere.ChatID = otherChannel
+	store := &fakeDrawStore{
+		due:        []Giveaway{dueGiveaway(1, 1), elsewhere},
+		candidates: map[uint][]user.User{1: users(10), 2: users(20)},
+	}
+	d, _ := newDrawer(t, store, AcceptAll, noShuffle)
+
+	d.drawDue(t.Context(), &fakeAnnouncer{})
+
+	if _, ok := store.finished[2]; ok || len(store.finished[1]) != 1 {
+		t.Errorf("finished = %v, want only giveaway 1", store.finished)
 	}
 }
 

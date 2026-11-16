@@ -18,8 +18,9 @@ const (
 
 // Reply is the outcome of a rule: the notice for it, or that it no longer applies.
 type Reply struct {
-	Notice i18n.Key // what happened; "" for nothing to say
-	Stale  bool     // the action no longer applies, so nothing changed
+	Notice   i18n.Key // what happened; "" for nothing to say
+	Stale    bool     // the action no longer applies, so nothing changed
+	ReadOnly bool     // the user may look at giveaways but not change them, so nothing changed
 }
 
 // parseButtonText accepts a non-blank join button text of at most maxButtonTextRune

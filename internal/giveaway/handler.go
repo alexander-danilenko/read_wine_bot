@@ -108,13 +108,20 @@ func (t BotAPI) ResolveChannel(ctx context.Context, chat string) (int64, error) 
 	return info.ID, nil
 }
 
-func (t BotAPI) IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error) {
+// ChatMember returns userID's member record in chatID. A user outside the chat comes back as
+// left, not as an error.
+func (t BotAPI) ChatMember(ctx context.Context, chatID, userID int64) (models.ChatMember, error) {
 	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: userID})
 	if err != nil {
-		return false, err //nolint:wrapcheck // Service logs it with the chat and user IDs
+		return models.ChatMember{}, err //nolint:wrapcheck // App.Role wraps it with the user ID
 	}
 
-	return m.Type == models.ChatMemberTypeOwner || m.Type == models.ChatMemberTypeAdministrator, nil
+	return *m, nil
+}
+
+// BotMember returns the bot's own member record in chatID.
+func (t BotAPI) BotMember(ctx context.Context, chatID int64) (models.ChatMember, error) {
+	return t.ChatMember(ctx, chatID, t.b.ID())
 }
 
 func (t BotAPI) Channel(ctx context.Context, chatID int64) (ChannelInfo, error) {
@@ -186,24 +193,19 @@ func (t BotAPI) IsSubscribed(ctx context.Context, chatID, userID int64) (bool, e
 }
 
 func (t BotAPI) CanRunGiveaways(ctx context.Context, chatID int64) (bool, error) {
-	m, err := t.b.GetChatMember(ctx, &bot.GetChatMemberParams{ChatID: chatID, UserID: t.b.ID()})
+	m, err := t.BotMember(ctx, chatID)
 	if err != nil {
-		return false, err //nolint:wrapcheck // Service logs it with the chat ID
+		return false, err
 	}
 
-	return canRunGiveaways(*m), nil
+	return canRunGiveaways(m), nil
 }
 
-// requiredRights returns the only admin rights a giveaway needs in its channel: Edit messages of
-// others for the join button and Post messages for the results.
-func requiredRights() models.ChatAdministratorRights {
-	return models.ChatAdministratorRights{CanEditMessages: true, CanPostMessages: true}
-}
-
-// RequestRights makes Telegram pre-select requiredRights, and no other right, when an admin
-// adds the bot to a channel. The admin can still change them.
+// RequestRights makes Telegram pre-select only Manage chat, the right every admin has anyway,
+// when an admin adds the bot to a channel: every channel added this way is a partner channel,
+// which needs no right the bot uses. The admin can still change the selection.
 func RequestRights(ctx context.Context, b *bot.Bot) error {
-	rights := requiredRights()
+	rights := models.ChatAdministratorRights{CanManageChat: true}
 
 	_, err := b.SetMyDefaultAdministratorRights(ctx, &bot.SetMyDefaultAdministratorRightsParams{
 		Rights:      &rights,
@@ -216,12 +218,6 @@ func RequestRights(ctx context.Context, b *bot.Bot) error {
 	return nil
 }
 
-// AddToChannelLink returns the link that opens Telegram's channel picker for the bot named
-// botUsername, with requiredRights already enabled.
-func AddToChannelLink(botUsername string) string {
-	return "https://t.me/" + botUsername + "?startchannel&admin=post_messages+edit_messages"
-}
-
 // AddToPartnerChannelLink returns the link that opens Telegram's channel picker for the bot
 // named botUsername with no right the bot uses. A channel link must ask for at least one right;
 // manage_chat is the one every admin has anyway.
@@ -229,8 +225,8 @@ func AddToPartnerChannelLink(botUsername string) string {
 	return "https://t.me/" + botUsername + "?startchannel&admin=manage_chat"
 }
 
-// canRunGiveaways reports whether the bot's status in a channel has both rights in
-// requiredRights.
+// canRunGiveaways reports whether the bot's status in a channel has the only admin rights a
+// giveaway needs: Edit messages of others for the join button and Post messages for the results.
 func canRunGiveaways(m models.ChatMember) bool {
 	return m.Administrator != nil && m.Administrator.CanEditMessages && m.Administrator.CanPostMessages
 }

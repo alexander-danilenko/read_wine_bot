@@ -17,7 +17,8 @@ const (
 	Created  StartResult = iota // button attached and giveaway saved
 	Exists                      // the admin's own giveaway, published or cancelled, is on the post
 	Taken                       // another admin's giveaway, published or cancelled, is on the post
-	NotAdmin                    // the forwarder is not an admin of the post's channel
+	NotAdmin                    // the admin is not an admin of the primary channel
+	ReadOnly                    // the admin lacks Post messages or Edit messages of others there
 	NoRights                    // the bot cannot read the channel's admins or edit the post
 	Failed                      // anything else went wrong
 )
@@ -53,8 +54,7 @@ var ErrPostGone = errors.New("channel post not found")
 
 // Telegram is what the rules need from the Telegram API.
 type Telegram interface {
-	// IsChannelAdmin reports whether the user is the creator or an administrator of the channel.
-	IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error)
+	MemberReader
 	// CanRunGiveaways reports whether the bot may edit the channel's posts, to attach the join
 	// button, and post in it, to publish the results.
 	CanRunGiveaways(ctx context.Context, chatID int64) (bool, error)
@@ -118,11 +118,15 @@ func (s *Service) Join(ctx context.Context, chatID, messageID, userID int64) (Jo
 	return Joined, g.Language
 }
 
-// checkPost checks, in order, that the post carries no published or cancelled giveaway,
-// that the admin is an admin of its channel and that the bot may edit its posts. It returns
-// the failed outcome and false, or true when every check passes.
+// checkPost checks, in order, that the admin is a full admin of the channel, the primary one,
+// that the post carries no published or cancelled giveaway and that the bot may edit its
+// posts. It returns the failed outcome and false, or true when every check passes.
 func (s *Service) checkPost(ctx context.Context, tg Telegram, adminID, chatID, messageID int64) (StartResult, bool) {
 	log := s.log.With("chat_id", chatID, "message_id", messageID, "user_id", adminID)
+
+	if result, ok := s.checkRole(ctx, tg, adminID, chatID); !ok {
+		return result, false
+	}
 
 	g, err := s.store.Post(ctx, chatID, messageID)
 	if err == nil {
@@ -139,28 +143,39 @@ func (s *Service) checkPost(ctx context.Context, tg Telegram, adminID, chatID, m
 		return Failed, false
 	}
 
-	return s.checkAdmin(ctx, tg, adminID, chatID)
+	return s.checkBot(ctx, tg, adminID, chatID)
 }
 
-// checkAdmin checks that the admin is an admin of the channel and that the bot may run
-// giveaways there. It returns the failed outcome and false, or Created and true when both hold.
-func (s *Service) checkAdmin(ctx context.Context, tg Telegram, adminID, chatID int64) (StartResult, bool) {
-	log := s.log.With("chat_id", chatID, "user_id", adminID)
-
-	isAdmin, err := tg.IsChannelAdmin(ctx, chatID, adminID)
+// checkRole checks that the admin is a full admin of the channel, the primary one. It
+// returns the failed outcome and false, or Created and true. A failed lookup is Failed, never
+// NotAdmin.
+func (s *Service) checkRole(ctx context.Context, tg MemberReader, adminID, chatID int64) (StartResult, bool) {
+	role, err := roleIn(ctx, tg, s.log, chatID, adminID)
 	if err != nil {
-		log.WarnContext(ctx, "check channel admin", "error", err)
+		s.log.ErrorContext(ctx, "read admin role", "chat_id", chatID, "user_id", adminID, "error", err)
 
-		return NoRights, false
+		return Failed, false
 	}
 
-	if !isAdmin {
+	switch role {
+	case RoleFull:
+		return Created, true
+	case RoleReadOnly:
+		return ReadOnly, false
+	case RolePartner:
+		return NotAdmin, false
+	default:
 		return NotAdmin, false
 	}
+}
 
+// checkBot checks that the bot may run giveaways in the channel. It returns NoRights and
+// false, or Created and true.
+func (s *Service) checkBot(ctx context.Context, tg Telegram, adminID, chatID int64) (StartResult, bool) {
 	canRun, err := tg.CanRunGiveaways(ctx, chatID)
 	if err != nil || !canRun {
-		log.WarnContext(ctx, "check bot rights", "can_run_giveaways", canRun, "error", err)
+		s.log.WarnContext(ctx, "check bot rights", "chat_id", chatID, "user_id", adminID,
+			"can_run_giveaways", canRun, "error", err)
 
 		return NoRights, false
 	}

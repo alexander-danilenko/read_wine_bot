@@ -15,20 +15,26 @@ type LanguageSaver interface {
 	SetLanguage(ctx context.Context, telegramID int64, lang string) error
 }
 
-// meBody is who uses the app, and the links that add the bot to a channel.
+// meBody is who uses the app, what they may do in it, and the link that adds the bot to a
+// partner channel.
 type meBody struct {
-	Language    string `doc:"The language to show the app in"                json:"language"`
-	FirstName   string `doc:"The user's first name"                          json:"first_name"`
-	AddLink     string `doc:"Adds the bot to a channel with giveaway rights" json:"add_link"`
-	PartnerLink string `doc:"Adds the bot to a partner channel"              json:"partner_link"`
+	Language    string `doc:"The language to show the app in"                          json:"language"`
+	FirstName   string `doc:"The user's first name"                                    json:"first_name"`
+	Role        string `doc:"What the user may do, read live from the primary channel" json:"role"`
+	PartnerLink string `doc:"Adds the bot to a partner channel"                        json:"partner_link"`
 }
 
-// TransformSchema lists the languages as an enum in the spec, so the generated client knows them.
-// It is not an enum tag: a tag key on one field only makes golines and tagalign rewrite each
-// other's alignment, and an unexported embedded struct would drop its fields from the schema.
+// TransformSchema lists the languages and roles as enums in the spec, so the generated client
+// knows them. They are not enum tags: a tag key on one field only makes golines and tagalign
+// rewrite each other's alignment, and an unexported embedded struct would drop its fields from
+// the schema.
 func (meBody) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
 	if lang, ok := s.Properties["language"]; ok {
 		lang.Enum = []any{"en", "uk"}
+	}
+
+	if role, ok := s.Properties["role"]; ok {
+		role.Enum = []any{giveaway.RoleFull, giveaway.RoleReadOnly, giveaway.RolePartner}
 	}
 
 	return s
@@ -46,8 +52,8 @@ type setLanguageInput struct {
 
 type myChannelsOutput struct {
 	Body struct {
-		Channels []listChannelBody `doc:"Channels where both the bot and the caller are admins"         json:"channels"`
-		Partners []listChannelBody `doc:"Every other channel where the bot is an admin, by Telegram ID" json:"partners"`
+		Channels []listChannelBody `doc:"The primary channel for its admins; for a partner, the other channels where both they and the bot are admins" json:"channels"`
+		Partners []listChannelBody `doc:"For a primary channel admin, every other channel where the bot is an admin; empty for a partner"              json:"partners"`
 	}
 }
 
@@ -56,7 +62,7 @@ func (o *Operations) registerMe(api huma.API) {
 		OperationID: "getMe",
 		Method:      http.MethodGet,
 		Path:        "/api/me",
-		Summary:     "Who is using the app and in which language",
+		Summary:     "Who is using the app, in which language and with which role",
 	}, o.me)
 	huma.Register(api, huma.Operation{
 		OperationID: "setLanguage",
@@ -68,7 +74,7 @@ func (o *Operations) registerMe(api huma.API) {
 		OperationID: "listMyChannels",
 		Method:      http.MethodGet,
 		Path:        "/api/channels",
-		Summary:     "The caller's channels and the partner channels: every channel where the bot is an admin",
+		Summary:     "The channels where the bot is an admin, as the caller's role shows them",
 	}, o.myChannels)
 }
 
@@ -78,16 +84,22 @@ func (o *Operations) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		return nil, err
 	}
 
-	return o.meFor(c, c.Lang), nil
+	return o.meFor(ctx, c, c.Lang)
 }
 
-func (o *Operations) meFor(c Caller, lang string) *meOutput {
+// meFor returns the me body of c in lang, with c's role read live from Telegram.
+func (o *Operations) meFor(ctx context.Context, c Caller, lang string) (*meOutput, error) {
+	role, err := o.roles.Role(ctx, o.tg, c.User.ID)
+	if err != nil {
+		return nil, fmt.Errorf("read role of user %d: %w", c.User.ID, err)
+	}
+
 	return &meOutput{Body: meBody{
 		Language:    lang,
 		FirstName:   c.User.FirstName,
-		AddLink:     giveaway.AddToChannelLink(o.bot),
+		Role:        string(role),
 		PartnerLink: giveaway.AddToPartnerChannelLink(o.bot),
-	}}
+	}}, nil
 }
 
 func (o *Operations) setLanguage(ctx context.Context, in *setLanguageInput) (*meOutput, error) {
@@ -100,7 +112,7 @@ func (o *Operations) setLanguage(ctx context.Context, in *setLanguageInput) (*me
 		return nil, fmt.Errorf("save language of user %d: %w", c.User.ID, err)
 	}
 
-	return o.meFor(c, in.Body.Language), nil
+	return o.meFor(ctx, c, in.Body.Language)
 }
 
 func (o *Operations) myChannels(ctx context.Context, _ *struct{}) (*myChannelsOutput, error) {

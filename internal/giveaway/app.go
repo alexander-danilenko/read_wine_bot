@@ -9,16 +9,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 )
 
 // Codes of the failures the Mini App can show. Each names what went wrong; Field names the
 // form field it concerns, when there is one.
 const (
-	CodeNotFound          = "not_found"           // no such giveaway, or not the caller's
+	CodeNotFound          = "not_found"           // no such giveaway in the primary channel
 	CodeNotYours          = "not_yours"           // the giveaway belongs to another admin
 	CodeFinished          = "finished"            // the giveaway's winners are drawn; it cannot change
 	CodeNotAdmin          = "not_admin"           // the caller is not an admin of the channel
+	CodeReadOnly          = "read_only"           // the caller may look at giveaways but not change them
 	CodeBotNoRights       = "bot_no_rights"       // the bot cannot edit the post or post in the channel
 	CodePostGone          = "post_gone"           // the channel post was deleted
 	CodeExists            = "exists"              // the caller's own giveaway is already on the post
@@ -29,6 +32,7 @@ const (
 	CodeInvalidWinners    = "invalid_winners"     // the winner count is out of range
 	CodeInvalidButtonText = "invalid_button_text" // the button text is blank or too long
 	CodeOtherChannel      = "other_channel"       // a giveaway can move only within its channel
+	CodeNotPrimaryChannel = "not_primary_channel" // giveaways run only in the primary channel
 	CodeDue               = "due"                 // past its end, waiting for the draw: it cannot move
 	CodeStale             = "stale"               // someone changed the giveaway first; reload it
 	CodeFailed            = "failed"              // a database or Telegram failure; try again
@@ -81,6 +85,10 @@ func replyErr(r Reply) error {
 		return &AppError{Code: CodeStale}
 	}
 
+	if r.ReadOnly {
+		return &AppError{Code: CodeReadOnly}
+	}
+
 	if r.Notice == "" {
 		return nil
 	}
@@ -107,6 +115,8 @@ func startErr(r StartResult) error {
 		return &AppError{Code: CodeTaken, Field: FieldPostLink}
 	case NotAdmin:
 		return &AppError{Code: CodeNotAdmin, Field: FieldPostLink}
+	case ReadOnly:
+		return &AppError{Code: CodeReadOnly}
 	case NoRights:
 		return &AppError{Code: CodeBotNoRights, Field: FieldPostLink}
 	case Failed:
@@ -139,6 +149,7 @@ type View struct {
 	ButtonText   string
 	Status       Status
 	Participants int
+	CanChange    bool // the caller created it and is a full admin, so may edit, move, cancel, restore or finish it
 }
 
 // AppTimeLayout is how the Mini App writes an end time: Kyiv wall-clock time, as the
@@ -169,9 +180,9 @@ type AppTelegram interface {
 	ResolveChannel(ctx context.Context, chat string) (int64, error)
 }
 
-// RunningLister reads a creator's running giveaways page by page. *Store implements it.
+// RunningLister reads a channel's running giveaways page by page. *Store implements it.
 type RunningLister interface {
-	Running(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error)
+	Running(ctx context.Context, chatID int64, offset, limit int) ([]Giveaway, int, error)
 }
 
 // App runs the giveaway rules for the Mini App: only the creator changes a giveaway, and the
@@ -180,12 +191,14 @@ type App struct {
 	ed       *Editor
 	reviewer *Reviewer
 	running  RunningLister
+	primary  int64 // the chat ID of the primary channel, whose admins run giveaways
 	log      *slog.Logger
 }
 
-// NewApp returns the Mini App's entry to the rules of ed and reviewer.
-func NewApp(ed *Editor, reviewer *Reviewer, running RunningLister) *App {
-	return &App{ed: ed, reviewer: reviewer, running: running, log: ed.svc.log}
+// NewApp returns the Mini App's entry to the rules of ed and reviewer, for the admins of the
+// primary channel.
+func NewApp(ed *Editor, reviewer *Reviewer, running RunningLister, primary int64) *App {
+	return &App{ed: ed, reviewer: reviewer, running: running, primary: primary, log: ed.svc.log}
 }
 
 // Page is one page of a giveaway list and how many giveaways the whole list holds.
@@ -194,22 +207,27 @@ type Page struct {
 	Total int
 }
 
-// List returns up to limit of the creator's running giveaways after the first offset, newest
-// first, and the giveaways whose results wait for review in a channel the user is an admin of,
-// the creator's own included.
-func (a *App) List(ctx context.Context, tg Telegram, userID int64, offset, limit int) (Page, []View, error) {
-	mine, total, err := a.running.Running(ctx, userID, offset, limit)
-	if err != nil {
-		return Page{}, nil, err //nolint:wrapcheck // Store already names the user
-	}
-
-	review, err := a.ed.pendingResults(ctx, tg, userID)
+// List returns up to limit of the primary channel's running giveaways after the first offset,
+// newest first, whoever created them, and its giveaways whose results wait for review, to an
+// admin of the primary channel.
+func (a *App) List(ctx context.Context, tg MemberReader, userID int64, offset, limit int) (Page, []View, error) {
+	role, err := a.adminRole(ctx, tg, userID)
 	if err != nil {
 		return Page{}, nil, err
 	}
 
+	mine, total, err := a.running.Running(ctx, a.primary, offset, limit)
+	if err != nil {
+		return Page{}, nil, err //nolint:wrapcheck // Store already names the channel
+	}
+
+	review, err := a.ed.pending.PendingResults(ctx, a.primary)
+	if err != nil {
+		return Page{}, nil, err //nolint:wrapcheck // Store already says what it listed
+	}
+
 	// One participant count for both lists.
-	views, err := a.views(ctx, slices.Concat(mine, review))
+	views, err := a.views(ctx, slices.Concat(mine, review), userID, role)
 	if err != nil {
 		return Page{}, nil, err
 	}
@@ -217,15 +235,21 @@ func (a *App) List(ctx context.Context, tg Telegram, userID int64, offset, limit
 	return Page{Views: views[:len(mine)], Total: total}, views[len(mine):], nil
 }
 
-// Archived returns up to limit of the creator's finished and cancelled giveaways after the
-// first offset, the latest to leave the running list first.
-func (a *App) Archived(ctx context.Context, userID int64, offset, limit int) (Page, error) {
-	gs, total, err := a.ed.archived.Archived(ctx, userID, offset, limit)
+// Archived returns up to limit of the primary channel's finished and cancelled giveaways after
+// the first offset, whoever created them, the latest to leave the running list first, to an
+// admin of the primary channel.
+func (a *App) Archived(ctx context.Context, tg MemberReader, userID int64, offset, limit int) (Page, error) {
+	role, err := a.adminRole(ctx, tg, userID)
 	if err != nil {
-		return Page{}, err //nolint:wrapcheck // Store already names the user
+		return Page{}, err
 	}
 
-	views, err := a.views(ctx, gs)
+	gs, total, err := a.ed.archived.Archived(ctx, a.primary, offset, limit)
+	if err != nil {
+		return Page{}, err //nolint:wrapcheck // Store already names the channel
+	}
+
+	views, err := a.views(ctx, gs, userID, role)
 	if err != nil {
 		return Page{}, err
 	}
@@ -239,6 +263,9 @@ type Channel struct {
 	Title    string
 	Username string // public username without the @, "" for a private channel
 	PhotoID  string // Telegram file ID of the small channel photo, "" for none
+	// ExtraRights are the bot's admin rights here beyond Manage chat, set only on a partner's
+	// own channels: empty for none, nil where they were not read.
+	ExtraRights []string
 }
 
 // Channels returns the channels of the giveaways in lists, each once. A title or photo that
@@ -268,102 +295,82 @@ func (a *App) Channels(ctx context.Context, tg ChannelReader, lists ...[]View) [
 	return channels
 }
 
-// AdminChannelsTelegram is what MyChannels needs from Telegram. BotAPI implements it.
-type AdminChannelsTelegram interface {
+// ChannelsTelegram is what MyChannels needs from Telegram. BotAPI implements it.
+type ChannelsTelegram interface {
 	ChannelReader
-	// IsChannelAdmin reports whether the user is the creator or an administrator of the channel.
-	IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error)
+	MemberReader
+	// BotMember returns the bot's own member record in the chat.
+	BotMember(ctx context.Context, chatID int64) (models.ChatMember, error)
 }
 
-// ChannelLists are the channels where the bot is an admin, split by whether the viewer is one too.
+// ChannelLists are the channels where the bot is an admin, as the viewer's role shows them.
 type ChannelLists struct {
-	Mine     []Channel // the viewer is an admin too
-	Partners []Channel // every other channel, whatever rights the bot has there
+	Mine     []Channel // the primary channel for its admins; a partner's own channels for a partner
+	Partners []Channel // every other channel for a primary admin; empty for a partner
 }
 
-// MyChannels returns the channels where the bot is an admin, split into the ones userID is
-// also an admin of and the partners, each in the order the store lists them. A channel whose
-// admin check fails is a partner, so it never shows as the user's own: partners show to
-// everyone anyway. A title or photo that cannot be read is left empty for the user's own
-// channel; a partner without a readable title is left out. Both are logged.
-func (a *App) MyChannels(ctx context.Context, tg AdminChannelsTelegram, userID int64) (ChannelLists, error) {
+// MyChannels returns the channels where the bot is an admin, by userID's role, in the order the
+// store lists them. An admin of the primary channel gets it as Mine and every other channel as
+// Partners. A partner gets as Mine only the other channels they are an admin of, each with the
+// bot's extra rights there, and never the primary channel. A failed role lookup is an error.
+// Every per-channel failure is logged: a channel whose admin check fails is left out, a partner
+// channel without a readable title is left out of Partners, the primary channel or a partner's
+// own channel keeps an empty title, and unread extra rights stay nil.
+func (a *App) MyChannels(ctx context.Context, tg ChannelsTelegram, userID int64) (ChannelLists, error) {
+	role, err := a.Role(ctx, tg, userID)
+	if err != nil {
+		return ChannelLists{}, err
+	}
+
 	ids, err := a.reviewer.channels.AdminChannels(ctx)
 	if err != nil {
 		return ChannelLists{}, err //nolint:wrapcheck // the store's error says what it read
 	}
 
-	type found struct {
-		channel *Channel // nil for a partner whose title cannot be read
-		mine    bool
-	}
-
-	all := make([]found, len(ids))
-
-	var wg sync.WaitGroup
-
-	sem := make(chan struct{}, checksAtOnce)
-
-	for i, id := range ids {
-		wg.Go(func() {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			isAdmin, err := tg.IsChannelAdmin(ctx, id, userID)
-			if err != nil {
-				a.log.WarnContext(ctx, "check channel admin", "chat_id", id, "error", err)
-			}
-
-			info, err := tg.Channel(ctx, id)
-			if err != nil {
-				a.log.WarnContext(ctx, "read channel", "chat_id", id, "error", err)
-
-				if !isAdmin {
-					return
-				}
-			}
-
-			all[i] = found{
-				channel: &Channel{ID: id, Title: info.Title, Username: info.Username, PhotoID: info.PhotoID},
-				mine:    isAdmin,
-			}
-		})
-	}
-
-	wg.Wait()
-
-	lists := ChannelLists{Mine: make([]Channel, 0, len(ids)), Partners: make([]Channel, 0, len(ids))}
-
-	for _, f := range all {
-		switch {
-		case f.channel == nil:
-		case f.mine:
-			lists.Mine = append(lists.Mine, *f.channel)
-		default:
-			lists.Partners = append(lists.Partners, *f.channel)
+	others := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id != a.primary {
+			others = append(others, id)
 		}
 	}
 
-	return lists, nil
+	if role == RolePartner {
+		return ChannelLists{Mine: eachChannel(others, func(id int64) *Channel {
+			return a.partnerChannel(ctx, tg, id, userID)
+		}), Partners: []Channel{}}, nil
+	}
+
+	// The primary channel is read alongside the partners, so the list costs one round trip.
+	var (
+		primary Channel
+		wg      sync.WaitGroup
+	)
+
+	wg.Go(func() { primary, _ = a.readChannel(ctx, tg, a.primary) })
+
+	partners := eachChannel(others, func(id int64) *Channel {
+		if c, ok := a.readChannel(ctx, tg, id); ok {
+			return &c
+		}
+
+		return nil
+	})
+
+	wg.Wait()
+
+	return ChannelLists{Mine: []Channel{primary}, Partners: partners}, nil
 }
 
-// Get returns giveaway id in any state, but only to its creator: anyone else gets not_found,
-// as for a missing ID, so the answer does not reveal which IDs exist.
-func (a *App) Get(ctx context.Context, userID int64, id uint) (View, error) {
-	g, err := a.ed.giveaways.ByID(ctx, id)
-	if errors.Is(err, ErrNotFound) {
-		return View{}, &AppError{Code: CodeNotFound}
-	}
-
+// Get returns giveaway id of the primary channel in any state but a draft, to an admin of the
+// primary channel. A draft or a giveaway of another channel answers not_found, as a missing ID
+// does, so the answer does not reveal which IDs exist.
+func (a *App) Get(ctx context.Context, tg MemberReader, userID int64, id uint) (View, error) {
+	role, err := a.adminRole(ctx, tg, userID)
 	if err != nil {
-		return View{}, err //nolint:wrapcheck // Store already names the giveaway
+		return View{}, err
 	}
 
-	isDraft := !g.Published && g.CancelledAt == nil
-	if g.CreatedBy != userID || isDraft {
-		return View{}, &AppError{Code: CodeNotFound}
-	}
-
-	return a.view(ctx, g)
+	return a.get(ctx, userID, role, id)
 }
 
 // Create puts a new giveaway on the post f links to, after the post, admin and rights checks. The
@@ -380,6 +387,10 @@ func (a *App) Create(ctx context.Context, tg AppTelegram, userID int64, lang str
 	}
 
 	d.CreatedBy, d.Language = userID, lang
+
+	if d.ChatID != a.primary {
+		return View{}, &AppError{Code: CodeNotPrimaryChannel, Field: FieldPostLink}
+	}
 
 	if result, ok := svc.checkPost(ctx, tg, userID, d.ChatID, d.MessageID); !ok {
 		return View{}, startErr(result)
@@ -417,7 +428,7 @@ func (a *App) Create(ctx context.Context, tg AppTelegram, userID int64, lang str
 		return View{}, err
 	}
 
-	return a.Get(ctx, userID, saved.ID)
+	return a.get(ctx, userID, RoleFull, saved.ID)
 }
 
 // checkWinners accepts minWinners to maxWinners winners.
@@ -468,7 +479,7 @@ func (a *App) Edit(ctx context.Context, tg Telegram, userID int64, id uint, c Ch
 		return View{}, err
 	}
 
-	return a.Get(ctx, userID, id)
+	return a.get(ctx, userID, RoleFull, id)
 }
 
 // Cancel takes the creator's published giveaway id off its post.
@@ -507,7 +518,7 @@ func (a *App) Move(ctx context.Context, tg AppTelegram, userID int64, id uint, l
 	}
 
 	if messageID == g.MessageID && chatID == g.ChatID {
-		return a.view(ctx, g)
+		return a.view(ctx, g, userID, RoleFull)
 	}
 
 	if key, ok := a.ed.checkTarget(ctx, log, g, chatID, messageID); !ok {
@@ -517,6 +528,25 @@ func (a *App) Move(ctx context.Context, tg AppTelegram, userID int64, id uint, l
 	key, _ := a.ed.moveTo(ctx, tg, tg, log, g, messageID)
 
 	return a.after(ctx, userID, id, Reply{Notice: key})
+}
+
+// get is Get for a user whose role is known.
+func (a *App) get(ctx context.Context, userID int64, role Role, id uint) (View, error) {
+	g, err := a.ed.giveaways.ByID(ctx, id)
+	if errors.Is(err, ErrNotFound) {
+		return View{}, &AppError{Code: CodeNotFound}
+	}
+
+	if err != nil {
+		return View{}, err //nolint:wrapcheck // Store already names the giveaway
+	}
+
+	isDraft := !g.Published && g.CancelledAt == nil
+	if g.ChatID != a.primary || isDraft {
+		return View{}, &AppError{Code: CodeNotFound}
+	}
+
+	return a.view(ctx, g, userID, role)
 }
 
 // publish attaches the button to the draft's post and marks the draft published.
@@ -606,18 +636,19 @@ func (a *App) parseEnd(value string) (time.Time, error) {
 	return ends.UTC(), nil
 }
 
-// after returns the giveaway as it is after an action, or the action's problem.
+// after returns the giveaway as it is after an action, or the action's problem. An action
+// that worked passed the role check, so the user is a full admin.
 func (a *App) after(ctx context.Context, userID int64, id uint, r Reply) (View, error) {
 	if err := replyErr(r); err != nil {
 		return View{}, err
 	}
 
-	return a.Get(ctx, userID, id)
+	return a.get(ctx, userID, RoleFull, id)
 }
 
-// view returns g as the Mini App shows it.
-func (a *App) view(ctx context.Context, g Giveaway) (View, error) {
-	views, err := a.views(ctx, []Giveaway{g})
+// view returns g as the Mini App shows it to userID with role.
+func (a *App) view(ctx context.Context, g Giveaway, userID int64, role Role) (View, error) {
+	views, err := a.views(ctx, []Giveaway{g}, userID, role)
 	if err != nil {
 		return View{}, err
 	}
@@ -625,8 +656,9 @@ func (a *App) view(ctx context.Context, g Giveaway) (View, error) {
 	return views[0], nil
 }
 
-// views returns gs as the Mini App shows them, with their participant counts.
-func (a *App) views(ctx context.Context, gs []Giveaway) ([]View, error) {
+// views returns gs as the Mini App shows them to userID with role, with their participant
+// counts.
+func (a *App) views(ctx context.Context, gs []Giveaway, userID int64, role Role) ([]View, error) {
 	ids := make([]uint, 0, len(gs))
 	for _, g := range gs {
 		ids = append(ids, g.ID)
@@ -644,6 +676,7 @@ func (a *App) views(ctx context.Context, gs []Giveaway) ([]View, error) {
 		v := View{
 			ID: g.ID, ChatID: g.ChatID, MessageID: g.MessageID, PostLink: postLink(g.ChatID, g.MessageID),
 			Winners: g.Winners, ButtonText: a.ed.label(g), Status: status(g, now), Participants: counts[g.ID],
+			CanChange: role == RoleFull && g.CreatedBy == userID,
 		}
 		if g.EndsAt != nil {
 			v.EndsAt = g.EndsAt.In(kyiv).Format(AppTimeLayout)
@@ -669,4 +702,74 @@ func status(g Giveaway, now time.Time) Status {
 	default:
 		return StatusActive
 	}
+}
+
+// partnerChannel returns channel id with the bot's extra rights if userID is an admin of it,
+// or nil.
+func (a *App) partnerChannel(ctx context.Context, tg ChannelsTelegram, id, userID int64) *Channel {
+	m, err := tg.ChatMember(ctx, id, userID)
+	if err != nil {
+		a.log.WarnContext(ctx, "check channel admin", "chat_id", id, "error", err)
+
+		return nil
+	}
+
+	if m.Type != models.ChatMemberTypeOwner && m.Type != models.ChatMemberTypeAdministrator {
+		return nil
+	}
+
+	c, _ := a.readChannel(ctx, tg, id)
+
+	bot, err := tg.BotMember(ctx, id)
+	if err != nil {
+		a.log.WarnContext(ctx, "read bot rights", "chat_id", id, "error", err)
+
+		return &c
+	}
+
+	c.ExtraRights = extraRights(bot)
+
+	return &c
+}
+
+// readChannel returns channel id with its title and photo, and false with them empty if
+// Telegram cannot give them, which it logs.
+func (a *App) readChannel(ctx context.Context, tg ChannelReader, id int64) (Channel, bool) {
+	info, err := tg.Channel(ctx, id)
+	if err != nil {
+		a.log.WarnContext(ctx, "read channel", "chat_id", id, "error", err)
+	}
+
+	return Channel{ID: id, Title: info.Title, Username: info.Username, PhotoID: info.PhotoID}, err == nil
+}
+
+// eachChannel calls read for every id, at most checksAtOnce at a time, and returns the
+// channels it found in the order of ids.
+func eachChannel(ids []int64, read func(id int64) *Channel) []Channel {
+	found := make([]*Channel, len(ids))
+
+	var wg sync.WaitGroup
+
+	sem := make(chan struct{}, checksAtOnce)
+
+	for i, id := range ids {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			found[i] = read(id)
+		})
+	}
+
+	wg.Wait()
+
+	out := make([]Channel, 0, len(ids))
+
+	for _, c := range found {
+		if c != nil {
+			out = append(out, *c)
+		}
+	}
+
+	return out
 }

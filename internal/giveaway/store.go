@@ -174,13 +174,13 @@ func (s *Store) ByID(ctx context.Context, id uint) (Giveaway, error) {
 	return g, nil
 }
 
-// Running returns up to limit of the user's published giveaways without recorded winners after
-// the first offset, newest first, and how many there are in all.
-func (s *Store) Running(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error) {
-	gs, total, err := s.page(ctx, "created_by = ? AND published = true AND finished_at IS NULL", "created_at DESC",
-		offset, limit, userID)
+// Running returns up to limit of the channel's published giveaways without recorded winners
+// after the first offset, newest first, and how many there are in all.
+func (s *Store) Running(ctx context.Context, chatID int64, offset, limit int) ([]Giveaway, int, error) {
+	gs, total, err := s.page(ctx, "chat_id = ? AND published = true AND finished_at IS NULL", "created_at DESC",
+		offset, limit, chatID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list running giveaways of user %d: %w", userID, err)
+		return nil, 0, fmt.Errorf("list running giveaways in chat %d: %w", chatID, err)
 	}
 
 	return gs, total, nil
@@ -242,16 +242,17 @@ func (s *Store) Cancel(ctx context.Context, id uint) error {
 	return nil
 }
 
-// Due returns the published, unfinished giveaways whose end time is at or before now, soonest
-// end first. Drafts and cancelled giveaways are unpublished, so they are never due.
-func (s *Store) Due(ctx context.Context, now time.Time) ([]Giveaway, error) {
+// Due returns the channel's published, unfinished giveaways whose end time is at or before
+// now, soonest end first. Drafts and cancelled giveaways are unpublished, so they are never due.
+func (s *Store) Due(ctx context.Context, chatID int64, now time.Time) ([]Giveaway, error) {
 	var gs []Giveaway
 
 	err := s.db.WithContext(ctx).
-		Where("published = ? AND finished_at IS NULL AND ends_at IS NOT NULL AND ends_at <= ?", true, now).
+		Where("chat_id = ? AND published = ? AND finished_at IS NULL AND ends_at IS NOT NULL AND ends_at <= ?",
+			chatID, true, now).
 		Order(colEndsAt).Order("id").Find(&gs).Error
 	if err != nil {
-		return nil, fmt.Errorf("list due giveaways: %w", err)
+		return nil, fmt.Errorf("list due giveaways in chat %d: %w", chatID, err)
 	}
 
 	return gs, nil
@@ -279,14 +280,14 @@ func (s *Store) Participants(ctx context.Context, ids []uint) (map[uint]int, err
 	return s.count(ctx, ids, "TRUE", "participants")
 }
 
-// Archived returns up to limit of the user's finished and cancelled giveaways after the first
-// offset, and how many there are in all. The latest to leave the running list comes first: by
-// draw time or cancel time, as a giveaway has only one of them.
-func (s *Store) Archived(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error) {
-	gs, total, err := s.page(ctx, "created_by = ? AND (finished_at IS NOT NULL OR cancelled_at IS NOT NULL)",
-		"COALESCE(finished_at, cancelled_at) DESC", offset, limit, userID)
+// Archived returns up to limit of the channel's finished and cancelled giveaways after the
+// first offset, and how many there are in all. The latest to leave the running list comes
+// first: by draw time or cancel time, as a giveaway has only one of them.
+func (s *Store) Archived(ctx context.Context, chatID int64, offset, limit int) ([]Giveaway, int, error) {
+	gs, total, err := s.page(ctx, "chat_id = ? AND (finished_at IS NOT NULL OR cancelled_at IS NOT NULL)",
+		"COALESCE(finished_at, cancelled_at) DESC", offset, limit, chatID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list archived giveaways of user %d: %w", userID, err)
+		return nil, 0, fmt.Errorf("list archived giveaways in chat %d: %w", chatID, err)
 	}
 
 	return gs, total, nil
@@ -518,13 +519,15 @@ func (s *Store) ReleaseResults(ctx context.Context, id uint) error {
 	return nil
 }
 
-// PendingResults returns every giveaway whose results wait for review, oldest draw first.
-func (s *Store) PendingResults(ctx context.Context) ([]Giveaway, error) {
+// PendingResults returns the channel's giveaways whose results wait for review, oldest draw
+// first.
+func (s *Store) PendingResults(ctx context.Context, chatID int64) ([]Giveaway, error) {
 	var gs []Giveaway
 
-	err := s.db.WithContext(ctx).Where("results_pending").Order(colFinished).Order("id").Find(&gs).Error
+	err := s.db.WithContext(ctx).Where("chat_id = ? AND results_pending", chatID).
+		Order(colFinished).Order("id").Find(&gs).Error
 	if err != nil {
-		return nil, fmt.Errorf("list giveaways with pending results: %w", err)
+		return nil, fmt.Errorf("list giveaways with pending results in chat %d: %w", chatID, err)
 	}
 
 	return gs, nil

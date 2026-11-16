@@ -10,17 +10,17 @@ import (
 	"github.com/alexander-danilenko/read_wine_bot/internal/giveaway"
 )
 
-// GiveawayReader lists and reads the caller's giveaways. *giveaway.App implements it.
+// GiveawayReader lists and reads the primary channel's giveaways. *giveaway.App implements it.
 type GiveawayReader interface {
 	List(
 		ctx context.Context,
-		tg giveaway.Telegram,
+		tg giveaway.MemberReader,
 		userID int64,
 		offset, limit int,
 	) (giveaway.Page, []giveaway.View, error)
 	Channels(ctx context.Context, tg giveaway.ChannelReader, lists ...[]giveaway.View) []giveaway.Channel
-	Archived(ctx context.Context, userID int64, offset, limit int) (giveaway.Page, error)
-	Get(ctx context.Context, userID int64, id uint) (giveaway.View, error)
+	Archived(ctx context.Context, tg giveaway.MemberReader, userID int64, offset, limit int) (giveaway.Page, error)
+	Get(ctx context.Context, tg giveaway.MemberReader, userID int64, id uint) (giveaway.View, error)
 }
 
 // GiveawayWriter creates and edits giveaways. *giveaway.App implements it.
@@ -45,15 +45,16 @@ type GiveawayActions interface {
 
 // giveawayBody is a giveaway as the API returns it.
 type giveawayBody struct {
-	ID           uint   `doc:"Giveaway ID"                     json:"id"`
-	PostLink     string `doc:"Link to the channel post"        json:"post_link"`
-	ChatID       int64  `doc:"Telegram ID of the channel"      json:"chat_id"`
-	MessageID    int64  `doc:"Telegram ID of the post"         json:"message_id"`
-	EndsAt       string `doc:"Kyiv end time, YYYY-MM-DDTHH:MM" json:"ends_at"`
-	Winners      int    `doc:"Number of winners to draw"       json:"winners"`
-	ButtonText   string `doc:"Label of the join button"        json:"button_text"`
-	Status       string `doc:"Where the giveaway is"           json:"status"`
-	Participants int    `doc:"Number of users who joined"      json:"participants"`
+	ID           uint   `doc:"Giveaway ID"                                                                                    json:"id"`
+	PostLink     string `doc:"Link to the channel post"                                                                       json:"post_link"`
+	ChatID       int64  `doc:"Telegram ID of the channel"                                                                     json:"chat_id"`
+	MessageID    int64  `doc:"Telegram ID of the post"                                                                        json:"message_id"`
+	EndsAt       string `doc:"Kyiv end time, YYYY-MM-DDTHH:MM"                                                                json:"ends_at"`
+	Winners      int    `doc:"Number of winners to draw"                                                                      json:"winners"`
+	ButtonText   string `doc:"Label of the join button"                                                                       json:"button_text"`
+	Status       string `doc:"Where the giveaway is"                                                                          json:"status"`
+	Participants int    `doc:"Number of users who joined"                                                                     json:"participants"`
+	CanChange    bool   `doc:"Whether the caller may edit, move, cancel, restore or finish it: its creator, with full rights" json:"can_change"`
 }
 
 // TransformSchema lists the statuses as an enum in the spec, so the generated client knows them.
@@ -74,12 +75,14 @@ type listChannelBody struct {
 	Title    string `doc:"Channel title, empty if Telegram cannot give it"        json:"title"`
 	Username string `doc:"Public username without @, empty for a private channel" json:"username"`
 	Photo    string `doc:"URL of the small channel photo, empty for none"         json:"photo"`
+	// ExtraRights tells "not read" (null) from "none" (empty), so it is nullable.
+	ExtraRights []string `doc:"The bot's admin rights here beyond Manage chat, on a partner's own channels; null where not read" json:"extra_rights" nullable:"true"`
 }
 
 func (o *Operations) toListChannels(cs []giveaway.Channel) []listChannelBody {
 	out := make([]listChannelBody, 0, len(cs))
 	for _, c := range cs {
-		body := listChannelBody{ID: c.ID, Title: c.Title, Username: c.Username}
+		body := listChannelBody{ID: c.ID, Title: c.Title, Username: c.Username, ExtraRights: c.ExtraRights}
 		if c.PhotoID != "" {
 			body.Photo = o.photos.URL(c.PhotoID)
 		}
@@ -94,6 +97,7 @@ func toBody(v giveaway.View) giveawayBody {
 	return giveawayBody{
 		ID: v.ID, PostLink: v.PostLink, ChatID: v.ChatID, MessageID: v.MessageID, EndsAt: v.EndsAt,
 		Winners: v.Winners, ButtonText: v.ButtonText, Status: string(v.Status), Participants: v.Participants,
+		CanChange: v.CanChange,
 	}
 }
 
@@ -129,18 +133,18 @@ type pageInput struct {
 
 type listOutput struct {
 	Body struct {
-		Giveaways []giveawayBody    `doc:"One page of the caller's running giveaways, newest first"                      json:"giveaways"`
-		Total     int               `doc:"How many running giveaways the caller has"                                     json:"total"`
-		Review    []giveawayBody    `doc:"Giveaways whose results wait for review in channels the caller is an admin of" json:"review"`
-		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                                    json:"channels"`
+		Giveaways []giveawayBody    `doc:"One page of the primary channel's running giveaways, newest first" json:"giveaways"`
+		Total     int               `doc:"How many running giveaways the primary channel has"                json:"total"`
+		Review    []giveawayBody    `doc:"The primary channel's giveaways whose results wait for review"     json:"review"`
+		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                        json:"channels"`
 	}
 }
 
 type archiveOutput struct {
 	Body struct {
-		Giveaways []giveawayBody    `doc:"One page of the caller's finished and cancelled giveaways, the latest to end first" json:"giveaways"`
-		Total     int               `doc:"How many finished and cancelled giveaways the caller has"                           json:"total"`
-		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                                         json:"channels"`
+		Giveaways []giveawayBody    `doc:"One page of the primary channel's finished and cancelled giveaways, the latest to end first" json:"giveaways"`
+		Total     int               `doc:"How many finished and cancelled giveaways the primary channel has"                           json:"total"`
+		Channels  []listChannelBody `doc:"The channels of these giveaways, each once"                                                  json:"channels"`
 	}
 }
 
@@ -172,11 +176,11 @@ type moveInput struct {
 func (o *Operations) registerGiveaways(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "listGiveaways", Method: http.MethodGet, Path: "/api/giveaways",
-		Summary: "The caller's running giveaways page by page, and results waiting for review",
+		Summary: "The primary channel's running giveaways page by page, and results waiting for review",
 	}, o.listGiveaways)
 	huma.Register(api, huma.Operation{
 		OperationID: "listFinishedGiveaways", Method: http.MethodGet, Path: "/api/giveaways/finished",
-		Summary: "The caller's finished and cancelled giveaways, page by page",
+		Summary: "The primary channel's finished and cancelled giveaways, page by page",
 	}, o.listFinished)
 	huma.Register(api, huma.Operation{
 		OperationID: "createGiveaway", Method: http.MethodPost, Path: "/api/giveaways",
@@ -184,7 +188,7 @@ func (o *Operations) registerGiveaways(api huma.API) {
 	}, o.createGiveaway)
 	huma.Register(api, huma.Operation{
 		OperationID: "getGiveaway", Method: http.MethodGet, Path: "/api/giveaways/{id}",
-		Summary: "One of the caller's giveaways",
+		Summary: "One of the primary channel's giveaways",
 	}, o.getGiveaway)
 	huma.Register(api, huma.Operation{
 		OperationID: "editGiveaway", Method: http.MethodPatch, Path: "/api/giveaways/{id}",
@@ -268,7 +272,7 @@ func (o *Operations) listFinished(ctx context.Context, in *pageInput) (*archiveO
 		return nil, err
 	}
 
-	page, err := o.reader.Archived(ctx, c.User.ID, in.Offset, in.Limit)
+	page, err := o.reader.Archived(ctx, o.tg, c.User.ID, in.Offset, in.Limit)
 	if err != nil {
 		return nil, o.apiErr(ctx, err)
 	}
@@ -286,7 +290,7 @@ func (o *Operations) getGiveaway(ctx context.Context, in *idInput) (*giveawayDet
 		return nil, err
 	}
 
-	v, err := o.reader.Get(ctx, c.User.ID, in.ID)
+	v, err := o.reader.Get(ctx, o.tg, c.User.ID, in.ID)
 	if err != nil {
 		return nil, o.apiErr(ctx, err)
 	}
@@ -368,7 +372,7 @@ func appStatus(code string) int {
 	switch code {
 	case giveaway.CodeNotFound:
 		return http.StatusNotFound
-	case giveaway.CodeNotYours, giveaway.CodeNotAdmin:
+	case giveaway.CodeNotYours, giveaway.CodeNotAdmin, giveaway.CodeReadOnly:
 		return http.StatusForbidden
 	case giveaway.CodeInvalidPostLink, giveaway.CodeInvalidEnd, giveaway.CodeEndInPast,
 		giveaway.CodeInvalidWinners, giveaway.CodeInvalidButtonText:

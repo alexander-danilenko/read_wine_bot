@@ -15,10 +15,10 @@ const (
 	FieldButtonText = "button_text"
 )
 
-// ArchivedLister reads a creator's finished and cancelled giveaways page by page. *Store
+// ArchivedLister reads a channel's finished and cancelled giveaways page by page. *Store
 // implements it.
 type ArchivedLister interface {
-	Archived(ctx context.Context, userID int64, offset, limit int) ([]Giveaway, int, error)
+	Archived(ctx context.Context, chatID int64, offset, limit int) ([]Giveaway, int, error)
 }
 
 // Giveaways reads the giveaways a creator manages. *Store implements it.
@@ -39,9 +39,9 @@ type Mover interface {
 	Move(ctx context.Context, id uint, messageID int64) error
 }
 
-// PendingLister finds the giveaways whose results wait for review. *Store implements it.
+// PendingLister finds a channel's giveaways whose results wait for review. *Store implements it.
 type PendingLister interface {
-	PendingResults(ctx context.Context) ([]Giveaway, error)
+	PendingResults(ctx context.Context, chatID int64) ([]Giveaway, error)
 }
 
 // Counter counts the participants of giveaways. *Store implements it.
@@ -56,7 +56,7 @@ type ButtonRemover interface {
 }
 
 // Editor holds the rules for changing a published giveaway: who may edit it, how each field
-// is saved, cancelling and publishing it again, and the creator's list. Every action reads
+// is saved, cancelling and publishing it again, and the primary channel's lists. Every action reads
 // the giveaway again and repeats the checks.
 type Editor struct {
 	svc       *Service
@@ -66,9 +66,11 @@ type Editor struct {
 	pending   PendingLister
 	counter   Counter
 	archived  ArchivedLister
+	primary   int64 // the chat ID of the primary channel; giveaways elsewhere are not found
 }
 
-// NewEditor returns an Editor that reuses svc's texts, clock and checks.
+// NewEditor returns an Editor that reuses svc's texts, clock and checks, for the giveaways of
+// the primary channel.
 func NewEditor(
 	svc *Service,
 	giveaways Giveaways,
@@ -77,10 +79,11 @@ func NewEditor(
 	pending PendingLister,
 	counter Counter,
 	archived ArchivedLister,
+	primary int64,
 ) *Editor {
 	return &Editor{
 		svc: svc, giveaways: giveaways, writer: writer, mover: mover, pending: pending, counter: counter,
-		archived: archived,
+		archived: archived, primary: primary,
 	}
 }
 
@@ -199,38 +202,6 @@ func attachFailure(err error) i18n.Key {
 	return i18n.EditNoRights
 }
 
-// pendingResults returns the giveaways whose results wait for review in a channel the user is
-// an admin of. They stay out of the running giveaways' lines, whose post check would put the
-// join button back on the post.
-func (e *Editor) pendingResults(ctx context.Context, tg Telegram, userID int64) ([]Giveaway, error) {
-	gs, err := e.pending.PendingResults(ctx)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // Store already says what it listed
-	}
-
-	adminOf := map[int64]bool{} // channel ID -> whether the user is its admin, checked once
-	mine := make([]Giveaway, 0, len(gs))
-
-	for _, g := range gs {
-		isAdmin, checked := adminOf[g.ChatID]
-		if !checked {
-			isAdmin, err = tg.IsChannelAdmin(ctx, g.ChatID, userID)
-			if err != nil {
-				e.svc.log.WarnContext(ctx, "check channel admin for list",
-					"user_id", userID, "chat_id", g.ChatID, "error", err)
-			}
-
-			adminOf[g.ChatID] = isAdmin
-		}
-
-		if isAdmin {
-			mine = append(mine, g)
-		}
-	}
-
-	return mine, nil
-}
-
 // save writes the changed fields of g, the post first when its button text changed.
 func (e *Editor) save(ctx context.Context, tg Telegram, log *slog.Logger, g, changed Giveaway) Reply {
 	if g.Published && changed.ButtonText != g.ButtonText {
@@ -255,8 +226,9 @@ func (e *Editor) save(ctx context.Context, tg Telegram, log *slog.Logger, g, cha
 	return Reply{}
 }
 
-// load reads giveaway id and checks that the user may change it. On failure it returns the
-// Reply that names the failed check, and false.
+// load reads giveaway id and checks that the user may change it. A giveaway outside the
+// primary channel is not found. On failure it returns the Reply that names the failed check,
+// and false.
 func (e *Editor) load(ctx context.Context, tg Telegram, userID int64, id uint) (Giveaway, Reply, bool) {
 	g, err := e.giveaways.ByID(ctx, id)
 	if errors.Is(err, ErrNotFound) {
@@ -269,33 +241,50 @@ func (e *Editor) load(ctx context.Context, tg Telegram, userID int64, id uint) (
 		return Giveaway{}, Reply{Notice: i18n.EditFailed}, false
 	}
 
-	if key, ok := e.check(ctx, tg, userID, g); !ok {
-		return Giveaway{}, Reply{Notice: key}, false
+	if g.ChatID != e.primary {
+		return Giveaway{}, Reply{Notice: i18n.EditNotFound}, false
+	}
+
+	if r, ok := e.check(ctx, tg, userID, g); !ok {
+		return Giveaway{}, r, false
 	}
 
 	return g, Reply{}, true
 }
 
-// check checks, in order, that the user created g, that g is not finished, that the user is
-// still an admin of its channel and that the bot may edit its posts. It returns the text
+// check checks, in order, that the user is a full admin of the primary channel, that they
+// created g, that g is not finished and that the bot may edit its posts. It returns the Reply
 // that names the failed check and false, or true when every check passes.
-func (e *Editor) check(ctx context.Context, tg Telegram, userID int64, g Giveaway) (i18n.Key, bool) {
-	switch {
-	case g.CreatedBy != userID:
-		return i18n.EditNotYours, false
-	case g.FinishedAt != nil:
-		return i18n.EditFinished, false
+func (e *Editor) check(ctx context.Context, tg Telegram, userID int64, g Giveaway) (Reply, bool) {
+	if result, ok := e.svc.checkRole(ctx, tg, userID, e.primary); !ok {
+		return roleReply(result), false
 	}
 
-	switch result, _ := e.svc.checkAdmin(ctx, tg, userID, g.ChatID); result {
-	case Created:
-		return "", true
+	switch {
+	case g.CreatedBy != userID:
+		return Reply{Notice: i18n.EditNotYours}, false
+	case g.FinishedAt != nil:
+		return Reply{Notice: i18n.EditFinished}, false
+	}
+
+	if _, ok := e.svc.checkBot(ctx, tg, userID, g.ChatID); !ok {
+		return Reply{Notice: i18n.EditNoRights}, false
+	}
+
+	return Reply{}, true
+}
+
+// roleReply returns the Reply for a failed role check.
+func roleReply(result StartResult) Reply {
+	switch result {
+	case ReadOnly:
+		return Reply{ReadOnly: true}
 	case NotAdmin:
-		return i18n.EditNotAdmin, false
-	case Exists, Taken, NoRights, Failed:
-		return i18n.EditNoRights, false
+		return Reply{Notice: i18n.EditNotAdmin}
+	case Created, Exists, Taken, NoRights, Failed:
+		return Reply{Notice: i18n.EditFailed}
 	default:
-		return i18n.EditNoRights, false
+		return Reply{Notice: i18n.EditFailed}
 	}
 }
 

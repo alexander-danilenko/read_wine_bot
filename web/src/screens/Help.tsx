@@ -1,9 +1,8 @@
-import { Check, Handshake, Megaphone, Plus } from "lucide-react";
+import { Check, Handshake, Megaphone } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Me } from "../api/client";
 import { useT } from "../i18n";
-import { openLink } from "../telegram";
-import { Button, PartnerLink, Section, Title, TitledCard } from "../ui";
+import { PartnerLink, Section, Title, TitledCard } from "../ui";
 
 // Step is one numbered step of the admin section.
 function Step({ n, children }: { n: number; children: ReactNode }) {
@@ -28,8 +27,8 @@ function Right({ name, why }: { name: string; why: string }) {
   );
 }
 
-// Help explains the bot in two sections, for the admins of channels that run giveaways and for
-// partner channels, each with the link that adds the bot the way that section needs.
+// Help explains the bot in two sections, for the admins of the primary channel, where giveaways
+// run, and for partner channels, with the link that adds the bot as a partner.
 export default function Help({ me }: { me: Me }) {
   const t = useT();
   return (
@@ -54,10 +53,6 @@ export default function Help({ me }: { me: Me }) {
             <p>{t("help.step3")}</p>
           </Step>
         </ol>
-        <Button variant="primary" full onClick={() => openLink(me.add_link)}>
-          <Plus aria-hidden className="size-5" />
-          {t("help.add")}
-        </Button>
       </TitledCard>
 
       <TitledCard icon={<Handshake className="size-5" />} title={t("help.partners")}>

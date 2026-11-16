@@ -1,9 +1,8 @@
-import { ChevronRight, Handshake, Languages, Megaphone, Plus } from "lucide-react";
+import { Handshake, Languages, Megaphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { api, must, type Channel, type ChannelLists, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
-import { openLink } from "../telegram";
-import { Avatar, Button, ErrorText, Loading, PartnerLink, Section, Title, TitledCard, useLoad } from "../ui";
+import { Button, ChannelRow, ErrorText, Loading, PartnerLink, Section, Title, TitledCard, useLoad } from "../ui";
 
 // Each language is shown in its own name, so every user finds theirs.
 const languages: { code: Lang; label: string }[] = [
@@ -56,27 +55,6 @@ function LanguagePicker({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   );
 }
 
-// ChannelRow is one channel: a link to it when it has a public username, plain text otherwise.
-function ChannelRow({ channel }: { channel: Channel }) {
-  const content = (
-    <>
-      <Avatar channel={channel} />
-      <span className="min-w-0 flex-1 truncate">{channel.title}</span>
-    </>
-  );
-  if (!channel.username) return <div className="flex min-h-14 items-center gap-3 px-4 py-2">{content}</div>;
-  return (
-    <button
-      type="button"
-      onClick={() => openLink(`https://t.me/${channel.username}`)}
-      className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-    >
-      {content}
-      <ChevronRight aria-hidden className="size-5 shrink-0 text-hint" />
-    </button>
-  );
-}
-
 // ChannelCard lists channels read-only, or shows loading, a retryable error or the empty text,
 // then the card's action.
 function ChannelCard({
@@ -94,7 +72,7 @@ function ChannelCard({
   empty: string;
   list: ReturnType<typeof useLoad<ChannelLists>>;
   pick: (lists: ChannelLists) => Channel[];
-  action: ReactNode;
+  action?: ReactNode;
 }) {
   let body;
   if (list.loading && !list.data) body = <Loading />;
@@ -121,9 +99,8 @@ function ChannelCard({
   );
 }
 
-// Settings shows the language picker, the user's channels with the link that adds the bot to
-// another channel with the rights giveaways need, and the partner channels (every other channel
-// where the bot is an admin, shown to everyone) with the partner link to copy.
+// Settings shows the language picker, the primary channel, and the partner channels with the
+// partner link to copy.
 export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   const t = useT();
   const channels = useLoad(() => must(api.GET("/api/channels")), []);
@@ -138,12 +115,6 @@ export default function Settings({ me, onMe }: { me: Me; onMe: (me: Me) => void 
         empty={t("settings.noChannels")}
         list={channels}
         pick={(l) => l.channels}
-        action={
-          <Button variant="primary" full onClick={() => openLink(me.add_link)}>
-            <Plus aria-hidden className="size-5" />
-            {t("settings.add")}
-          </Button>
-        }
       />
       <ChannelCard
         icon={<Handshake className="size-5" />}

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/alexander-danilenko/read_wine_bot/internal/i18n"
 	"github.com/alexander-danilenko/read_wine_bot/internal/user"
 )
@@ -243,18 +245,27 @@ type posted struct {
 	ctxErr          error
 }
 
-// fakeReviewTelegram answers admin checks and records sent messages. Admins are the users in
-// admins; the sendFails-th message (from 1) fails.
+// fakeReviewTelegram answers member lookups and records sent messages. Admins are the users in
+// admins, with their roles; the sendFails-th message (from 1) fails.
 type fakeReviewTelegram struct {
-	admins    map[int64]bool
+	admins    map[int64]Role
 	adminErr  error
 	sendFails int
 	sent      []posted
 	attempts  int
 }
 
-func (f *fakeReviewTelegram) IsChannelAdmin(_ context.Context, _, userID int64) (bool, error) {
-	return f.admins[userID], f.adminErr
+func (f *fakeReviewTelegram) ChatMember(_ context.Context, _, userID int64) (models.ChatMember, error) {
+	switch f.admins[userID] {
+	case RoleFull:
+		return admin(models.ChatMemberAdministrator{CanPostMessages: true, CanEditMessages: true}), f.adminErr
+	case RoleReadOnly:
+		return admin(models.ChatMemberAdministrator{}), f.adminErr
+	case RolePartner:
+		return models.ChatMember{Type: models.ChatMemberTypeLeft, Left: &models.ChatMemberLeft{}}, f.adminErr
+	default:
+		return models.ChatMember{Type: models.ChatMemberTypeLeft, Left: &models.ChatMemberLeft{}}, f.adminErr
+	}
 }
 
 func (f *fakeReviewTelegram) SendHTML(ctx context.Context, chatID, replyTo int64, text string) error {
@@ -269,7 +280,7 @@ func (f *fakeReviewTelegram) SendHTML(ctx context.Context, chatID, replyTo int64
 }
 
 func newAdmins() *fakeReviewTelegram {
-	return &fakeReviewTelegram{admins: map[int64]bool{creatorID: true, otherAdmin: true}}
+	return &fakeReviewTelegram{admins: map[int64]Role{creatorID: RoleFull, otherAdmin: RoleFull}}
 }
 
 const otherAdmin int64 = 7_000_000_009
@@ -316,6 +327,7 @@ func newLoggedReviewer(
 		texts,
 		now,
 		slog.New(slog.NewTextHandler(&logs, nil)),
+		drawChannel,
 	), &logs
 }
 
@@ -581,6 +593,7 @@ func TestReviewAccess(t *testing.T) {
 				rv.Reroll(t.Context(), tt.tg, tt.userID, reviewID, ann().TelegramID),
 				rv.Publish(t.Context(), tt.tg, tt.userID, reviewID, 0),
 				rv.SendWinners(t.Context(), tt.tg, tt.userID, reviewID),
+				rv.Skip(t.Context(), tt.tg, tt.userID, reviewID, 0),
 			} {
 				if r.Notice != tt.want {
 					t.Errorf("reply = %+v, want only notice %q", r, tt.want)

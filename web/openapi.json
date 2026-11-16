@@ -14,6 +14,7 @@
               "not_yours",
               "finished",
               "not_admin",
+              "read_only",
               "bot_no_rights",
               "post_gone",
               "exists",
@@ -24,6 +25,7 @@
               "invalid_winners",
               "invalid_button_text",
               "other_channel",
+              "not_primary_channel",
               "due",
               "stale",
               "failed",
@@ -76,14 +78,14 @@
             "type": "array"
           },
           "giveaways": {
-            "description": "One page of the caller's finished and cancelled giveaways, the latest to end first",
+            "description": "One page of the primary channel's finished and cancelled giveaways, the latest to end first",
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
             "type": "array"
           },
           "total": {
-            "description": "How many finished and cancelled giveaways the caller has",
+            "description": "How many finished and cancelled giveaways the primary channel has",
             "format": "int64",
             "type": "integer"
           }
@@ -205,6 +207,10 @@
             "description": "Label of the join button",
             "type": "string"
           },
+          "can_change": {
+            "description": "Whether the caller may edit, move, cancel, restore or finish it: its creator, with full rights",
+            "type": "boolean"
+          },
           "chat_id": {
             "description": "Telegram ID of the channel",
             "format": "int64",
@@ -260,7 +266,8 @@
           "winners",
           "button_text",
           "status",
-          "participants"
+          "participants",
+          "can_change"
         ],
         "type": "object"
       },
@@ -285,6 +292,16 @@
       "ListChannelBody": {
         "additionalProperties": false,
         "properties": {
+          "extra_rights": {
+            "description": "The bot's admin rights here beyond Manage chat, on a partner's own channels; null where not read",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "id": {
             "description": "Telegram ID of the channel",
             "format": "int64",
@@ -307,7 +324,8 @@
           "id",
           "title",
           "username",
-          "photo"
+          "photo",
+          "extra_rights"
         ],
         "type": "object"
       },
@@ -322,21 +340,21 @@
             "type": "array"
           },
           "giveaways": {
-            "description": "One page of the caller's running giveaways, newest first",
+            "description": "One page of the primary channel's running giveaways, newest first",
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
             "type": "array"
           },
           "review": {
-            "description": "Giveaways whose results wait for review in channels the caller is an admin of",
+            "description": "The primary channel's giveaways whose results wait for review",
             "items": {
               "$ref": "#/components/schemas/GiveawayBody"
             },
             "type": "array"
           },
           "total": {
-            "description": "How many running giveaways the caller has",
+            "description": "How many running giveaways the primary channel has",
             "format": "int64",
             "type": "integer"
           }
@@ -352,10 +370,6 @@
       "MeBody": {
         "additionalProperties": false,
         "properties": {
-          "add_link": {
-            "description": "Adds the bot to a channel with giveaway rights",
-            "type": "string"
-          },
           "first_name": {
             "description": "The user's first name",
             "type": "string"
@@ -371,12 +385,21 @@
           "partner_link": {
             "description": "Adds the bot to a partner channel",
             "type": "string"
+          },
+          "role": {
+            "description": "What the user may do, read live from the primary channel",
+            "enum": [
+              "full",
+              "read_only",
+              "partner"
+            ],
+            "type": "string"
           }
         },
         "required": [
           "language",
           "first_name",
-          "add_link",
+          "role",
           "partner_link"
         ],
         "type": "object"
@@ -398,14 +421,14 @@
         "additionalProperties": false,
         "properties": {
           "channels": {
-            "description": "Channels where both the bot and the caller are admins",
+            "description": "The primary channel for its admins; for a partner, the other channels where both they and the bot are admins",
             "items": {
               "$ref": "#/components/schemas/ListChannelBody"
             },
             "type": "array"
           },
           "partners": {
-            "description": "Every other channel where the bot is an admin, by Telegram ID",
+            "description": "For a primary channel admin, every other channel where the bot is an admin; empty for a partner",
             "items": {
               "$ref": "#/components/schemas/ListChannelBody"
             },
@@ -435,6 +458,10 @@
       "ReviewOutputBody": {
         "additionalProperties": false,
         "properties": {
+          "can_act": {
+            "description": "Whether the caller may reroll, publish or skip: a full admin",
+            "type": "boolean"
+          },
           "channels": {
             "description": "Channels whose subscriptions the review shows",
             "items": {
@@ -463,7 +490,8 @@
           "giveaway",
           "winners",
           "channels",
-          "rerolled"
+          "rerolled",
+          "can_act"
         ],
         "type": "object"
       },
@@ -573,7 +601,7 @@
             "description": "Error"
           }
         },
-        "summary": "The caller's channels and the partner channels: every channel where the bot is an admin"
+        "summary": "The channels where the bot is an admin, as the caller's role shows them"
       }
     },
     "/api/giveaways": {
@@ -631,7 +659,7 @@
             "description": "Error"
           }
         },
-        "summary": "The caller's running giveaways page by page, and results waiting for review"
+        "summary": "The primary channel's running giveaways page by page, and results waiting for review"
       },
       "post": {
         "operationId": "createGiveaway",
@@ -725,7 +753,7 @@
             "description": "Error"
           }
         },
-        "summary": "The caller's finished and cancelled giveaways, page by page"
+        "summary": "The primary channel's finished and cancelled giveaways, page by page"
       }
     },
     "/api/giveaways/{id}": {
@@ -767,7 +795,7 @@
             "description": "Error"
           }
         },
-        "summary": "One of the caller's giveaways"
+        "summary": "One of the primary channel's giveaways"
       },
       "patch": {
         "operationId": "editGiveaway",
@@ -1023,7 +1051,7 @@
             "description": "Error"
           }
         },
-        "summary": "Who is using the app and in which language"
+        "summary": "Who is using the app, in which language and with which role"
       }
     },
     "/api/me/language": {

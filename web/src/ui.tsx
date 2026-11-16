@@ -1,4 +1,4 @@
-import { Copy } from "lucide-react";
+import { ChevronRight, Copy } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Failure, type Channel, type Giveaway } from "./api/client";
 import { useT } from "./i18n";
+import { openLink } from "./telegram";
 
 const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -268,6 +269,33 @@ export function Avatar({ channel, size = "size-10" }: { channel?: Channel; size?
       {[...(channel?.title ?? "")][0] ?? "#"}
     </span>
   );
+}
+
+// ChannelRow is one channel: a link to it when it has a public username, plain text otherwise.
+export function ChannelRow({ channel }: { channel: Channel }) {
+  const content = (
+    <>
+      <Avatar channel={channel} />
+      <span className="min-w-0 flex-1 truncate">{channel.title}</span>
+    </>
+  );
+  if (!channel.username) return <div className="flex min-h-14 items-center gap-3 px-4 py-2">{content}</div>;
+  return (
+    <button
+      type="button"
+      onClick={() => openLink(`https://t.me/${channel.username}`)}
+      className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+    >
+      {content}
+      <ChevronRight aria-hidden className="size-5 shrink-0 text-hint" />
+    </button>
+  );
+}
+
+// ReadOnlyNote tells a read-only admin why no control changes anything.
+export function ReadOnlyNote() {
+  const t = useT();
+  return <p className="rounded-xl border border-hint/30 px-4 py-3 text-sm text-hint">{t("error.read_only")}</p>;
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {

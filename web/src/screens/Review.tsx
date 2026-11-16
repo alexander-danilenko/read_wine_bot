@@ -134,14 +134,16 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
                     <p className="truncate">{name(w)}</p>
                     <p className="text-sm text-hint">{t("review.place", { n: w.place })}</p>
                   </div>
-                  <Button
-                    onClick={() => reroll(w)}
-                    busy={busy === w.user_id}
-                    disabled={busy !== undefined}
-                    aria-label={t("review.rerollLabel", { name: name(w) })}
-                  >
-                    {t("review.reroll")}
-                  </Button>
+                  {data.can_act && (
+                    <Button
+                      onClick={() => reroll(w)}
+                      busy={busy === w.user_id}
+                      disabled={busy !== undefined}
+                      aria-label={t("review.rerollLabel", { name: name(w) })}
+                    >
+                      {t("review.reroll")}
+                    </Button>
+                  )}
                 </div>
                 <ChannelTags channels={subscribedChannels(w, data.channels)} />
               </li>
@@ -155,12 +157,16 @@ export default function Review({ id, onClosed }: { id: number; onClosed: () => v
           {t("review.sendWinners")}
         </Button>
       )}
-      <Button variant="primary" full onClick={() => setAsking("publish")} disabled={busy !== undefined}>
-        {t("review.publish")}
-      </Button>
-      <Button variant="danger-text" full onClick={() => setAsking("skip")} disabled={busy !== undefined}>
-        {t("review.skip")}
-      </Button>
+      {data.can_act && (
+        <>
+          <Button variant="primary" full onClick={() => setAsking("publish")} disabled={busy !== undefined}>
+            {t("review.publish")}
+          </Button>
+          <Button variant="danger-text" full onClick={() => setAsking("skip")} disabled={busy !== undefined}>
+            {t("review.skip")}
+          </Button>
+        </>
+      )}
       <Confirm
         open={asking === "publish"}
         title={t("review.publishTitle")}

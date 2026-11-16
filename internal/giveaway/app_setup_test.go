@@ -33,7 +33,7 @@ func newSetup(t *testing.T) *setup {
 	}
 
 	store := newMemStore()
-	s := &setup{store: store, users: newFakeUsers(), tg: &fakeTelegram{admin: true}}
+	s := &setup{store: store, users: newFakeUsers(), tg: &fakeTelegram{role: giveaway.RoleFull}}
 	s.now = time.Date(2026, 10, 9, 19, 55, 0, 0, kyiv)
 	s.svc = giveaway.NewService(
 		store,
@@ -43,7 +43,7 @@ func newSetup(t *testing.T) *setup {
 		func() time.Time { return s.now },
 		slog.New(slog.DiscardHandler),
 	)
-	s.ed = giveaway.NewEditor(s.svc, store, store, store, store, store, store)
+	s.ed = giveaway.NewEditor(s.svc, store, store, store, store, store, store, channelID)
 
 	return s
 }

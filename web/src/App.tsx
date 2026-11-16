@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, must, type Giveaway } from "./api/client";
+import { api, must, onRoleLost, type Giveaway, type Me } from "./api/client";
 import { TextContext, translator, type Lang } from "./i18n";
 import GiveawayDetails from "./screens/GiveawayDetails";
 import GiveawayForm from "./screens/GiveawayForm";
 import GiveawayList from "./screens/GiveawayList";
 import Help from "./screens/Help";
+import Partner from "./screens/Partner";
 import Review from "./screens/Review";
 import Settings from "./screens/Settings";
 import { webApp } from "./telegram";
@@ -55,6 +56,18 @@ function parseScreen(search: string): Screen {
   const page = q.has("page") ? positive(q.get("page")) : 1;
   if ((tab !== null && tab !== "archive") || !page) return fallback;
   return { name: "list", at: { tab: tab === "archive" ? 1 : 0, page } };
+}
+
+// allowedScreen is screen as role allows it, or screen itself when it is allowed. Only a full admin
+// creates or edits: for any other role a new screen falls back to the list it was opened from,
+// and an edit screen to that giveaway's details. A partner sees one screen whatever the URL
+// says, so their screen is the list, which has no back button.
+function allowedScreen(screen: Screen, role: Me["role"]): Screen {
+  if (role === "partner") return screen.name === "list" ? screen : { name: "list", at: home };
+  if (role === "full") return screen;
+  if (screen.name === "new") return { name: "list", at: screen.from };
+  if (screen.name === "edit") return { name: "details", id: screen.id, from: screen.from };
+  return screen;
 }
 
 // screenURL is the address of screen. It keeps the hash, where Telegram passes its launch data.
@@ -119,6 +132,22 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
   const [notice, setNotice] = useState<string>();
   const hideNotice = useCallback(() => setNotice(undefined), []);
 
+  // A call the caller's role does not allow shows why and reloads the caller, so the screen
+  // redraws for the role they have now.
+  useEffect(
+    () =>
+      onRoleLost((code) => {
+        setNotice(t(`error.${code}`));
+        me.reload();
+      }),
+    // me.reload only bumps a counter, so the copy from any render works.
+    [t],
+  );
+
+  // Setting state while rendering redraws at once, before the screen the role forbids shows.
+  const allowed = me.data ? allowedScreen(screen, me.data.role) : screen;
+  if (allowed !== screen) setScreen(allowed);
+
   const back = useCallback(() => {
     setScreen((s) => {
       if (s.name === "list") return s;
@@ -150,14 +179,17 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
   }, [screen]);
 
   let body;
-  if (me.loading && !me.data) body = <Loading />;
+  // While the caller reloads, the screen leaves, so it loads again for the role that comes back.
+  if (me.loading) body = <Loading />;
   else if (me.error || !me.data) body = <ErrorText error={me.error} onRetry={me.reload} />;
+  else if (me.data.role === "partner") body = <Partner me={me.data} />;
   else {
     switch (screen.name) {
       case "list": {
         const at = screen.at;
         body = (
           <GiveawayList
+            role={me.data.role}
             tab={at.tab}
             onTab={(tab) => setScreen({ name: "list", at: { tab, page: 1 } })}
             page={at.page}
@@ -187,6 +219,7 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
           <GiveawayDetails
             key={id}
             id={id}
+            role={me.data.role}
             onEdit={(g) => setScreen({ name: "edit", id: g.id, from })}
             onReview={() => setScreen({ name: "review", id, from })}
           />

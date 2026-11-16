@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 )
 
 var (
@@ -26,6 +27,12 @@ var (
 	ErrInvalidAppURL = errors.New("APP_URL is invalid, want https://host or https://host/ without a path, ? or #")
 	// ErrInvalidListenAddr means LISTEN_ADDR is not a host:port address.
 	ErrInvalidListenAddr = errors.New("LISTEN_ADDR is invalid, want host:port or :port")
+	// ErrMissingPrimaryChannel means PRIMARY_CHANNEL_ID is not set.
+	ErrMissingPrimaryChannel = errors.New("PRIMARY_CHANNEL_ID is not set")
+	// ErrInvalidPrimaryChannel means PRIMARY_CHANNEL_ID is not a negative whole number.
+	ErrInvalidPrimaryChannel = errors.New(
+		"PRIMARY_CHANNEL_ID is invalid, want the channel's numeric chat ID, the negative number @userinfobot shows",
+	)
 )
 
 // defaultListenAddr is where the Mini App and its API listen when LISTEN_ADDR is unset. It is
@@ -41,6 +48,7 @@ type Config struct {
 	DatabaseURL      string // the PostgreSQL connection URL
 	AppURL           string // the public https:// URL of the Mini App, as registered with @BotFather
 	ListenAddr       string // the host:port the HTTP server listens on
+	PrimaryChannel   int64  // the chat ID of the channel whose admins run giveaways
 }
 
 // Load reads settings and validates them. Each setting comes from its environment variable when
@@ -60,16 +68,18 @@ func Load(ctx context.Context, dir string) (Config, error) {
 		return dotenv[key]
 	}
 
+	primaryChannel, primaryErr := parsePrimaryChannel(get("PRIMARY_CHANNEL_ID"))
 	cfg := Config{
 		TelegramBotToken: get("TELEGRAM_BOT_TOKEN"),
 		DatabaseURL:      get("DATABASE_URL"),
 		AppURL:           get("APP_URL"),
 		ListenAddr:       get("LISTEN_ADDR"),
+		PrimaryChannel:   primaryChannel,
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = defaultListenAddr
 	}
-	if err := cfg.validate(); err != nil {
+	if err := errors.Join(cfg.validate(), primaryErr); err != nil {
 		return Config{}, fmt.Errorf("invalid config: %w", err)
 	}
 
@@ -137,4 +147,19 @@ func validateListenAddr(addr string) error {
 	}
 
 	return nil
+}
+
+// parsePrimaryChannel reads a channel's chat ID. Telegram gives every channel a negative ID.
+// The parse error is dropped: it quotes the value.
+func parsePrimaryChannel(raw string) (int64, error) {
+	if raw == "" {
+		return 0, ErrMissingPrimaryChannel
+	}
+
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id >= 0 {
+		return 0, ErrInvalidPrimaryChannel
+	}
+
+	return id, nil
 }

@@ -13,7 +13,7 @@ import (
 
 // DrawStore finds due giveaways and records their winners. *Store implements it.
 type DrawStore interface {
-	Due(ctx context.Context, now time.Time) ([]Giveaway, error)
+	Due(ctx context.Context, chatID int64, now time.Time) ([]Giveaway, error)
 	Candidates(ctx context.Context, giveawayID uint) ([]user.User, error)
 	Finish(ctx context.Context, id uint, winnerIDs []int64, now time.Time) error
 }
@@ -48,14 +48,17 @@ type Drawer struct {
 	reviews ReviewSender
 	now     func() time.Time
 	log     *slog.Logger
+	primary int64 // the chat ID of the primary channel; giveaways elsewhere are never drawn
 }
 
-// NewDrawer returns a Drawer.
+// NewDrawer returns a Drawer for the giveaways of the primary channel.
 func NewDrawer(
 	store DrawStore, filter Filter, shuffle func(n int, swap func(i, j int)),
-	reviews ReviewSender, now func() time.Time, log *slog.Logger,
+	reviews ReviewSender, now func() time.Time, log *slog.Logger, primary int64,
 ) *Drawer {
-	return &Drawer{store: store, filter: filter, shuffle: shuffle, reviews: reviews, now: now, log: log}
+	return &Drawer{
+		store: store, filter: filter, shuffle: shuffle, reviews: reviews, now: now, log: log, primary: primary,
+	}
 }
 
 // DrawDue draws every giveaway that is due now and sends each one's results to its creator
@@ -69,7 +72,7 @@ func (d *Drawer) DrawDue(ctx context.Context, b *bot.Bot) {
 func (d *Drawer) drawDue(ctx context.Context, tg Announcer) {
 	now := d.now()
 
-	gs, err := d.store.Due(ctx, now)
+	gs, err := d.store.Due(ctx, d.primary, now)
 	if err != nil {
 		d.log.ErrorContext(ctx, "list due giveaways", "error", err)
 

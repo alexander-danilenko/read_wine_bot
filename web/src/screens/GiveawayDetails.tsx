@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { api, Failure, must, type Giveaway } from "../api/client";
+import { api, Failure, must, type Giveaway, type Me } from "../api/client";
 import { useT, type TextKey } from "../i18n";
 import { openLink } from "../telegram";
 import { formatEnd } from "../time";
-import { Avatar, Button, Card, Confirm, Dialog, ErrorText, Field, Loading, Pill, Section, statusTone, Title, useLoad, useNotify } from "../ui";
+import { Avatar, Button, Card, Confirm, Dialog, ErrorText, Field, Loading, Pill, ReadOnlyNote, Section, statusTone, Title, useLoad, useNotify } from "../ui";
 
 type Action = "cancel" | "restore" | "finish-now";
 
-export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveaway) => void; onReview: () => void }) {
+export default function GiveawayDetails(props: { id: number; role: Me["role"]; onEdit: (g: Giveaway) => void; onReview: () => void }) {
   const t = useT();
   const notify = useNotify();
   const g = useLoad(() => must(api.GET("/api/giveaways/{id}", { params: { path: { id: props.id } } })), [props.id]);
@@ -48,8 +48,10 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
       "details.moved",
     );
 
-  const running = giveaway.status === "active";
-  const changeable = running || giveaway.status === "cancelled";
+  // The server says whether the caller may change this giveaway; without it no change control shows.
+  const running = giveaway.can_change && giveaway.status === "active";
+  const cancelled = giveaway.can_change && giveaway.status === "cancelled";
+  const changeable = running || cancelled;
   const moveError = asking === "move" && failure instanceof Failure && failure.field ? failure : undefined;
 
   return (
@@ -62,6 +64,7 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
         <Pill tone={statusTone(giveaway.status)}>{t(`status.${giveaway.status}`)}</Pill>
       </div>
       {failure !== undefined && !moveError && <ErrorText error={failure} />}
+      {props.role === "read_only" && <ReadOnlyNote />}
       <Card className="flex flex-col gap-1 p-4">
         <p>{giveaway.ends_at ? t("list.ends", { time: formatEnd(giveaway.ends_at) }) : t("list.noEnd")}</p>
         <p className="text-hint">{t("list.participants", { n: giveaway.participants })}</p>
@@ -100,7 +103,7 @@ export default function GiveawayDetails(props: { id: number; onEdit: (g: Giveawa
           </Button>
         </>
       )}
-      {giveaway.status === "cancelled" && (
+      {cancelled && (
         <Button variant="primary" full busy={busy} onClick={() => act("restore", "details.restored")}>
           {t("details.restore")}
         </Button>

@@ -17,6 +17,7 @@ func TestGetReview(t *testing.T) {
 			Subscriptions: []giveaway.Subscription{giveaway.SubscriptionUnknown},
 		}},
 		Rerolled: 2,
+		CanAct:   true,
 	}}
 	mux := newGiveawayMux(t, fake)
 
@@ -26,7 +27,8 @@ func TestGetReview(t *testing.T) {
 	}
 
 	var got struct {
-		Rerolled int `json:"rerolled"`
+		Rerolled int  `json:"rerolled"`
+		CanAct   bool `json:"can_act"`
 		Winners  []struct {
 			FirstName     string   `json:"first_name"`
 			Subscriptions []string `json:"subscriptions"`
@@ -40,8 +42,8 @@ func TestGetReview(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.Rerolled != 2 || len(got.Winners) != 1 || got.Winners[0].Subscriptions[0] != "unknown" {
-		t.Errorf("review = %+v, want rerolled 2 and an unknown subscription", got)
+	if got.Rerolled != 2 || !got.CanAct || len(got.Winners) != 1 || got.Winners[0].Subscriptions[0] != "unknown" {
+		t.Errorf("review = %+v, want rerolled 2, can_act and an unknown subscription", got)
 	}
 
 	if len(got.Channels) != 1 || got.Channels[0].Title != "Read Wine" {

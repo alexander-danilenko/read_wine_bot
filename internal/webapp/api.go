@@ -23,9 +23,11 @@ func errorCodes() []string {
 	return []string{
 		CodeUnauthorized, CodeInternal, CodeInvalid,
 		giveaway.CodeNotFound, giveaway.CodeNotYours, giveaway.CodeFinished, giveaway.CodeNotAdmin,
+		giveaway.CodeReadOnly,
 		giveaway.CodeBotNoRights, giveaway.CodePostGone, giveaway.CodeExists, giveaway.CodeTaken,
 		giveaway.CodeInvalidPostLink, giveaway.CodeInvalidEnd, giveaway.CodeEndInPast, giveaway.CodeInvalidWinners,
-		giveaway.CodeInvalidButtonText, giveaway.CodeOtherChannel, giveaway.CodeDue, giveaway.CodeStale,
+		giveaway.CodeInvalidButtonText, giveaway.CodeOtherChannel, giveaway.CodeNotPrimaryChannel, giveaway.CodeDue,
+		giveaway.CodeStale,
 		giveaway.CodeFailed, giveaway.CodeReviewClosed, giveaway.CodePublishedPartly, giveaway.CodeCannotMessage,
 	}
 }

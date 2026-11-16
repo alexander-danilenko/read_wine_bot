@@ -37,6 +37,7 @@ type ReviewView struct {
 	Winners  []WinnerView
 	Channels []ChannelInfo // the channels whose subscriptions the review shows
 	Rerolled int           // the rerolled-out count: publish and skip send it back (KTD11)
+	CanAct   bool          // the caller is a full admin, so may reroll, publish and skip
 }
 
 // reviewProblems maps the failure notices of results review to Mini App problems.
@@ -55,6 +56,8 @@ func reviewProblems() map[i18n.Key]AppError {
 // staleCode is what a stale reply means for this action.
 func reviewErr(r ReviewReply, staleCode string) error {
 	switch {
+	case r.ReadOnly:
+		return &AppError{Code: CodeReadOnly}
 	case r.Stale:
 		return &AppError{Code: staleCode}
 	case r.Notice == "", r.Notice == i18n.ReviewPublished, r.Notice == i18n.ReviewSkipped:
@@ -75,7 +78,7 @@ func (a *App) Review(ctx context.Context, tg ReviewTelegramAll, userID int64, id
 		return ReviewView{}, err
 	}
 
-	return a.reviewView(ctx, tg, r)
+	return a.reviewView(ctx, tg, userID, r)
 }
 
 // Reroll replaces winner out of giveaway id with another eligible participant.
@@ -85,7 +88,7 @@ func (a *App) Reroll(ctx context.Context, tg ReviewTelegramAll, userID int64, id
 		return ReviewView{}, err
 	}
 
-	return a.reviewView(ctx, tg, r)
+	return a.reviewView(ctx, tg, userID, r)
 }
 
 // Publish posts the results of giveaway id to its channel, if their rerolled-out count is
@@ -105,9 +108,14 @@ func (a *App) Skip(ctx context.Context, tg ReviewTelegramAll, userID int64, id u
 	return reviewErr(a.reviewer.Skip(ctx, tg, userID, id, rerolled), CodeStale)
 }
 
-// reviewView returns the review r shows, with each winner's subscriptions.
-func (a *App) reviewView(ctx context.Context, tg SubscriptionTelegram, r ReviewReply) (ReviewView, error) {
-	g, err := a.view(ctx, r.Giveaway)
+// reviewView returns the review r shows to userID, with each winner's subscriptions.
+func (a *App) reviewView(
+	ctx context.Context,
+	tg SubscriptionTelegram,
+	userID int64,
+	r ReviewReply,
+) (ReviewView, error) {
+	g, err := a.view(ctx, r.Giveaway, userID, r.Role)
 	if err != nil {
 		return ReviewView{}, err
 	}
@@ -122,5 +130,8 @@ func (a *App) reviewView(ctx context.Context, tg SubscriptionTelegram, r ReviewR
 		})
 	}
 
-	return ReviewView{Giveaway: g, Winners: winners, Channels: subs.Channels, Rerolled: r.Results.Rerolled}, nil
+	return ReviewView{
+		Giveaway: g, Winners: winners, Channels: subs.Channels, Rerolled: r.Results.Rerolled,
+		CanAct: r.Role == RoleFull,
+	}, nil
 }

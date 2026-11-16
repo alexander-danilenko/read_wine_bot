@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	channelID int64 = -1_001_234_567_890 // channel IDs are negative and larger than int32
-	adminID   int64 = 7_000_000_001
-	fanID     int64 = 7_000_000_002
+	channelID      int64 = -1_001_234_567_890 // the primary channel; channel IDs are negative and larger than int32
+	otherChannelID int64 = -1_009_876_543_210 // a channel that is not the primary one
+	adminID        int64 = 7_000_000_001
+	fanID          int64 = 7_000_000_002
 )
 
 // memStore keeps giveaways in memory and follows the contract documented on *giveaway.Store:
@@ -25,6 +26,7 @@ type memStore struct {
 	rows         map[uint]*giveaway.Giveaway
 	participants map[uint]map[int64]bool
 	nextID       uint
+	reads        int // calls of Post, ByID, Running, Archived and PendingResults
 }
 
 // errConstraint stands in for a database constraint violation.
@@ -151,6 +153,8 @@ func (f *memStore) Post(_ context.Context, chatID, messageID int64) (giveaway.Gi
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	f.reads++
+
 	for _, id := range f.ids() {
 		if g := f.rows[id]; g.ChatID == chatID && g.MessageID == messageID && isManaged(g) {
 			return *g, nil
@@ -164,6 +168,8 @@ func (f *memStore) ByID(_ context.Context, id uint) (giveaway.Giveaway, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	f.reads++
+
 	if g, ok := f.rows[id]; ok {
 		return *g, nil
 	}
@@ -171,15 +177,17 @@ func (f *memStore) ByID(_ context.Context, id uint) (giveaway.Giveaway, error) {
 	return giveaway.Giveaway{}, giveaway.ErrNotFound
 }
 
-// Archived pages the user's finished and cancelled giveaways, as Store.Archived.
-func (f *memStore) Archived(_ context.Context, userID int64, offset, limit int) ([]giveaway.Giveaway, int, error) {
+// Archived pages the channel's finished and cancelled giveaways, as Store.Archived.
+func (f *memStore) Archived(_ context.Context, chatID int64, offset, limit int) ([]giveaway.Giveaway, int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	f.reads++
 
 	var gs []giveaway.Giveaway
 
 	for _, id := range f.ids() {
-		if g := f.rows[id]; g.CreatedBy == userID && archivedAt(g) != nil {
+		if g := f.rows[id]; g.ChatID == chatID && archivedAt(g) != nil {
 			gs = append(gs, *g)
 		}
 	}
@@ -204,15 +212,17 @@ func archivedAt(g *giveaway.Giveaway) *time.Time {
 	return g.CancelledAt
 }
 
-// Running pages the user's published giveaways without winners, as Store.Running.
-func (f *memStore) Running(_ context.Context, userID int64, offset, limit int) ([]giveaway.Giveaway, int, error) {
+// Running pages the channel's published giveaways without winners, as Store.Running.
+func (f *memStore) Running(_ context.Context, chatID int64, offset, limit int) ([]giveaway.Giveaway, int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	f.reads++
 
 	var gs []giveaway.Giveaway
 
 	for _, id := range f.ids() {
-		if g := f.rows[id]; g.CreatedBy == userID && g.Published && g.FinishedAt == nil {
+		if g := f.rows[id]; g.ChatID == chatID && g.Published && g.FinishedAt == nil {
 			gs = append(gs, *g)
 		}
 	}
@@ -280,14 +290,16 @@ func (f *memStore) Move(_ context.Context, id uint, messageID int64) error {
 }
 
 // PendingResults follows chk_giveaways_results: only a finished giveaway has pending results.
-func (f *memStore) PendingResults(context.Context) ([]giveaway.Giveaway, error) {
+func (f *memStore) PendingResults(_ context.Context, chatID int64) ([]giveaway.Giveaway, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	f.reads++
 
 	var gs []giveaway.Giveaway
 
 	for _, id := range f.ids() {
-		if g := f.rows[id]; g.ResultsPending && g.FinishedAt != nil {
+		if g := f.rows[id]; g.ChatID == chatID && g.ResultsPending && g.FinishedAt != nil {
 			gs = append(gs, *g)
 		}
 	}

@@ -36,6 +36,18 @@ export class Failure extends Error {
   }
 }
 
+// roleLost runs when a call answers that the caller's role does not allow it, for example after
+// the owner took a right away in Telegram, so the app can reload the caller and redraw.
+let roleLost: (code: ErrorCode) => void = () => {};
+
+// onRoleLost sets what runs when a call answers read_only or not_admin, and returns its undo.
+export function onRoleLost(run: (code: ErrorCode) => void): () => void {
+  roleLost = run;
+  return () => {
+    roleLost = () => {};
+  };
+}
+
 // must returns the data of an API call, or throws a Failure.
 export async function must<D>(call: Promise<{ data?: D; error?: unknown }>): Promise<D> {
   let result: { data?: D; error?: unknown };
@@ -45,6 +57,10 @@ export async function must<D>(call: Promise<{ data?: D; error?: unknown }>): Pro
     throw new Failure(undefined);
   }
 
-  if (result.error !== undefined) throw new Failure(result.error as ApiError);
+  if (result.error !== undefined) {
+    const failure = new Failure(result.error as ApiError);
+    if (failure.code === "read_only" || failure.code === "not_admin") roleLost(failure.code);
+    throw failure;
+  }
   return result.data as D;
 }

@@ -10,7 +10,7 @@ import (
 // ADR 0006: a move whose new button fails leaves the giveaway on its old post.
 func TestAppMoveAttachFails(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
 	s.tg.attachErr = giveaway.ErrPostGone
@@ -26,7 +26,7 @@ func TestAppMoveAttachFails(t *testing.T) {
 // Cancel removes the button before it writes the row, so a failed removal changes nothing.
 func TestAppCancelButtonStays(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
 	s.tg.removeErr = errBoom
@@ -41,7 +41,7 @@ func TestAppCancelButtonStays(t *testing.T) {
 
 func TestAppRestoreAfterEnd(t *testing.T) {
 	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
 	v := mustCreate(t, s, app, adminID, appFields(s))
 
 	if _, err := app.Cancel(t.Context(), s.tg, adminID, v.ID); err != nil {
@@ -52,24 +52,4 @@ func TestAppRestoreAfterEnd(t *testing.T) {
 
 	_, err := app.Restore(t.Context(), s.tg, adminID, v.ID)
 	wantAppError(t, err, giveaway.CodeEndInPast, giveaway.FieldEndsAt)
-}
-
-// Pending results show only to a current admin of their channel.
-func TestAppListHidesReviewFromNonAdmin(t *testing.T) {
-	s := newSetup(t)
-	app := giveaway.NewApp(s.ed, nil, s.store)
-	v := mustCreate(t, s, app, otherAdminID, appFields(s))
-
-	drawn := s.store.rows[v.ID]
-	drawn.FinishedAt, drawn.ResultsPending = &s.now, true
-	s.tg.admin = false
-
-	_, review, err := app.List(t.Context(), s.tg, adminID, 0, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(review) != 0 {
-		t.Errorf("review = %+v, want none for a non-admin", review)
-	}
 }

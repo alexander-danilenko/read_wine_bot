@@ -21,9 +21,10 @@ type Operations struct {
 	reviewActions ReviewActions
 	winners       WinnersSender
 	channels      ChannelLister
+	roles         RoleReader
 	langs         LanguageSaver
 	photos        *Photos
-	bot           string // the bot's username, without the @, for the add links
+	bot           string // the bot's username, without the @, for the partner link
 	log           *slog.Logger
 }
 
@@ -31,6 +32,7 @@ type Operations struct {
 type Telegram interface {
 	giveaway.AppTelegram
 	giveaway.ReviewTelegramAll
+	giveaway.ChannelsTelegram
 }
 
 // Domain is the giveaway rules the operations call. *giveaway.App implements every part.
@@ -42,15 +44,22 @@ type Domain interface {
 	ReviewActions
 	WinnersSender
 	ChannelLister
+	RoleReader
 }
 
-// ChannelLister lists the caller's channels and the partner channels. *giveaway.App implements it.
+// RoleReader reads what a user may do in the app. *giveaway.App implements it.
+type RoleReader interface {
+	Role(ctx context.Context, tg giveaway.MemberReader, userID int64) (giveaway.Role, error)
+}
+
+// ChannelLister lists the channels where the bot is an admin by the caller's role.
+// *giveaway.App implements it.
 type ChannelLister interface {
-	MyChannels(ctx context.Context, tg giveaway.AdminChannelsTelegram, userID int64) (giveaway.ChannelLists, error)
+	MyChannels(ctx context.Context, tg giveaway.ChannelsTelegram, userID int64) (giveaway.ChannelLists, error)
 }
 
 // NewOperations returns the API's operations over d. tg makes the Telegram calls, langs saves
-// the language a user picks, and bot is the bot's username for the links that add it.
+// the language a user picks, and bot is the bot's username for the link that adds it to a partner channel.
 func NewOperations(
 	tg Telegram, d Domain, photos *Photos, langs LanguageSaver, bot string, log *slog.Logger,
 ) *Operations {
@@ -63,6 +72,7 @@ func NewOperations(
 		reviewActions: d,
 		winners:       d,
 		channels:      d,
+		roles:         d,
 		langs:         langs,
 		photos:        photos,
 		bot:           bot,

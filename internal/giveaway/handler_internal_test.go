@@ -123,11 +123,6 @@ func TestCanRunGiveaways(t *testing.T) {
 		want bool
 	}{
 		{"both rights", admin(true, true), true},
-		{
-			"the rights the bot requests",
-			admin(requiredRights().CanEditMessages, requiredRights().CanPostMessages),
-			true,
-		},
 		{"no post right", admin(true, false), false},
 		{"no edit right", admin(false, true), false},
 		{

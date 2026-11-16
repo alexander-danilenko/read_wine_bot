@@ -42,8 +42,7 @@ type PublishStore interface {
 
 // ReviewTelegram is what results review needs from the Telegram API.
 type ReviewTelegram interface {
-	// IsChannelAdmin reports whether the user is the creator or an administrator of the channel.
-	IsChannelAdmin(ctx context.Context, chatID, userID int64) (bool, error)
+	MemberReader
 	// SendHTML sends an HTML text to the chat, as a reply to message replyTo unless it is 0.
 	// A replyTo that no longer exists sends the text without the reply.
 	SendHTML(ctx context.Context, chatID, replyTo int64, text string) error
@@ -55,7 +54,9 @@ type ReviewReply struct {
 	Notice   i18n.Key // what happened; "" for nothing to say
 	Giveaway Giveaway
 	Results  Results
+	Role     Role // the user's role, set with the screen
 	Stale    bool // the action no longer applies, so nothing changed
+	ReadOnly bool // the user may look at the review but not act on it, so nothing changed
 }
 
 // Reviewer holds the rules of results review: who may review, how a winner is replaced and
@@ -70,20 +71,21 @@ type Reviewer struct {
 	texts    *i18n.Catalog
 	now      func() time.Time
 	log      *slog.Logger
-	maxWidth int // Telegram's message length limit; tests lower it
+	maxWidth int   // Telegram's message length limit; tests lower it
+	primary  int64 // the chat ID of the primary channel; giveaways elsewhere are not found
 }
 
 // NewReviewer returns a Reviewer. filter and shuffle are the winner draw's, so a replacement
 // is picked the way the draw picks winners. channels lists the channels whose subscriptions
-// the review shows next to each winner.
+// the review shows next to each winner. Giveaways outside the primary channel are not found.
 func NewReviewer(
 	store ReviewStore, rerolls RerollStore, publish PublishStore, channels Channels,
 	filter Filter, shuffle func(n int, swap func(i, j int)),
-	texts *i18n.Catalog, now func() time.Time, log *slog.Logger,
+	texts *i18n.Catalog, now func() time.Time, log *slog.Logger, primary int64,
 ) *Reviewer {
 	return &Reviewer{
 		store: store, rerolls: rerolls, publish: publish, channels: channels, filter: filter, shuffle: shuffle,
-		texts: texts, now: now, log: log, maxWidth: maxMessageLen,
+		texts: texts, now: now, log: log, maxWidth: maxMessageLen, primary: primary,
 	}
 }
 
@@ -94,7 +96,7 @@ func (r *Reviewer) Show(ctx context.Context, tg ReviewTelegram, userID int64, id
 		return reply
 	}
 
-	return ReviewReply{Giveaway: g, Results: res}
+	return ReviewReply{Giveaway: g, Results: res, Role: reply.Role}
 }
 
 // Reroll replaces winner out of giveaway id with a random eligible participant who passes
@@ -102,7 +104,7 @@ func (r *Reviewer) Show(ctx context.Context, tg ReviewTelegram, userID int64, id
 func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, id uint, out int64) ReviewReply {
 	log := r.log.With("user_id", userID, "giveaway_id", id)
 
-	g, res, reply, ok := r.load(ctx, tg, userID, id)
+	g, res, reply, ok := r.loadToAct(ctx, tg, userID, id)
 	if !ok {
 		return reply
 	}
@@ -138,7 +140,7 @@ func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, 
 		return ReviewReply{Notice: i18n.EditFailed}
 	}
 
-	return ReviewReply{Giveaway: g, Results: res}
+	return ReviewReply{Giveaway: g, Results: res, Role: RoleFull}
 }
 
 // Skip closes giveaway id without posting its results, if they are still the results the
@@ -147,7 +149,7 @@ func (r *Reviewer) Reroll(ctx context.Context, tg ReviewTelegram, userID int64, 
 func (r *Reviewer) Skip(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
 	log := r.log.With("user_id", userID, "giveaway_id", id)
 
-	g, res, reply, ok := r.load(ctx, tg, userID, id)
+	g, res, reply, ok := r.loadToAct(ctx, tg, userID, id)
 	if !ok {
 		return reply
 	}
@@ -179,7 +181,7 @@ func (r *Reviewer) Skip(ctx context.Context, tg ReviewTelegram, userID int64, id
 func (r *Reviewer) Publish(ctx context.Context, tg ReviewTelegram, userID int64, id uint, rerolled int) ReviewReply {
 	log := r.log.With("user_id", userID, "giveaway_id", id)
 
-	g, res, reply, ok := r.load(ctx, tg, userID, id)
+	g, res, reply, ok := r.loadToAct(ctx, tg, userID, id)
 	if !ok {
 		return reply
 	}
@@ -254,13 +256,24 @@ func (r *Reviewer) SendWinners(ctx context.Context, tg ReviewTelegram, userID in
 	return ReviewReply{Giveaway: g, Results: res}
 }
 
-// load reads giveaway id and its results and checks that they wait for review and that the
-// user is an admin of its channel. It returns the reply to send instead and false when a
-// check fails.
+// load checks that the user is an admin of the primary channel, then reads giveaway id of it
+// and its results and checks that they wait for review. It returns the reply to send instead
+// and false when a check fails, or a reply with the user's role and true.
 func (r *Reviewer) load(
 	ctx context.Context, tg ReviewTelegram, userID int64, id uint,
 ) (Giveaway, Results, ReviewReply, bool) {
 	log := r.log.With("user_id", userID, "giveaway_id", id)
+
+	role, err := roleIn(ctx, tg, r.log, r.primary, userID)
+	if err != nil {
+		log.WarnContext(ctx, "read admin role", "error", err)
+
+		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.EditFailed}, false
+	}
+
+	if role == RolePartner {
+		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.ReviewNotAdmin}, false
+	}
 
 	g, err := r.store.ByID(ctx, id)
 	if errors.Is(err, ErrNotFound) {
@@ -273,19 +286,12 @@ func (r *Reviewer) load(
 		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.EditFailed}, false
 	}
 
+	if g.ChatID != r.primary {
+		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.EditNotFound}, false
+	}
+
 	if !g.ResultsPending {
 		return Giveaway{}, Results{}, ReviewReply{Stale: true}, false
-	}
-
-	isAdmin, err := tg.IsChannelAdmin(ctx, g.ChatID, userID)
-	if err != nil {
-		log.WarnContext(ctx, "check channel admin", "chat_id", g.ChatID, "error", err)
-
-		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.EditFailed}, false
-	}
-
-	if !isAdmin {
-		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.ReviewNotAdmin}, false
 	}
 
 	res, err := r.store.Results(ctx, id)
@@ -295,7 +301,20 @@ func (r *Reviewer) load(
 		return Giveaway{}, Results{}, ReviewReply{Notice: i18n.EditFailed}, false
 	}
 
-	return g, res, ReviewReply{}, true
+	return g, res, ReviewReply{Role: role}, true
+}
+
+// loadToAct is load for an action that changes the results: reroll, publish or skip. It
+// needs a full admin.
+func (r *Reviewer) loadToAct(
+	ctx context.Context, tg ReviewTelegram, userID int64, id uint,
+) (Giveaway, Results, ReviewReply, bool) {
+	g, res, reply, ok := r.load(ctx, tg, userID, id)
+	if ok && reply.Role != RoleFull {
+		return Giveaway{}, Results{}, ReviewReply{ReadOnly: true}, false
+	}
+
+	return g, res, reply, ok
 }
 
 // pick returns a random eligible participant of g that passes the filter, or 0 when none is

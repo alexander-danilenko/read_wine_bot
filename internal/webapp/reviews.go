@@ -79,10 +79,11 @@ func subscription(s giveaway.Subscription) string {
 
 type reviewOutput struct {
 	Body struct {
-		Giveaway giveawayBody  `doc:"The drawn giveaway"                                  json:"giveaway"`
-		Winners  []winnerBody  `doc:"Current winners in place order"                      json:"winners"`
-		Channels []channelBody `doc:"Channels whose subscriptions the review shows"       json:"channels"`
-		Rerolled int           `doc:"Rerolled-out count; send it back to publish or skip" json:"rerolled"`
+		Giveaway giveawayBody  `doc:"The drawn giveaway"                                           json:"giveaway"`
+		Winners  []winnerBody  `doc:"Current winners in place order"                               json:"winners"`
+		Channels []channelBody `doc:"Channels whose subscriptions the review shows"                json:"channels"`
+		Rerolled int           `doc:"Rerolled-out count; send it back to publish or skip"          json:"rerolled"`
+		CanAct   bool          `doc:"Whether the caller may reroll, publish or skip: a full admin" json:"can_act"`
 	}
 }
 
@@ -192,7 +193,7 @@ func (o *Operations) review(ctx context.Context, v giveaway.ReviewView, err erro
 	}
 
 	out := &reviewOutput{}
-	out.Body.Giveaway, out.Body.Rerolled = toBody(v.Giveaway), v.Rerolled
+	out.Body.Giveaway, out.Body.Rerolled, out.Body.CanAct = toBody(v.Giveaway), v.Rerolled, v.CanAct
 
 	out.Body.Channels = make([]channelBody, 0, len(v.Channels))
 	for _, ch := range v.Channels {
