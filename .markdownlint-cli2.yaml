@@ -13,6 +13,9 @@
 # Skip everything .gitignore excludes (local notes, scratch space, worktrees), so no separate
 # ignore list has to mirror it. This applies to single-file runs too.
 gitignore: true
+# Vendored third-party skill (Apple HIG pages in Apple's wording): keep it byte-identical to upstream.
+ignores:
+  - ".claude/skills/**"
 
 # Rule settings — https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
 config:

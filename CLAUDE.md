@@ -114,3 +114,5 @@ The owner drives work with Matt Pocock's engineering skills, one step at a time.
 
 - **Issue tracker:** GitHub issues in `alexander-danilenko/read_wine_bot`, on the Read Wine Bot project (see Issue tracker above). See `docs/agents/issue-tracker.md`.
 - **Domain docs:** single-context, `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+- **Apple design:** `.claude/skills/apple-design` is a git submodule of [dickwu/apple-design-skill](https://github.com/dickwu/apple-design-skill). If the folder is empty, download it first: `git submodule update --init`. Never edit its files; markdownlint skips them.
+- **Frontend work must use `apple-design`.** Invoke the skill before any step that touches the Mini App's UI (`web/`): brainstorm, plan, plan review, implementation and code review. Use it to decide and check layout, spacing, controls, navigation, copy and accessibility, and cite its guidance for each UI/UX decision or finding. A review of a `web/` change is incomplete without an apple-design pass.
