@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/header.svg" alt="read_wine_bot: giveaways for Telegram channels" width="100%">
+  <img src="docs/assets/header.svg" alt="read_wine_bot: one bot, one channel, many tools" width="100%">
 </p>
 
 <p align="center">
@@ -12,26 +12,35 @@
 
 # 🍷 read_wine_bot
 
-[@read_wine_bot](https://t.me/read_wine_bot) is a Telegram bot that runs giveaways on channel posts. It was built for the [@read_wine](https://t.me/read_wine) channel and runs giveaways only in its primary channel; every other channel that adds it is a giveaway partner.
+One bot, one channel. [@read_wine_bot](https://t.me/read_wine_bot) is the helper of the [@read_wine](https://t.me/read_wine) Telegram channel: it does routine jobs for that channel and its admins. Giveaways are the first job; more will follow.
 
-> [!WARNING]
-> The hosted [@read_wine_bot](https://t.me/read_wine_bot) has no guarantees. It can stop, lose data or change at any time. For your own channel, [host it yourself](#-run-your-own) with your own bot token.
+The bot is not a service for other channels. Each copy works for exactly one channel, its **primary channel**, set by `PRIMARY_CHANNEL_ID`. Other channels can only connect as giveaway partners. To get the same helper for your channel, [host your own copy](#-self-hosting) with your own bot token.
 
 | | |
 | --- | --- |
-| **What** | Giveaways on Telegram channel posts, with an admin review before the bot publishes the results |
-| **Who** | Channel owners, their admins and giveaway partners |
+| **For** | One primary channel and its admins; partner channels take part in its giveaways |
+| **Jobs** | Giveaways and channel analytics |
 | **Languages** | 🇺🇦 Ukrainian (default) and 🇬🇧 English, picked per user in the Mini App's settings (`/language` opens them) |
-| **Stack** | Go 1.27, PostgreSQL 18; a multi-arch Docker image and static binaries for Linux, macOS and Windows |
+| **Stack** | Go 1.27, PostgreSQL 18, a React Mini App embedded in one static binary |
 
-## ✨ What it does
+## ✨ What it does for the channel
 
-- 🎟️ **Join button.** Adds a join button under a channel post and collects participants.
-- 🎲 **Random draw.** Draws winners at random when the giveaway ends.
-- 🔍 **Review before publishing.** Channel admins see which channels each winner is subscribed to, and can replace a winner. Then they publish the results under the post, or close the giveaway without results.
-- 📱 **Mini App.** Admins create, edit and review giveaways in a Telegram Mini App that opens from the chat with the bot. Its Help explains the bot and adds it to a channel; its Settings change the language and list your channels.
+- 🎁 **Giveaways.** Adds a join button under a channel post, draws winners at random when the giveaway ends, and lets admins review the winners before it publishes the results under the post.
+- 📈 **Channel analytics.** Shows how the channel grows: which invite links and ads bring subscribers who stay, and how each post affects subscriptions.
 
-## 🔄 How a giveaway works
+Admins work in a Telegram Mini App that opens from the chat with the bot.
+
+## 👥 Who sees what
+
+The bot reads each user's role from Telegram on every request, so a change of rights applies at once.
+
+| Role | Who | What they can do |
+| --- | --- | --- |
+| **Full admin** | The owner of the primary channel, or its admin with both **Post messages** and **Edit messages of others** | Create giveaways, review and publish results. Changing or cancelling a giveaway also needs being its creator |
+| **Read-only admin** | Any other admin of the primary channel | See every giveaway and results review, change nothing |
+| **Partner** | Everyone else | See one screen: their channels connected to the bot, and the link to connect another |
+
+## 🎁 How a giveaway works
 
 ```mermaid
 flowchart LR
@@ -44,128 +53,57 @@ flowchart LR
     F --> H["🤫 Or close<br/>without publishing"]
 ```
 
-## 🔐 Add the bot to a channel
+During the review, admins see which partner channels each winner subscribes to.
 
-Send `/start` to [@read_wine_bot](https://t.me/read_wine_bot) and open the app: partners see their connect link there, and the **Help** screen explains each permission.
+## 🤝 Connect a partner channel
 
-- 📢 **Primary channel** (self-hosting only, set by `PRIMARY_CHANNEL_ID`): [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=post_messages+edit_messages) with only **Post messages** (publishes the results) and **Edit messages of others** (adds the join button). Disable every other toggle.
-- 🤝 **Giveaway partner:** [add the bot as an admin](https://t.me/read_wine_bot?startchannel&admin=manage_chat) with every permission disabled. Telegram shows subscriptions only to admins, and that is all the bot reads.
+A partner channel lets the bot check which winners subscribe to it. The bot only reads subscriptions there and never posts.
 
-> [!NOTE]
-> A partner channel appears in the bot's app settings only to the admins of the primary channel, and in the results review of every giveaway the bot runs, where admins of other channels see which winners subscribe to it. To end a partnership, remove the bot from your admins.
+1. Send `/start` to the bot and open the app.
+2. Open the **Connect a channel** link in Telegram and pick your channel. It adds the bot as an admin with every permission off; Telegram shows subscriptions only to admins.
+3. Tap **Refresh**. Your channel appears in the list, with a warning if the bot has more rights than it needs.
 
-For your own bot, put its username in the links.
+To end a partnership, remove the bot from your channel's admins.
 
-## 🚀 Run your own
+## 🚀 Self-hosting
 
-Requirements:
+Each copy of the bot serves one channel, so your channel needs its own bot.
 
-- Docker with Compose.
+### Prerequisites
+
+- A server reachable from the internet, with a domain that serves HTTPS and proxies to the bot's port (`8080` by default). Telegram loads the Mini App on users' devices, so `localhost` or a private address does not work.
+- PostgreSQL 18.
 - A bot token from [@BotFather](https://t.me/BotFather).
-- A public HTTPS endpoint for the Mini App (reverse proxy or Cloudflare Tunnel) that forwards to the bot's `LISTEN_ADDR`. Register the same URL as the bot's Mini App URL in @BotFather. Telegram refuses `http://`, `localhost` and private addresses; for local work see [Test the Mini App locally](#-test-the-mini-app-locally).
+- Your channel's ID: forward a channel post to [@userinfobot](https://t.me/userinfobot). The bot replies with a negative number, for example `-1001234567890`. It stays the same when you rename the channel.
 
-Configuration is environment-only:
+### Setup
+
+1. Add the bot to your channel as an admin with only **Post messages** and **Edit messages of others**: `https://t.me/<your_bot>?startchannel&admin=post_messages+edit_messages`.
+2. Download the archive for your platform from the [latest release](https://github.com/alexander-danilenko/read_wine_bot/releases/latest) and unpack it. The binary has the Mini App built in.
+3. Copy `.env.example` to `.env` next to the binary and fill it in (table below).
+4. Run `./read_wine_bot`.
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | yes | Bot token from @BotFather |
-| `DATABASE_URL` | yes | `postgres://user:password@host:port/database`; the bot creates and migrates its tables on start |
+| `TELEGRAM_BOT_TOKEN` | yes | Bot token from [@BotFather](https://t.me/BotFather) |
+| `DATABASE_URL` | yes | `postgres://user:password@host:port/database`; tables are created and migrated on start |
 | `APP_URL` | yes | Public `https://` URL of the Mini App |
-| `PRIMARY_CHANNEL_ID` | yes | Numeric chat ID of the channel whose admins run giveaways, the negative number @userinfobot shows; the bot must be an admin there with Post messages and Edit messages of others |
-| `LISTEN_ADDR` | no | HTTP listen address for the Mini App and its API, default `:8080` |
+| `PRIMARY_CHANNEL_ID` | yes | Your channel's ID from [@userinfobot](https://t.me/userinfobot) |
+| `LISTEN_ADDR` | no | Listen address for the Mini App and its API, default `:8080` |
 
-The bot validates every setting, pings the database, calls `getMe` and checks its rights in the primary channel at startup, and exits with a descriptive error if any check fails.
+The bot checks every setting, the database and its rights in the channel at startup, and exits with an error if any check fails.
 
-### 🐳 Docker Compose
-
-The image is `ghcr.io/alexander-danilenko/read_wine_bot`, built for `linux/amd64` and `linux/arm64`, tagged with each release version (`2.10.0`) and `latest`.
-
-```yaml
-services:
-  db:
-    image: postgres:18
-    restart: unless-stopped
-    environment: # not published outside the compose network
-      POSTGRES_USER: pgusername
-      POSTGRES_PASSWORD: pgpassword
-      POSTGRES_DB: pgdatabasename
-    volumes:
-      - pgdata:/var/lib/postgresql # Postgres 18 keeps data in /var/lib/postgresql/18/docker
-
-  bot:
-    image: ghcr.io/alexander-danilenko/read_wine_bot:latest
-    restart: unless-stopped
-    environment:
-      TELEGRAM_BOT_TOKEN: replace-with-the-bot-token
-      DATABASE_URL: postgres://pgusername:pgpassword@db:5432/pgdatabasename?sslmode=disable
-      APP_URL: https://bot.example.com
-      PRIMARY_CHANNEL_ID: "-1001234567890"
-      LISTEN_ADDR: ":${PORT:-8080}"
-    ports:
-      - "${PORT:-8080}:${PORT:-8080}"
-    depends_on:
-      - db # the bot exits while the database is not ready, and the restart policy retries
-    stop_grace_period: 2m # lets an in-flight winner draw finish its Telegram calls
-
-  # Optional Cloudflare Tunnel: route its public hostname to http://bot:8080.
-  # tunnel:
-  #   image: cloudflare/cloudflared:latest
-  #   restart: unless-stopped
-  #   command: tunnel --no-autoupdate run
-  #   environment:
-  #     TUNNEL_TOKEN: replace-with-the-tunnel-token
-  #   depends_on:
-  #     - bot
-
-volumes:
-  pgdata:
-```
-
-Pin a version tag instead of `latest` for reproducible deploys. Upgrade with `docker compose pull && docker compose up -d`; the schema migrates on start.
-
-<details>
-<summary>📦 Release binary</summary>
-
-[Releases](https://github.com/alexander-danilenko/read_wine_bot/releases) carry static binaries for Linux, macOS and Windows on `amd64` and `arm64`, plus `.env.example`. The bot reads `.env` from the working directory and each parent directory; a nearer file wins, and a non-empty environment variable overrides every file. On macOS, clear the quarantine flag once: `xattr -d com.apple.quarantine read_wine_bot`.
-
-</details>
-
-<details>
-<summary>🐹 Build from source</summary>
-
-Needs Go 1.27+ and Node.js 26. The binary embeds the Mini App, so build `web/` first; `go install` skips that step and the bot refuses to start.
+## 🛠️ Development
 
 ```sh
-npm --prefix web ci --ignore-scripts
-npm --prefix web run build
+git clone https://github.com/alexander-danilenko/read_wine_bot.git && cd read_wine_bot
+npm --prefix web ci --ignore-scripts && npm --prefix web run build
 go build .
-```
-
-Or build the image: `docker build -t read_wine_bot .`
-
-</details>
-
-### 🧪 Test the Mini App locally
-
-The `Caddyfile` serves `https://bot-local.readwine.com.ua` with Caddy's local CA and proxies to `:8080`. This works in Telegram Desktop on the same machine only.
-
-```sh
-brew install caddy
+cp .env.example .env    # fill in development values, with APP_URL=https://bot-local.readwine.com.ua
 echo "127.0.0.1 bot-local.readwine.com.ua" | sudo tee -a /etc/hosts
-sudo caddy trust
-sudo caddy run                               # from the repo root
-docker compose up -d                         # local PostgreSQL from docker-compose.yml
-npm --prefix web run build && go run .       # with APP_URL=https://bot-local.readwine.com.ua in .env
+sudo caddy start        # serves the Caddyfile: local HTTPS in front of :8080
+./read_wine_bot
 ```
-
-## 🧭 Where to read next
-
-| File | What is in it |
-| --- | --- |
-| [CLAUDE.md](CLAUDE.md) | Developer notes, commands and conventions, for humans and coding agents |
-| [GLOSSARY.md](GLOSSARY.md) | Domain terms, for example giveaway, winner draw, results review and reroll |
-| [docs/adr/](docs/adr/) | Architecture decisions and the reasons for them |
-| [docs/telegram-ux.md](docs/telegram-ux.md) | Rules for everything the user sees in Telegram |
 
 ## 📄 License
 

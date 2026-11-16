@@ -1,6 +1,6 @@
 # Local HTTPS for the Mini App: https://bot-local.readwine.com.ua -> the bot on :8080.
 # Telegram loads the Mini App on your device, so a name that resolves only on this Mac works
-# for Telegram Desktop here. Setup: README, "Test the Mini App locally".
+# for Telegram Desktop here. Setup: README, "Development".
 
 bot-local.readwine.com.ua {
 	# Caddy's own local CA: the name has no public DNS, so Let's Encrypt cannot issue a cert.
