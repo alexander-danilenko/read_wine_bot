@@ -6,7 +6,7 @@ Tests never open a database (`CLAUDE.md`), so a `Store` query is only checked by
 
 ## Guidance
 
-1. Start the local database: `docker compose up -d`.
+1. Start the local database: `docker compose up -d db`.
 2. Write `tmpcheck/main.go` in the repo root. It must sit inside the module, or it cannot import `internal/` packages. Load the config and open the database the way `main` does, so `AutoMigrate` and the table comments run too:
 
    ```go

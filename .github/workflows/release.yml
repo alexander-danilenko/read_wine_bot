@@ -1,6 +1,6 @@
 # Publishes a release when check passes on a main commit whose const version in main.go has no tag
-# yet: the Docker image on GHCR, then the git tag and the GitHub Release. main.go is the one source
-# of the version: nobody tags by hand.
+# yet: the git tag and the GitHub Release. main.go is the one source of the version: nobody tags
+# by hand.
 name: release
 
 on:
@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  packages: write # push the image to ghcr.io
 
 jobs:
   release:
@@ -37,28 +36,6 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "new=true" >> "$GITHUB_OUTPUT"
-
-      # The image goes first: if its push fails, no tag exists yet, so a re-run retries cleanly.
-      - if: steps.tag.outputs.new == 'true'
-        name: Log in to GHCR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-
-      - if: steps.tag.outputs.new == 'true'
-        # A docker-container builder: the default docker driver cannot push multi-platform images.
-        uses: docker/setup-buildx-action@v4
-
-      - if: steps.tag.outputs.new == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: . # the checked-out head_sha; the default git context would build the default branch
-          platforms: linux/amd64,linux/arm64
-          provenance: false # attestations are out of scope and show up as unknown/unknown images
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.version }}
-            ghcr.io/${{ github.repository }}:latest
 
       - if: steps.tag.outputs.new == 'true'
         name: Tag the version

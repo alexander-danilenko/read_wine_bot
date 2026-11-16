@@ -1,4 +1,4 @@
-# Local PostgreSQL for the bot. The bot connects with DATABASE_URL from .env.example.
+# PostgreSQL and the bot. Outside compose, the bot connects with DATABASE_URL from .env.example.
 # The credentials apply only when the data volume is first created; to change them later,
 # run `docker compose down -v` (deletes the data).
 services:
@@ -20,21 +20,22 @@ services:
       timeout: 3s
       retries: 10
 
-#  # The bot itself, built from the Dockerfile. Uncomment to run it in Docker instead of `go run .`.
-#  bot:
-#    build: .
-#    restart: unless-stopped
-#    env_file: .env
-#    environment:
-#      # Inside compose the database host is the service name, not localhost.
-#      DATABASE_URL: postgres://postgres:postgres@db:5432/read_wine_bot?sslmode=disable
-#    ports:
-#      - "127.0.0.1:8080:8080" # the Mini App; put an HTTPS tunnel or proxy in front for Telegram
-#    depends_on:
-#      db:
-#        condition: service_healthy
-#    # A winner draw can spend up to a minute per Telegram call; Docker's 10 s default would cut it off.
-#    stop_grace_period: 2m
+  # The bot, built from the Dockerfile. For local work with `go run .`, start only the database:
+  # `docker compose up -d db`.
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Inside compose the database host is the service name, not localhost.
+      DATABASE_URL: postgres://postgres:postgres@db:5432/read_wine_bot?sslmode=disable
+    ports:
+      - "127.0.0.1:8080:8080" # the Mini App; put an HTTPS proxy such as Caddy in front for Telegram
+    depends_on:
+      db:
+        condition: service_healthy
+    # A winner draw can spend up to a minute per Telegram call; Docker's 10 s default would cut it off.
+    stop_grace_period: 2m
 
 volumes:
   pgdata:

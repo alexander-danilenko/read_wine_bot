@@ -34,7 +34,7 @@ Use issue references without being asked:
 
 Tools: `brew install go node golangci-lint markdownlint-cli2 jq actionlint`. The lint config was tested with golangci-lint 2.13; after a `brew upgrade`, new linters that `default: all` turns on may report new findings.
 
-Config comes only from environment variables and `.env` files (the bot ships as a Docker container): copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result (Fail fast in [CODING_STANDARDS.md](CODING_STANDARDS.md)). A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot. In Docker, pass settings with `docker run --env-file .env` or Compose `env_file:`.
+Config comes only from environment variables and `.env` files: copy `.env.example` to `.env`. `internal/config` reads `.env` in the working directory and in every parent directory up to `/`, then validates the result (Fail fast in [CODING_STANDARDS.md](CODING_STANDARDS.md)). A nearer `.env` overrides the same key from a parent's, a non-empty environment variable overrides every file, and a malformed line in any of them stops the bot.
 
 Lint a package directory, never a single `.go` file: `golangci-lint run file.go` treats the file as its own package and reports false `undefined (typecheck)` errors.
 
@@ -63,12 +63,12 @@ CODING_STANDARDS.md  # Go style, fail-fast and SOLID rules that /code-review enf
 - The Mini App's npm packages are limited the same way: runtime `react`, `react-dom`, `openapi-fetch`, `lucide-react` (icons); build-only `vite`, `@vitejs/plugin-react`, `tailwindcss`, `@tailwindcss/vite`, `typescript`, `openapi-typescript`, `@types/react`, `@types/react-dom`.
 - After changing an API operation, run `UPDATE_OPENAPI=1 go test ./internal/webapp/ -run OpenAPI` to rewrite `web/openapi.json`; the test fails while it is out of date.
 - To propose a module, state what the standard library lacks, the module's transitive dependency count and its last release date.
-- Keep `CGO_ENABLED=0` builds working: the Docker image is static.
+- Keep `CGO_ENABLED=0` builds working: the binary is static.
 - Tests never open a database, real or embedded: test the code above a store with in-memory fakes of its interfaces.
 
 ## Database
 
-- PostgreSQL only, through GORM with `AutoMigrate` from Go structs. The database runs outside this repo; `DATABASE_URL` (`postgres://user:password@host:port/database`) is the only setting the bot needs. For local work, `docker compose up -d` starts PostgreSQL 18 with the credentials inline in `docker-compose.yml`, which match `DATABASE_URL` in `.env.example`; the image applies them on the first start of an empty volume.
+- PostgreSQL only, through GORM with `AutoMigrate` from Go structs. The database runs outside this repo; `DATABASE_URL` (`postgres://user:password@host:port/database`) is the only setting the bot needs. For local work, `docker compose up -d db` starts PostgreSQL 18 with the credentials inline in `docker-compose.yml`, which match `DATABASE_URL` in `.env.example`; the image applies them on the first start of an empty volume.
 - Backups belong to the hosting (the owner's Dokploy), not to this repo. Do not add a backup service, script or schedule here.
 - Describe every column with a `comment:` in its `gorm` tag, and every table and named index in `descriptions()` in `internal/db/db.go`, so database tools show what each holds. `TestEverythingDescribed` enforces it.
 - `AutoMigrate` never drops or renames columns. Ask the owner before any destructive schema change.
@@ -106,7 +106,7 @@ Every commit follows [Conventional Commits 1.0](https://www.conventionalcommits.
 - Every commit that changes what ships bumps it, in that same commit: non-test `.go` files, `go.mod`, `go.sum`, the files `internal/i18n` embeds, anything under `web/` (the Mini App the binary embeds), or the `Dockerfile`. Any other commit leaves it alone, since each bump publishes a release.
 - `feat` -> minor (`1.1.1` -> `1.2.0`), patch reset to 0. Every other type -> patch (`1.1.0` -> `1.1.1`). A breaking change (`!`) -> major (`1.4.2` -> `2.0.0`).
 - The `version-bump-gate.sh` hook (PreToolUse on Bash) blocks a `git commit` that breaks this rule. Bump, stage `main.go` and commit again; do not work around the hook.
-- A bump reaching `main` is a release: once `check` passes, `.github/workflows/release.yml` pushes the multi-arch image `ghcr.io/alexander-danilenko/read_wine_bot:<version>` and `:latest` from the `Dockerfile`, then tags `v<version>`, and GoReleaser (`.goreleaser.yaml`) publishes a GitHub Release with binaries and a changelog from the Conventional Commit types. Never tag by hand. Try the config locally with `goreleaser release --snapshot --clean --skip=publish`.
+- A bump reaching `main` is a release: once `check` passes, `.github/workflows/release.yml` tags `v<version>`, and GoReleaser (`.goreleaser.yaml`) publishes a GitHub Release with binaries and a changelog from the Conventional Commit types. Never tag by hand. Try the config locally with `goreleaser release --snapshot --clean --skip=publish`.
 
 ## Agent skills
 
