@@ -31,6 +31,7 @@ const (
 	colCancelled  = "cancelled_at"
 	colWinners    = "winners"
 	colButtonText = "button_text"
+	colAdminLabel = "admin_label"
 	colFinished   = "finished_at"
 	colMessageID  = "message_id"
 	colPending    = "results_pending"
@@ -76,15 +77,23 @@ func (s *Store) Publish(ctx context.Context, id uint) error {
 func (s *Store) SaveDraft(ctx context.Context, g *Giveaway) error {
 	now := time.Now()
 	row := map[string]any{
-		"chat_id": g.ChatID, "message_id": g.MessageID, "created_by": g.CreatedBy, "language": g.Language,
-		colEndsAt: g.EndsAt, colWinners: g.Winners, colButtonText: g.ButtonText, colPublished: false,
-		"created_at": now, "updated_at": now,
+		"chat_id":     g.ChatID,
+		"message_id":  g.MessageID,
+		"created_by":  g.CreatedBy,
+		"language":    g.Language,
+		colEndsAt:     g.EndsAt,
+		colWinners:    g.Winners,
+		colButtonText: g.ButtonText,
+		colAdminLabel: g.AdminLabel,
+		colPublished:  false,
+		"created_at":  now,
+		"updated_at":  now,
 	}
 
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "chat_id"}, {Name: "message_id"}},
 		DoUpdates: clause.AssignmentColumns(
-			[]string{"created_by", "language", colEndsAt, colWinners, colButtonText, "updated_at"},
+			[]string{"created_by", "language", colEndsAt, colWinners, colButtonText, colAdminLabel, "updated_at"},
 		),
 		Where: clause.Where{Exprs: []clause.Expression{
 			clause.Eq{Column: "giveaways.published", Value: false},
@@ -186,12 +195,20 @@ func (s *Store) Running(ctx context.Context, chatID int64, offset, limit int) ([
 	return gs, total, nil
 }
 
-// SaveFields saves the end time, winner count and button text of the unfinished giveaway id.
+// SaveFields saves the end time, winner count, button text and admin label of the unfinished
+// giveaway id.
 // It returns ErrNotFound for a finished or a missing giveaway.
-func (s *Store) SaveFields(ctx context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error {
+func (s *Store) SaveFields(
+	ctx context.Context,
+	id uint,
+	endsAt *time.Time,
+	winners int,
+	buttonText string,
+	adminLabel *string,
+) error {
 	res := s.db.WithContext(ctx).Model(&Giveaway{}).
 		Where("id = ? AND finished_at IS NULL", id).
-		Updates(map[string]any{colEndsAt: endsAt, colWinners: winners, colButtonText: buttonText})
+		Updates(map[string]any{colEndsAt: endsAt, colWinners: winners, colButtonText: buttonText, colAdminLabel: adminLabel})
 	if res.Error != nil {
 		return fmt.Errorf("save fields of giveaway %d: %w", id, res.Error)
 	}

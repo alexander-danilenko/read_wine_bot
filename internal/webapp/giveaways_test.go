@@ -3,6 +3,7 @@ package webapp_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -412,5 +413,32 @@ func TestGiveawayRoutes(t *testing.T) {
 
 	if rec := call(t, mux, "/api/giveaways", nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("without launch data: code = %d, want 401", rec.Code)
+	}
+}
+
+func TestGiveawayAdminLabel(t *testing.T) {
+	fake := &fakeGiveaways{view: giveaway.View{ID: 7, AdminLabel: "Rioja"}}
+	mux := newGiveawayMux(t, fake)
+
+	label := strings.Repeat("ї", 64) // Huma counts characters, not bytes
+	body := `{"post_link":"https://t.me/c/1/42","ends_at":"2026-12-01T20:00","winners":2,"button_text":"Join","admin_label":"%s"}`
+
+	rec := send(t, mux, http.MethodPost, "/api/giveaways", fmt.Sprintf(body, label))
+	if rec.Code != http.StatusCreated || fake.fields.AdminLabel != label {
+		t.Fatalf("code = %d, label %q, body %s", rec.Code, fake.fields.AdminLabel, rec.Body)
+	}
+
+	if !strings.Contains(rec.Body.String(), `"admin_label":"Rioja"`) {
+		t.Errorf("body %s, want the view's admin_label", rec.Body)
+	}
+
+	rec = send(t, mux, http.MethodPost, "/api/giveaways", fmt.Sprintf(body, label+"ї"))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("65 characters: code = %d, want 422", rec.Code)
+	}
+
+	rec = send(t, mux, http.MethodPatch, "/api/giveaways/7", `{"admin_label":""}`)
+	if rec.Code != http.StatusOK || fake.changes.AdminLabel == nil || *fake.changes.AdminLabel != "" {
+		t.Errorf("code = %d, changes = %+v, want an empty label to clear it", rec.Code, fake.changes)
 	}
 }

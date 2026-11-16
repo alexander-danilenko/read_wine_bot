@@ -147,6 +147,7 @@ type View struct {
 	EndsAt       string
 	Winners      int
 	ButtonText   string
+	AdminLabel   string // "" for none
 	Status       Status
 	Participants int
 	CanChange    bool // the caller created it and is a full admin, so may edit, move, cancel, restore or finish it
@@ -162,6 +163,7 @@ type Fields struct {
 	EndsAt     string // AppTimeLayout in Kyiv
 	Winners    int
 	ButtonText string
+	AdminLabel string
 }
 
 // Changes are the fields an edit sets; nil leaves a field as it is.
@@ -169,6 +171,7 @@ type Changes struct {
 	EndsAt     *string
 	Winners    *int
 	ButtonText *string
+	AdminLabel *string
 }
 
 // AppTelegram is what the Mini App's actions need from Telegram. BotAPI implements it.
@@ -484,6 +487,10 @@ func (a *App) Edit(ctx context.Context, tg Telegram, userID int64, id uint, c Ch
 		changed.ButtonText = text
 	}
 
+	if c.AdminLabel != nil {
+		changed.AdminLabel = adminLabel(*c.AdminLabel)
+	}
+
 	if err := replyErr(a.ed.save(ctx, tg, a.log.With("user_id", userID, "giveaway_id", id), g, changed)); err != nil {
 		return View{}, err
 	}
@@ -611,7 +618,19 @@ func (a *App) parseFields(ctx context.Context, tg AppTelegram, log *slog.Logger,
 		EndsAt:     utcPtr(ends),
 		Winners:    f.Winners,
 		ButtonText: text,
+		AdminLabel: adminLabel(f.AdminLabel),
 	}, nil
+}
+
+// adminLabel trims label and returns nil for a blank one, so no label is stored as NULL.
+// The API caps its length.
+func adminLabel(label string) *string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil
+	}
+
+	return &label
 }
 
 // resolvePost returns the channel and post a t.me link points to.
@@ -686,6 +705,9 @@ func (a *App) views(ctx context.Context, gs []Giveaway, userID int64, role Role)
 			ID: g.ID, ChatID: g.ChatID, MessageID: g.MessageID, PostLink: postLink(g.ChatID, g.MessageID),
 			Winners: g.Winners, ButtonText: a.ed.label(g), Status: status(g, now), Participants: counts[g.ID],
 			CanChange: role == RoleFull && g.CreatedBy == userID,
+		}
+		if g.AdminLabel != nil {
+			v.AdminLabel = *g.AdminLabel
 		}
 		if g.EndsAt != nil {
 			v.EndsAt = g.EndsAt.In(kyiv).Format(AppTimeLayout)

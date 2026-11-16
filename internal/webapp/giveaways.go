@@ -52,6 +52,7 @@ type giveawayBody struct {
 	EndsAt       string `doc:"Kyiv end time, YYYY-MM-DDTHH:MM"                                                                json:"ends_at"`
 	Winners      int    `doc:"Number of winners to draw"                                                                      json:"winners"`
 	ButtonText   string `doc:"Label of the join button"                                                                       json:"button_text"`
+	AdminLabel   string `doc:"Name admins gave the giveaway, never shown to subscribers; empty for none"                      json:"admin_label"`
 	Status       string `doc:"Where the giveaway is"                                                                          json:"status"`
 	Participants int    `doc:"Number of users who joined"                                                                     json:"participants"`
 	CanChange    bool   `doc:"Whether the caller may edit, move, cancel, restore or finish it: its creator, with full rights" json:"can_change"`
@@ -96,8 +97,8 @@ func (o *Operations) toListChannels(cs []giveaway.Channel) []listChannelBody {
 func toBody(v giveaway.View) giveawayBody {
 	return giveawayBody{
 		ID: v.ID, PostLink: v.PostLink, ChatID: v.ChatID, MessageID: v.MessageID, EndsAt: v.EndsAt,
-		Winners: v.Winners, ButtonText: v.ButtonText, Status: string(v.Status), Participants: v.Participants,
-		CanChange: v.CanChange,
+		Winners: v.Winners, ButtonText: v.ButtonText, AdminLabel: v.AdminLabel, Status: string(v.Status),
+		Participants: v.Participants, CanChange: v.CanChange,
 	}
 }
 
@@ -150,19 +151,21 @@ type archiveOutput struct {
 
 type createInput struct {
 	Body struct {
-		PostLink   string `doc:"t.me link to the channel post"                   json:"post_link"`
-		EndsAt     string `doc:"End time in Kyiv, YYYY-MM-DDTHH:MM"              json:"ends_at"`
-		Winners    int    `doc:"Number of winners to draw, 1 to 98"              json:"winners"`
-		ButtonText string `doc:"Label of the join button, at most 64 characters" json:"button_text"`
+		PostLink   string `doc:"t.me link to the channel post"                               json:"post_link"`
+		EndsAt     string `doc:"End time in Kyiv, YYYY-MM-DDTHH:MM"                          json:"ends_at"`
+		Winners    int    `doc:"Number of winners to draw, 1 to 98"                          json:"winners"`
+		ButtonText string `doc:"Label of the join button, at most 64 characters"             json:"button_text"`
+		AdminLabel string `doc:"Name only admins see, at most 64 characters; empty for none" json:"admin_label,omitempty" maxLength:"64" required:"false"`
 	}
 }
 
 type editInput struct {
 	ID   uint `doc:"Giveaway ID" path:"id"`
 	Body struct {
-		EndsAt     *string `doc:"New end time in Kyiv, YYYY-MM-DDTHH:MM" json:"ends_at,omitempty"     required:"false"`
-		Winners    *int    `doc:"New number of winners, 1 to 98"         json:"winners,omitempty"     required:"false"`
-		ButtonText *string `doc:"New label of the join button"           json:"button_text,omitempty" required:"false"`
+		EndsAt     *string `doc:"New end time in Kyiv, YYYY-MM-DDTHH:MM"    json:"ends_at,omitempty"     required:"false"`
+		Winners    *int    `doc:"New number of winners, 1 to 98"            json:"winners,omitempty"     required:"false"`
+		ButtonText *string `doc:"New label of the join button"              json:"button_text,omitempty" required:"false"`
+		AdminLabel *string `doc:"New name only admins see; empty clears it" json:"admin_label,omitempty" maxLength:"64"   required:"false"`
 	}
 }
 
@@ -313,6 +316,7 @@ func (o *Operations) createGiveaway(ctx context.Context, in *createInput) (*give
 
 	f := giveaway.Fields{
 		PostLink: in.Body.PostLink, EndsAt: in.Body.EndsAt, Winners: in.Body.Winners, ButtonText: in.Body.ButtonText,
+		AdminLabel: in.Body.AdminLabel,
 	}
 	v, err := o.writer.Create(ctx, o.tg, c.User.ID, c.Lang, f)
 
@@ -325,7 +329,12 @@ func (o *Operations) editGiveaway(ctx context.Context, in *editInput) (*giveaway
 		return nil, err
 	}
 
-	changes := giveaway.Changes{EndsAt: in.Body.EndsAt, Winners: in.Body.Winners, ButtonText: in.Body.ButtonText}
+	changes := giveaway.Changes{
+		EndsAt:     in.Body.EndsAt,
+		Winners:    in.Body.Winners,
+		ButtonText: in.Body.ButtonText,
+		AdminLabel: in.Body.AdminLabel,
+	}
 	v, err := o.writer.Edit(ctx, o.tg, c.User.ID, in.ID, changes)
 
 	return o.giveaway(ctx, v, err)

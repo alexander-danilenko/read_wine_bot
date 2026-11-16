@@ -29,7 +29,14 @@ type Giveaways interface {
 
 // Writer changes the giveaways a creator manages. *Store implements it.
 type Writer interface {
-	SaveFields(ctx context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error
+	SaveFields(
+		ctx context.Context,
+		id uint,
+		endsAt *time.Time,
+		winners int,
+		buttonText string,
+		adminLabel *string,
+	) error
 	Cancel(ctx context.Context, id uint) error
 	Publish(ctx context.Context, id uint) error
 }
@@ -101,7 +108,7 @@ func (e *Editor) FinishNow(ctx context.Context, tg Telegram, userID int64, id ui
 		return Reply{Stale: true}
 	}
 
-	err := e.writer.SaveFields(ctx, id, utcPtr(now), g.Winners, g.ButtonText)
+	err := e.writer.SaveFields(ctx, id, utcPtr(now), g.Winners, g.ButtonText, g.AdminLabel)
 	if errors.Is(err, ErrNotFound) {
 		return Reply{Notice: i18n.EditFinished}
 	}
@@ -212,7 +219,7 @@ func (e *Editor) save(ctx context.Context, tg Telegram, log *slog.Logger, g, cha
 		}
 	}
 
-	err := e.writer.SaveFields(ctx, g.ID, changed.EndsAt, changed.Winners, changed.ButtonText)
+	err := e.writer.SaveFields(ctx, g.ID, changed.EndsAt, changed.Winners, changed.ButtonText, changed.AdminLabel)
 	if errors.Is(err, ErrNotFound) {
 		return Reply{Notice: i18n.EditFinished}
 	}

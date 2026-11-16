@@ -2,7 +2,7 @@ import { Eye, Handshake, Languages, Megaphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { api, must, type Channel, type ChannelLists, type Me } from "../api/client";
 import { useT, type Lang } from "../i18n";
-import { Button, ChannelRow, ErrorText, Loading, PartnerLink, Section, Title, TitledCard, useLoad } from "../ui";
+import { Button, ChannelRow, ErrorText, Loading, PartnerLink, Section, TitledCard, useLoad } from "../ui";
 
 // Each language is shown in its own name, so every user finds theirs.
 const languages: { code: Lang; label: string }[] = [
@@ -106,7 +106,7 @@ export default function Settings({ me, onMe, onPartner }: { me: Me; onMe: (me: M
   const channels = useLoad(() => must(api.GET("/api/channels")), []);
   return (
     <Section>
-      <Title>{t("settings.title")}</Title>
+      <h1 className="truncate text-3xl font-bold">{t("settings.title")}</h1>
       <LanguagePicker me={me} onMe={onMe} />
       <ChannelCard
         icon={<Megaphone className="size-5" />}

@@ -1,4 +1,4 @@
-import { ChevronRight, Copy } from "lucide-react";
+import { ChevronRight, Copy, Gift, Settings } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -302,18 +302,68 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`rounded-2xl bg-card ${className}`}>{children}</div>;
 }
 
-// TitledCard is a card under a heading, with an icon that marks what the card is about.
-export function TitledCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+// Row is one line of a grouped card, iOS Settings style: the label on the left, the value or
+// control on the right. With htmlFor the label is a <label>, so a tap on it focuses the control.
+// A wrapping row moves its controls under the label when both do not fit on one line.
+export function Row({ label, htmlFor, wrap, children }: { label: ReactNode; htmlFor?: string; wrap?: boolean; children: ReactNode }) {
+  const Label = htmlFor ? "label" : "span";
   return (
-    <Card className="flex flex-col gap-4 p-4">
-      <h2 className="flex items-center gap-3 text-lg font-semibold">
-        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+    <div className={`flex min-h-12 items-center gap-x-3 px-4 ${wrap ? "flex-wrap gap-y-3 py-3" : "py-2"}`}>
+      <Label htmlFor={htmlFor} className="shrink-0">
+        {label}
+      </Label>
+      <div className={`flex min-w-0 items-center justify-end gap-2 text-hint ${wrap ? "flex-auto" : "flex-1"}`}>{children}</div>
+    </div>
+  );
+}
+
+// ActionRow is a tappable line of a grouped card. A danger row stands alone in its own card,
+// centered in red, as iOS sets apart a destructive action.
+export function ActionRow({
+  icon,
+  danger,
+  busy,
+  disabled,
+  children,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode; danger?: boolean; busy?: boolean }) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      className={`flex min-h-12 w-full items-center gap-3 px-4 text-left disabled:opacity-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+        danger ? "justify-center text-danger" : "justify-between text-accent"
+      }`}
+    >
+      {children}
+      {busy ? <Spinner /> : icon && <span aria-hidden className="text-hint [&>svg]:size-5">{icon}</span>}
+    </button>
+  );
+}
+
+// SectionTitle is the small caption over a group of cards, as iOS grouped lists label theirs.
+export function SectionTitle({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+  return (
+    <h2 className="flex items-center gap-2 px-4 text-sm font-medium text-hint uppercase">
+      {icon && (
+        <span aria-hidden className="text-accent [&>svg]:size-4">
           {icon}
         </span>
-        {title}
-      </h2>
+      )}
       {children}
-    </Card>
+    </h2>
+  );
+}
+
+// TitledCard is a card under its section caption, with an icon that marks what it is about.
+export function TitledCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <SectionTitle icon={icon}>{title}</SectionTitle>
+      <Card className="flex flex-col gap-4 p-4">{children}</Card>
+    </section>
   );
 }
 
@@ -353,7 +403,7 @@ export function useNotify() {
 }
 
 // Toast shows message for 4 seconds. The live region stays in the page, so screen readers
-// announce each new message.
+// announce each new message. It sits above the tab bar.
 export function Toast({ message, onDone }: { message?: string; onDone: () => void }) {
   useEffect(() => {
     if (message === undefined) return;
@@ -362,9 +412,45 @@ export function Toast({ message, onDone }: { message?: string; onDone: () => voi
   }, [message, onDone]);
 
   return (
-    <div role="status" className="pointer-events-none fixed inset-x-4 bottom-4 flex justify-center">
+    <div role="status" className="pointer-events-none fixed inset-x-4 bottom-[calc(5rem_+_var(--safe-bottom))] flex justify-center">
       {message !== undefined && <div className="max-w-sm rounded-xl bg-fg px-4 py-3 text-page shadow-lg">{message}</div>}
     </div>
+  );
+}
+
+// Tab names one of the app's two sections.
+export type Tab = "giveaways" | "settings";
+
+// TabBar switches between the app's two sections, iOS style: an icon over a one-word label,
+// the current section in the accent color.
+export function TabBar({ current, onTab }: { current: Tab; onTab: (tab: Tab) => void }) {
+  const t = useT();
+  const tabs = [
+    { tab: "giveaways", label: t("nav.giveaways"), Icon: Gift },
+    { tab: "settings", label: t("nav.settings"), Icon: Settings },
+  ] as const;
+  return (
+    <nav
+      aria-label={t("nav.label")}
+      className="fixed inset-x-0 bottom-0 border-t border-hint/20 bg-card/90 pb-[var(--safe-bottom)] backdrop-blur"
+    >
+      <div className="mx-auto flex max-w-xl">
+        {tabs.map(({ tab, label, Icon }) => (
+          <button
+            key={tab}
+            type="button"
+            aria-current={current === tab ? "page" : undefined}
+            onClick={() => onTab(tab)}
+            className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium ${focus} ${
+              current === tab ? "text-accent" : "text-hint"
+            }`}
+          >
+            <Icon aria-hidden className="size-6" />
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -378,7 +464,7 @@ export function PartnerLink({ link }: { link: string }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(link);
-      notify(t("help.copied"));
+      notify(t("partner.copied"));
     } catch {
       setManual(true);
     }
@@ -388,15 +474,15 @@ export function PartnerLink({ link }: { link: string }) {
     <div className="flex flex-col gap-3">
       <Button variant="outline" full onClick={copy}>
         <Copy aria-hidden className="size-5" />
-        {t("help.copy")}
+        {t("partner.copy")}
       </Button>
       {manual && (
         <label className="flex flex-col gap-1 text-sm">
-          {t("help.copyFailed")}
+          {t("partner.copyFailed")}
           <input
             readOnly
             value={link}
-            aria-label={t("help.copyLabel")}
+            aria-label={t("partner.copyLabel")}
             onFocus={(e) => e.currentTarget.select()}
             className={`${inputClass(false)} w-full`}
           />

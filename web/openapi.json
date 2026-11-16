@@ -138,6 +138,11 @@
       "CreateInputBody": {
         "additionalProperties": false,
         "properties": {
+          "admin_label": {
+            "description": "Name only admins see, at most 64 characters; empty for none",
+            "maxLength": 64,
+            "type": "string"
+          },
           "button_text": {
             "description": "Label of the join button, at most 64 characters",
             "type": "string"
@@ -167,6 +172,11 @@
       "EditInputBody": {
         "additionalProperties": false,
         "properties": {
+          "admin_label": {
+            "description": "New name only admins see; empty clears it",
+            "maxLength": 64,
+            "type": "string"
+          },
           "button_text": {
             "description": "New label of the join button",
             "type": "string"
@@ -203,6 +213,10 @@
       "GiveawayBody": {
         "additionalProperties": false,
         "properties": {
+          "admin_label": {
+            "description": "Name admins gave the giveaway, never shown to subscribers; empty for none",
+            "type": "string"
+          },
           "button_text": {
             "description": "Label of the join button",
             "type": "string"
@@ -265,6 +279,7 @@
           "ends_at",
           "winners",
           "button_text",
+          "admin_label",
           "status",
           "participants",
           "can_change"

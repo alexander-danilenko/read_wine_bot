@@ -1,36 +1,35 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, must, onRoleLost, type Giveaway, type Me } from "./api/client";
 import { TextContext, translator, type Lang } from "./i18n";
 import GiveawayDetails from "./screens/GiveawayDetails";
 import GiveawayForm from "./screens/GiveawayForm";
 import GiveawayList from "./screens/GiveawayList";
-import Help from "./screens/Help";
 import Partner from "./screens/Partner";
 import Review from "./screens/Review";
 import Settings from "./screens/Settings";
 import { webApp } from "./telegram";
 import { applyTheme } from "./theme";
-import { ErrorText, Loading, NotifyContext, Toast, useLoad } from "./ui";
+import { Confirm, ErrorText, Loading, NotifyContext, TabBar, Toast, useLoad, type Tab } from "./ui";
 
 // ListAt is a place in the giveaway list: the tab (0 Running, 1 Archive) and its page.
 type ListAt = { tab: number; page: number };
 
 const home: ListAt = { tab: 0, page: 1 };
 
-// Every screen but the list keeps the list place it was opened from, so back returns there.
+// The list and settings are the two sections' first screens. The other giveaway screens keep the
+// list place they were opened from, so back returns there; the partner preview returns to settings.
 type Screen =
   | { name: "list"; at: ListAt }
+  | { name: "settings" }
+  | { name: "partner" }
   | { name: "new"; from: ListAt }
-  | { name: "help"; from: ListAt }
-  | { name: "settings"; from: ListAt }
-  | { name: "partner"; from: ListAt }
   | { name: "details"; id: number; from: ListAt }
   | { name: "edit"; id: number; from: ListAt }
   | { name: "review"; id: number; from: ListAt };
 
-// bareScreens are the screens named by a query key alone, with no value: ?new, ?help, ?settings,
+// bareScreens are the screens named by a query key alone, with no value: ?new, ?settings,
 // ?partner (the partner screen as a primary admin previews it).
-const bareScreens = ["new", "help", "settings", "partner"] as const;
+const bareScreens = ["new", "settings", "partner"] as const;
 
 // positive is the whole number above 0 that text holds, or undefined.
 function positive(text: string | null): number | undefined {
@@ -51,7 +50,7 @@ function parseScreen(search: string): Screen {
     return id ? { name, id, from: home } : fallback;
   }
   for (const name of bareScreens) {
-    if (q.has(name)) return { name, from: home };
+    if (q.has(name)) return name === "new" ? { name, from: home } : { name };
   }
 
   const tab = q.get("tab");
@@ -92,6 +91,26 @@ function screenURL(screen: Screen): string {
   return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
 }
 
+// parent is the screen Telegram's back button returns to, or undefined on a section's first screen.
+function parent(screen: Screen): Screen | undefined {
+  switch (screen.name) {
+    case "list":
+    case "settings":
+      return undefined;
+    case "partner":
+      return { name: "settings" };
+    case "edit":
+      return { name: "details", id: screen.id, from: screen.from };
+    default:
+      return { name: "list", at: screen.from };
+  }
+}
+
+// isField reports whether target takes typing, so the tab bar can step aside for the keyboard.
+function isField(target: EventTarget): boolean {
+  return target instanceof HTMLElement && target.matches("input:not([readonly]), select, textarea");
+}
+
 // useTelegramTheme repaints the page when the user switches Telegram's theme or dark mode.
 function useTelegramTheme() {
   useEffect(() => {
@@ -119,11 +138,11 @@ export default function App() {
 }
 
 // EditScreen loads the giveaway by id, so the edit form also opens from its own URL.
-function EditScreen({ id, onDone }: { id: number; onDone: (g: Giveaway) => void }) {
+function EditScreen({ id, onDone, onDirty }: { id: number; onDone: (g: Giveaway) => void; onDirty: (dirty: boolean) => void }) {
   const g = useLoad(() => must(api.GET("/api/giveaways/{id}", { params: { path: { id } } })), [id]);
   if (g.loading && !g.data) return <Loading />;
   if (g.error || !g.data) return <ErrorText error={g.error} onRetry={g.reload} />;
-  return <GiveawayForm giveaway={g.data.giveaway} onDone={onDone} />;
+  return <GiveawayForm giveaway={g.data.giveaway} onDone={onDone} onDirty={onDirty} />;
 }
 
 // Signed is the app for a user Telegram signed in: the screens in the user's language.
@@ -133,6 +152,13 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
   const [screen, setScreen] = useState<Screen>(() => parseScreen(window.location.search));
   const [notice, setNotice] = useState<string>();
   const hideNotice = useCallback(() => setNotice(undefined), []);
+  // dirty is true while a giveaway form holds unsaved input; leaving it then asks first.
+  const dirty = useRef(false);
+  const onDirty = useCallback((d: boolean) => (dirty.current = d), []);
+  const [pending, setPending] = useState<Screen>();
+  const [typing, setTyping] = useState(false);
+
+  const leave = useCallback((to: Screen) => (dirty.current ? setPending(to) : setScreen(to)), []);
 
   // A call the caller's role does not allow shows why and reloads the caller, so the screen
   // redraws for the role they have now.
@@ -150,35 +176,31 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
   const allowed = me.data ? allowedScreen(screen, me.data.role) : screen;
   if (allowed !== screen) setScreen(allowed);
 
-  const back = useCallback(() => {
-    setScreen((s) => {
-      if (s.name === "list") return s;
-      if (s.name === "edit") return { name: "details", id: s.id, from: s.from };
-      return { name: "list", at: s.from };
-    });
-  }, []);
-
   // The URL follows the screen, so Telegram's "Reload page" reopens it. Replacing the entry
   // adds no history: Telegram's back button moves between screens.
   useEffect(() => {
     window.history.replaceState(null, "", screenURL(screen));
   }, [screen]);
 
-  // Telegram's own back button moves between screens; the list has none.
+  // Telegram's own back button moves between screens; a section's first screen has none.
   useEffect(() => {
     if (!webApp) return;
-    if (screen.name === "list") {
+    const to = parent(screen);
+    if (!to) {
       webApp.BackButton.hide();
       return;
     }
+    const back = () => leave(to);
     webApp.BackButton.show();
     webApp.BackButton.onClick(back);
     return () => webApp?.BackButton.offClick(back);
-  }, [screen, back]);
+  }, [screen, leave]);
 
+  // A field removed by a screen change sends no blur, so read where focus is after every change.
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [screen]);
+    setTyping(document.activeElement !== null && isField(document.activeElement));
+  }, [screen, me.loading]);
 
   let body;
   // While the caller reloads, the screen leaves, so it loads again for the role that comes back.
@@ -199,20 +221,20 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
             onOpen={(id) => setScreen({ name: "details", id, from: at })}
             onReview={(id) => setScreen({ name: "review", id, from: at })}
             onNew={() => setScreen({ name: "new", from: at })}
-            onHelp={() => setScreen({ name: "help", from: at })}
-            onSettings={() => setScreen({ name: "settings", from: at })}
           />
         );
         break;
       }
       case "new": {
         const from = screen.from;
-        body = <GiveawayForm onDone={(g) => setScreen({ name: "details", id: g.id, from })} />;
+        body = <GiveawayForm onDone={(g) => setScreen({ name: "details", id: g.id, from })} onDirty={onDirty} />;
         break;
       }
       case "edit": {
         const from = screen.from;
-        body = <EditScreen key={screen.id} id={screen.id} onDone={(g) => setScreen({ name: "details", id: g.id, from })} />;
+        body = (
+          <EditScreen key={screen.id} id={screen.id} onDone={(g) => setScreen({ name: "details", id: g.id, from })} onDirty={onDirty} />
+        );
         break;
       }
       case "details": {
@@ -228,14 +250,9 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
         );
         break;
       }
-      case "help":
-        body = <Help me={me.data} />;
+      case "settings":
+        body = <Settings me={me.data} onMe={me.set} onPartner={() => setScreen({ name: "partner" })} />;
         break;
-      case "settings": {
-        const from = screen.from;
-        body = <Settings me={me.data} onMe={me.set} onPartner={() => setScreen({ name: "partner", from })} />;
-        break;
-      }
       case "partner":
         body = <Partner me={me.data} />;
         break;
@@ -247,10 +264,37 @@ function Signed({ fallbackLang }: { fallbackLang: Lang }) {
     }
   }
 
+  // Partners have one screen, so only admins get the tab bar. It hides while a field has focus,
+  // as the keyboard covers it on iOS, so on Android it never sits over the field being typed in.
+  const showTabs = me.data && me.data.role !== "partner";
+  const tab: Tab = screen.name === "settings" || screen.name === "partner" ? "settings" : "giveaways";
+
   return (
     <TextContext.Provider value={t}>
       <NotifyContext.Provider value={setNotice}>
-        {body}
+        <div
+          className={showTabs ? "pb-[calc(4.5rem_+_var(--safe-bottom))]" : ""}
+          onFocus={(e) => setTyping(isField(e.target))}
+          onBlur={() => setTyping(false)}
+        >
+          {body}
+        </div>
+        {showTabs && !typing && (
+          <TabBar current={tab} onTab={(to) => leave(to === "settings" ? { name: "settings" } : { name: "list", at: home })} />
+        )}
+        <Confirm
+          open={pending !== undefined}
+          title={t("form.discardTitle")}
+          text={t("form.discardText")}
+          confirm={t("form.discard")}
+          danger
+          onConfirm={() => {
+            dirty.current = false;
+            if (pending) setScreen(pending);
+            setPending(undefined);
+          }}
+          onClose={() => setPending(undefined)}
+        />
         <Toast message={notice} onDone={hideNotice} />
       </NotifyContext.Provider>
     </TextContext.Provider>

@@ -1,14 +1,21 @@
-import { CircleHelp, Settings } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
-import { api, must, type Channel, type Giveaway, type Me } from "../api/client";
+import { Plus } from "lucide-react";
+import { useEffect } from "react";
+import { api, must, type Giveaway, type Me } from "../api/client";
 import { useT, type T } from "../i18n";
 import { formatEnd } from "../time";
-import { Avatar, Button, Card, ErrorText, Loading, Pager, Pill, ReadOnlyNote, Section, statusTone, useLoad } from "../ui";
+import { Card, ErrorText, Loading, Pager, Pill, ReadOnlyNote, Section, SectionTitle, statusTone, useLoad } from "../ui";
 
 const pageSize = 10;
 
-function GiveawayRow({ g, channel, t, onOpen }: { g: Giveaway; channel?: Channel; t: T; onOpen: () => void }) {
-  const ends = g.ends_at ? t("list.ends", { time: formatEnd(g.ends_at) }) : t("list.noEnd");
+// giveawayTitle is the admin label, or "Giveaway #<id>" for a giveaway without one.
+export function giveawayTitle(g: Giveaway, t: T) {
+  return g.admin_label || t("list.untitled", { id: g.id });
+}
+
+function GiveawayRow({ g, t, onOpen }: { g: Giveaway; t: T; onOpen: () => void }) {
+  // Past tense once the end time has passed: the giveaway is drawing, waits for review or is finished.
+  const ended = g.status === "due" || g.status === "review" || g.status === "finished";
+  const ends = g.ends_at ? t(ended ? "list.ended" : "list.ends", { time: formatEnd(g.ends_at) }) : t("list.noEnd");
   return (
     <li>
       <button
@@ -16,11 +23,10 @@ function GiveawayRow({ g, channel, t, onOpen }: { g: Giveaway; channel?: Channel
         onClick={onOpen}
         className="flex min-h-16 w-full items-center gap-3 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
       >
-        <Avatar channel={channel} />
         <span className="min-w-0 flex-1">
-          {/* The post link stands in when Telegram cannot give the channel title. */}
-          <span className="block truncate">{channel?.title || g.post_link}</span>
-          <span className="block text-sm text-hint">{`${ends} · ${t("list.participants", { n: g.participants })}`}</span>
+          <span className="block truncate">{giveawayTitle(g, t)}</span>
+          <span className="block text-sm text-hint">{ends}</span>
+          <span className="block text-sm text-hint">{t("list.participants", { n: g.participants })}</span>
         </span>
         <Pill tone={statusTone(g.status)}>{t(`status.${g.status}`)}</Pill>
       </button>
@@ -28,19 +34,19 @@ function GiveawayRow({ g, channel, t, onOpen }: { g: Giveaway; channel?: Channel
   );
 }
 
-// Group is a card of giveaway rows under an optional heading.
-function Group(props: { title?: string; items: Giveaway[]; channels: Channel[]; t: T; onOpen: (g: Giveaway) => void }) {
-  const { title, items, t, onOpen } = props;
-  const channels = new Map(props.channels.map((c) => [c.id, c]));
+// Group is a card of giveaway rows under an optional section caption.
+function Group({ title, items, t, onOpen }: { title?: string; items: Giveaway[]; t: T; onOpen: (g: Giveaway) => void }) {
   return (
-    <Card className="overflow-hidden">
-      {title && <h2 className="px-4 pt-3 text-sm font-medium text-hint">{title}</h2>}
-      <ul className="divide-y divide-hint/20">
-        {items.map((g) => (
-          <GiveawayRow key={g.id} g={g} channel={channels.get(g.chat_id)} t={t} onOpen={() => onOpen(g)} />
-        ))}
-      </ul>
-    </Card>
+    <section className="flex flex-col gap-2">
+      {title && <SectionTitle>{title}</SectionTitle>}
+      <Card className="overflow-hidden">
+        <ul className="divide-y divide-hint/20">
+          {items.map((g) => (
+            <GiveawayRow key={g.id} g={g} t={t} onOpen={() => onOpen(g)} />
+          ))}
+        </ul>
+      </Card>
+    </section>
   );
 }
 
@@ -71,7 +77,7 @@ function useLastPage(total: number | undefined, page: number, onPage: (page: num
   }, [total, page, onPage]);
 }
 
-function Running({ role, page, onPage, onOpen, onReview, onNew }: ListProps) {
+function Running({ role, page, onPage, onOpen, onReview }: ListProps) {
   const t = useT();
   const list = useLoad(
     () => must(api.GET("/api/giveaways", { params: { query: pageQuery(page) } })),
@@ -82,26 +88,18 @@ function Running({ role, page, onPage, onOpen, onReview, onNew }: ListProps) {
   if (list.loading && !list.data) return <Loading />;
   if (list.error || !list.data) return <ErrorText error={list.error} onRetry={list.reload} />;
 
-  const { giveaways, review, channels, total } = list.data;
+  const { giveaways, review, total } = list.data;
   return (
     <Section>
       {page === 1 && review.length > 0 && (
-        <Group title={t("list.review")} items={review} channels={channels} t={t} onOpen={(g) => onReview(g.id)} />
+        <Group title={t("list.review")} items={review} t={t} onOpen={(g) => onReview(g.id)} />
       )}
       {giveaways.length > 0 ? (
-        <Group title={t("list.mine")} items={giveaways} channels={channels} t={t} onOpen={(g) => onOpen(g.id)} />
+        <Group title={t("list.mine")} items={giveaways} t={t} onOpen={(g) => onOpen(g.id)} />
       ) : (
         <Empty>{t("list.empty")}</Empty>
       )}
       <Pager page={page} pages={pageCount(total)} onPage={onPage} />
-      {role === "full" && (
-        <Button variant="primary" full onClick={onNew}>
-          <svg aria-hidden viewBox="0 0 24 24" className="size-5 fill-current">
-            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
-          </svg>
-          {t("list.new")}
-        </Button>
-      )}
       {role === "read_only" && <ReadOnlyNote />}
     </Section>
   );
@@ -121,7 +119,7 @@ function Archive({ page, onPage, onOpen, onReview }: ListProps) {
 
   return (
     <Section>
-      <Group items={list.data.giveaways} channels={list.data.channels} t={t} onOpen={(g) => (g.status === "review" ? onReview(g.id) : onOpen(g.id))} />
+      <Group items={list.data.giveaways} t={t} onOpen={(g) => (g.status === "review" ? onReview(g.id) : onOpen(g.id))} />
       <Pager page={page} pages={pageCount(list.data.total)} onPage={onPage} />
     </Section>
   );
@@ -137,61 +135,46 @@ interface Props {
 // ListProps is what one tab needs: its page and the actions on its rows.
 type ListProps = Props & { page: number; onPage: (page: number) => void };
 
-// HeaderIcon is a 48 px icon button of the list header; label names it for screen readers.
-function HeaderIcon({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className="inline-flex size-12 items-center justify-center rounded-xl text-accent focus-visible:outline-2 focus-visible:outline-accent"
-    >
-      {children}
-    </button>
-  );
-}
-
-type GiveawayListProps = ListProps & {
-  tab: number;
-  onTab: (tab: number) => void;
-  onHelp: () => void;
-  onSettings: () => void;
-};
+type GiveawayListProps = ListProps & { tab: number; onTab: (tab: number) => void };
 
 export default function GiveawayList(props: GiveawayListProps) {
   const t = useT();
   const tabs = [t("list.running"), t("list.archive")];
   return (
     <Section>
-      <header className="flex items-end gap-1 border-b border-hint/30">
-        <div role="tablist" className="grid flex-1 grid-cols-2">
-          {tabs.map((label, i) => (
-            <button
-              key={label}
-              type="button"
-              role="tab"
-              id={`tab-${i}`}
-              aria-selected={props.tab === i}
-              aria-controls="tabpanel"
-              onClick={() => props.onTab(i)}
-              className={`-mb-px min-h-12 border-b-2 font-medium focus-visible:outline-2 focus-visible:outline-accent ${
-                props.tab === i ? "border-accent text-accent" : "border-transparent text-hint"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <nav aria-label={t("nav.label")} className="flex">
-          <HeaderIcon label={t("nav.help")} onClick={props.onHelp}>
-            <CircleHelp aria-hidden className="size-6" />
-          </HeaderIcon>
-          <HeaderIcon label={t("nav.settings")} onClick={props.onSettings}>
-            <Settings aria-hidden className="size-6" />
-          </HeaderIcon>
-        </nav>
+      <header className="flex min-h-12 items-center justify-between gap-2">
+        <h1 className="truncate text-3xl font-bold">{t("list.title")}</h1>
+        {props.role === "full" && (
+          <button
+            type="button"
+            aria-label={t("list.new")}
+            title={t("list.new")}
+            onClick={props.onNew}
+            className="inline-flex size-12 shrink-0 items-center justify-center rounded-full text-accent focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <Plus aria-hidden className="size-7" />
+          </button>
+        )}
       </header>
+      {/* A segmented control, as iOS switches between views of one list. */}
+      <div role="tablist" className="grid grid-cols-2 rounded-xl bg-hint/15 p-0.5">
+        {tabs.map((label, i) => (
+          <button
+            key={label}
+            type="button"
+            role="tab"
+            id={`tab-${i}`}
+            aria-selected={props.tab === i}
+            aria-controls="tabpanel"
+            onClick={() => props.onTab(i)}
+            className={`min-h-12 rounded-[10px] text-sm focus-visible:outline-2 focus-visible:outline-accent ${
+              props.tab === i ? "bg-card font-semibold shadow-sm ring-1 ring-hint/20" : "font-medium text-hint"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div role="tabpanel" id="tabpanel" aria-labelledby={`tab-${props.tab}`}>
         {props.tab === 0 ? <Running {...props} /> : <Archive {...props} />}
       </div>

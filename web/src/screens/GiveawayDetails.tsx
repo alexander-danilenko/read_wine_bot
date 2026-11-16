@@ -1,9 +1,11 @@
+import { ChevronRight, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { api, Failure, must, type Giveaway, type Me } from "../api/client";
 import { useT, type TextKey } from "../i18n";
 import { openLink } from "../telegram";
 import { formatEnd } from "../time";
-import { Avatar, Button, Card, Confirm, Dialog, ErrorText, Field, Loading, Pill, ReadOnlyNote, Section, statusTone, Title, useLoad, useNotify } from "../ui";
+import { ActionRow, Button, Card, Confirm, Dialog, ErrorText, Field, Loading, Pill, ReadOnlyNote, Row, Section, statusTone, useLoad, useNotify } from "../ui";
+import { giveawayTitle } from "./GiveawayList";
 
 type Action = "cancel" | "restore" | "finish-now";
 
@@ -57,56 +59,52 @@ export default function GiveawayDetails(props: { id: number; role: Me["role"]; o
   return (
     <Section>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar channel={channel} size="size-12" />
-          <Title>{channel.title || giveaway.post_link}</Title>
-        </div>
+        {/* Wraps instead of cutting a long label short: this is where it can be read whole. */}
+        <h1 className="min-w-0 break-words text-xl font-semibold">{giveawayTitle(giveaway, t)}</h1>
         <Pill tone={statusTone(giveaway.status)}>{t(`status.${giveaway.status}`)}</Pill>
       </div>
       {failure !== undefined && !moveError && <ErrorText error={failure} />}
       {props.role === "read_only" && <ReadOnlyNote />}
-      <Card className="flex flex-col gap-1 p-4">
-        <p>{giveaway.ends_at ? t("list.ends", { time: formatEnd(giveaway.ends_at) }) : t("list.noEnd")}</p>
-        <p className="text-hint">{t("list.participants", { n: giveaway.participants })}</p>
-        <p className="text-hint">
-          {t("form.winners")}: {giveaway.winners}
-        </p>
-        <p className="text-hint">
-          {t("form.buttonText")}: {giveaway.button_text}
-        </p>
+      <Card className="divide-y divide-hint/20">
+        <Row label={t("details.ends")}>
+          <span className="truncate">{giveaway.ends_at ? formatEnd(giveaway.ends_at) : t("list.noEnd")}</span>
+        </Row>
+        <Row label={t("details.participants")}>{giveaway.participants}</Row>
+        <Row label={t("form.winners")}>{giveaway.winners}</Row>
+        <Row label={t("form.buttonText")}>
+          <span className="truncate">{giveaway.button_text}</span>
+        </Row>
       </Card>
-      <Button variant="outline" full onClick={() => openLink(giveaway.post_link)}>
-        {t("details.post")}
-      </Button>
       {giveaway.status === "review" && (
         <Button variant="primary" full onClick={props.onReview}>
           {t("details.openReview")}
         </Button>
       )}
-      {changeable && (
-        <>
-          <Button variant="outline" full onClick={() => props.onEdit(giveaway)}>
-            {t("details.edit")}
-          </Button>
-          <Button variant="outline" full onClick={() => setAsking("move")}>
-            {t("details.move")}
-          </Button>
-        </>
-      )}
-      {running && (
-        <>
-          <Button variant="outline" full onClick={() => setAsking("finish-now")}>
-            {t("details.finishNow")}
-          </Button>
-          <Button variant="danger-text" full onClick={() => setAsking("cancel")}>
-            {t("details.cancelGiveaway")}
-          </Button>
-        </>
-      )}
       {cancelled && (
         <Button variant="primary" full busy={busy} onClick={() => act("restore", "details.restored")}>
           {t("details.restore")}
         </Button>
+      )}
+      <Card className="divide-y divide-hint/20 overflow-hidden">
+        <ActionRow icon={<ExternalLink />} onClick={() => openLink(giveaway.post_link)}>
+          {t("details.post")}
+        </ActionRow>
+        {changeable && (
+          <>
+            <ActionRow icon={<ChevronRight />} onClick={() => props.onEdit(giveaway)}>
+              {t("details.edit")}
+            </ActionRow>
+            <ActionRow onClick={() => setAsking("move")}>{t("details.move")}</ActionRow>
+          </>
+        )}
+        {running && <ActionRow onClick={() => setAsking("finish-now")}>{t("details.finishNow")}</ActionRow>}
+      </Card>
+      {running && (
+        <Card className="overflow-hidden">
+          <ActionRow danger onClick={() => setAsking("cancel")}>
+            {t("details.cancelGiveaway")}
+          </ActionRow>
+        </Card>
       )}
       <Confirm
         open={asking === "finish-now"}

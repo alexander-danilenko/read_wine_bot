@@ -14,6 +14,21 @@
   --color-warn: var(--c-warn);
 }
 
+/* The bottom inset (iPhone home indicator): Telegram's own value, or the browser's on clients
+   that do not set it. The tab bar and the space kept for it both add this. */
+:root {
+  --safe-bottom: max(var(--tg-safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+}
+
 body {
   @apply bg-page text-fg antialiased;
+}
+
+/* No scrollbar: one that shows only on long screens would narrow the page and shift everything
+   sideways. Wheel, trackpad, touch and keys still scroll. */
+html {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
 }

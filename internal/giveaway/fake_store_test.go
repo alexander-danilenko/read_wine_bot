@@ -77,7 +77,7 @@ func (f *memStore) SaveDraft(_ context.Context, g *giveaway.Giveaway) error {
 		}
 
 		row.CreatedBy, row.Language, row.EndsAt = g.CreatedBy, g.Language, g.EndsAt
-		row.Winners, row.ButtonText, row.UpdatedAt = g.Winners, g.ButtonText, now
+		row.Winners, row.ButtonText, row.AdminLabel, row.UpdatedAt = g.Winners, g.ButtonText, g.AdminLabel, now
 
 		return nil
 	}
@@ -239,7 +239,14 @@ func page(gs []giveaway.Giveaway, offset, limit int) []giveaway.Giveaway {
 	return gs[:min(limit, len(gs))]
 }
 
-func (f *memStore) SaveFields(_ context.Context, id uint, endsAt *time.Time, winners int, buttonText string) error {
+func (f *memStore) SaveFields(
+	_ context.Context,
+	id uint,
+	endsAt *time.Time,
+	winners int,
+	buttonText string,
+	adminLabel *string,
+) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -248,7 +255,7 @@ func (f *memStore) SaveFields(_ context.Context, id uint, endsAt *time.Time, win
 		return giveaway.ErrNotFound
 	}
 
-	g.EndsAt, g.Winners, g.ButtonText = endsAt, winners, buttonText
+	g.EndsAt, g.Winners, g.ButtonText, g.AdminLabel = endsAt, winners, buttonText, adminLabel
 
 	return nil
 }

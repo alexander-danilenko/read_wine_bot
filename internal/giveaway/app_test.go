@@ -771,3 +771,61 @@ func TestAppCanChange(t *testing.T) {
 		}
 	}
 }
+
+func TestAppAdminLabel(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+
+	f := appFields(s)
+	f.AdminLabel = "  Wine of the month  "
+	v := mustCreate(t, s, app, adminID, f)
+
+	if v.AdminLabel != "Wine of the month" || *s.store.rows[v.ID].AdminLabel != "Wine of the month" {
+		t.Errorf("label %q, want it trimmed in the view and the row", v.AdminLabel)
+	}
+
+	attached := s.tg.attached
+	label := "Rioja"
+
+	got, err := app.Edit(t.Context(), s.tg, adminID, v.ID, giveaway.Changes{AdminLabel: &label})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.AdminLabel != label || s.tg.attached != attached {
+		t.Errorf(
+			"label %q after %d attaches, want %q with the post left alone",
+			got.AdminLabel,
+			s.tg.attached-attached,
+			label,
+		)
+	}
+
+	got, err = app.Edit(t.Context(), s.tg, adminID, v.ID, giveaway.Changes{})
+	if err != nil || got.AdminLabel != label {
+		t.Errorf("label %q (err %v) after an edit without it, want %q kept", got.AdminLabel, err, label)
+	}
+}
+
+func TestAppAdminLabelFinishAndClear(t *testing.T) {
+	s := newSetup(t)
+	app := giveaway.NewApp(s.ed, nil, s.store, channelID)
+
+	f := appFields(s)
+	label := "Rioja"
+	f.AdminLabel = label
+	v := mustCreate(t, s, app, adminID, f)
+
+	got, err := app.FinishNow(t.Context(), s.tg, adminID, v.ID)
+	if err != nil || got.AdminLabel != label {
+		t.Errorf("label %q (err %v) after finish now, want %q kept", got.AdminLabel, err, label)
+	}
+
+	blank := "   "
+	s.store.rows[v.ID].EndsAt = nil // not due again, so it can still be edited
+
+	got, err = app.Edit(t.Context(), s.tg, adminID, v.ID, giveaway.Changes{AdminLabel: &blank})
+	if err != nil || got.AdminLabel != "" || s.store.rows[v.ID].AdminLabel != nil {
+		t.Errorf("label %q (err %v), want a blank label stored as NULL", got.AdminLabel, err)
+	}
+}

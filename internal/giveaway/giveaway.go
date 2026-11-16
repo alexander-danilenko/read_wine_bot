@@ -26,6 +26,7 @@ type Giveaway struct {
 	EndsAt     *time.Time `gorm:"comment:When entry ends and winners are drawn, NULL for no end time"`
 	Winners    int        `gorm:"not null;default:1;check:chk_giveaways_winners,winners >= 1;comment:Number of winners to draw"`
 	ButtonText string     `gorm:"not null;default:'';comment:Label of the join button under the post"`
+	AdminLabel *string    `gorm:"comment:Name admins give the giveaway in the Mini App lists, never shown to subscribers. NULL for none"`
 	// FinishedAt is set together with the participants' winner marks; nil until then.
 	FinishedAt *time.Time `gorm:"check:chk_giveaways_finished,finished_at IS NULL OR (published AND cancelled_at IS NULL);comment:When winners were drawn and saved, NULL until then"`
 	// CancelledAt is set when the creator takes a published giveaway off its post: the row is
