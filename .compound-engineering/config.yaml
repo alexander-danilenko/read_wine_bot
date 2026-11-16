@@ -1,0 +1,9 @@
+# Shared Compound Engineering config. Personal settings go in config.local.yaml, which git ignores.
+# All keys: https://github.com/EveryInc/compound-engineering-plugin/blob/main/.compound-engineering/config.example.yaml
+
+# Plans, learnings and other CE output. The root .gitignore keeps docs/plans/ out of git.
+docs_root: docs
+# Only Claude Code runs here, so ce-code-review and ce-doc-review send no diff to a second model.
+cross_model_review_mode: off
+# After /ce-commit-push-pr opens a PR, do not start /ce-babysit-pr. To watch one PR, run /ce-babysit-pr with its number.
+auto_babysit: false
